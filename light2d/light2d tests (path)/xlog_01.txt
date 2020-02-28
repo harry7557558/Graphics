@@ -1,0 +1,141 @@
+House
+0.003 secs      Area = 97500, 97500.00: 1.000
+58 / 58
+1.515183secs elapsed. (0.659986fps)
+58 / 58
+2.632198secs elapsed. (0.379911fps)
+
+Heart
+0.025 secs      Area = 90274, 90286.07: 1.000
+58 / 58
+2.220335secs elapsed. (0.450383fps)
+58 / 58
+3.324659secs elapsed. (0.300783fps)
+
+Car
+0.024 secs      Area = 72236, 72137.71: 0.999
+58 / 58
+2.674654secs elapsed. (0.373880fps)
+58 / 58
+5.847324secs elapsed. (0.171018fps)
+
+Tool
+0.024 secs      Area = 40557, 40581.69: 1.001
+58 / 58
+2.960277secs elapsed. (0.337806fps)
+58 / 58
+5.851369secs elapsed. (0.170900fps)
+
+Cloud
+0.021 secs      Area = 86870, 86841.98: 1.000
+58 / 58
+2.689518secs elapsed. (0.371814fps)
+58 / 58
+5.812448secs elapsed. (0.172045fps)
+
+Head
+0.021 secs      Area = 90119, 90137.31: 1.000
+58 / 58
+3.068016secs elapsed. (0.325944fps)
+58 / 58
+6.596192secs elapsed. (0.151603fps)
+
+Duck
+0.023 secs      Area = 57462, 57606.19: 1.003
+58 / 58
+2.872902secs elapsed. (0.348080fps)
+58 / 58
+5.840044secs elapsed. (0.171232fps)
+
+Hat
+0.025 secs      Area = 72495, 72514.88: 1.000
+58 / 58
+2.876789secs elapsed. (0.347610fps)
+58 / 58
+5.782453secs elapsed. (0.172937fps)
+
+S
+0.030 secs      Area = 35692, 35705.86: 1.000
+58 / 58
+4.039359secs elapsed. (0.247564fps)
+58 / 58
+8.889962secs elapsed. (0.112486fps)
+
+IE Logo
+0.047 secs      Area = 66306, 66335.26: 1.000
+58 / 58
+5.491908secs elapsed. (0.182086fps)
+58 / 58
+14.462632secs elapsed. (0.069144fps)
+
+Flower
+0.074 secs      Area = 53468, 53468.60: 1.000
+58 / 58
+7.914684secs elapsed. (0.126347fps)
+58 / 58
+23.511646secs elapsed. (0.042532fps)
+
+"Fu"
+0.061 secs      Area = 54823, 54821.08: 1.000
+58 / 58
+7.508320secs elapsed. (0.133186fps)
+58 / 58
+22.578970secs elapsed. (0.044289fps)
+
+Fish
+0.136 secs      Area = 29141, 29428.66: 1.010
+58 / 58
+18.949703secs elapsed. (0.052771fps)
+58 / 58
+67.689641secs elapsed. (0.014773fps)
+
+Logo
+0.113 secs      Area = 77081, 77086.35: 1.000
+58 / 58
+9.736956secs elapsed. (0.102702fps)
+58 / 58
+26.171544secs elapsed. (0.038209fps)
+
+Windows
+0.016 secs      Area = 61163, 60535.65: 0.990
+58 / 58
+4.074350secs elapsed. (0.245438fps)
+58 / 58
+11.088089secs elapsed. (0.090187fps)
+
+Sector
+0.024 secs      Area = 80200, 80314.36: 1.001
+58 / 58
+2.826555secs elapsed. (0.353788fps)
+58 / 58
+5.495844secs elapsed. (0.181956fps)
+
+Shield
+0.041 secs      Area = 23400, 23464.12: 1.003
+58 / 58
+6.246204secs elapsed. (0.160097fps)
+58 / 58
+19.107243secs elapsed. (0.052336fps)
+
+Shell
+0.066 secs      Area = 55879, 55891.01: 1.000
+58 / 58
+6.165339secs elapsed. (0.162197fps)
+58 / 58
+15.081224secs elapsed. (0.066308fps)
+
+Sigma
+0.025 secs      Area = 45401, 45419.09: 1.000
+58 / 58
+3.608655secs elapsed. (0.277112fps)
+58 / 58
+8.632998secs elapsed. (0.115835fps)
+
+WiFi
+0.054 secs      Area = 72507, 72523.95: 1.000
+58 / 58
+5.401655secs elapsed. (0.185128fps)
+58 / 58
+13.403434secs elapsed. (0.074608fps)
+
+Press any key to continue . . .
