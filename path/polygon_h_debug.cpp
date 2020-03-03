@@ -1,9 +1,28 @@
 // debug this header file using Win32 GUI
 #include "D:\\polygon.h"
 
-// ========================================= Win32 Standard =========================================
+/* ==================== User Instructions ====================
+ *  Print Polygon Data          ctrl + p, ctrl + s
+ *  Move View:                  drag background
+ *  Zoom:                       mouse scroll
+ *  Move Polygon:               drag shape
+ *  Rotate Polygon:             shift + drag
+ *  Scale Polygon:              alt + drag
+ *  Move Vertex:                click and drag
+ *  Add Vertex:                 ctrl + click
+ *  Delete Vertex:              right click
+ *  Shift Vertex Order:         left / right
+ *  Reverse Vertex Order:       space
+ *  Hide/Unhide Vertexes:       c
+ *  Show/Hide Center:           m
+ *  Show/Hide AABB:             b
+ *  Show/Hide Convex Hull:      h
+ */
 
-// some compressed copy-and-paste code
+
+ // ========================================= Win32 Standard =========================================
+
+ // some compressed copy-and-paste code
 #pragma region Windows
 
 #define WIN_NAME "DEMO"
@@ -103,7 +122,7 @@ polygon CP2({ vec2(1,1), vec2(-.5,1), vec2(-.5,-.5), vec2(1,-.5) });
 int CP1_Selected = -1, CP1_Insert = -1;
 int CP2_Selected = -1, CP2_Insert = -1;
 vec2 CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
-double CP1_Dist = NAN, CP2_Dist = NAN;
+double CP1_DistE, CP2_DistE, CP1_Dist, CP2_Dist;
 
 // window parameters
 char text[256];	// window title
@@ -115,6 +134,10 @@ double Unit = 100.0;		// screen unit to object unit
 // rendering parameters
 int CPR = 8;	// rendering radius of control point
 bool showControl = true;	// control points
+bool showCenter = false;
+bool showAABB = false;
+bool showConvexHull = false;
+polygon* howerPolygon = 0;
 
 // user parameters
 vec2 Cursor = vec2(0, 0);
@@ -124,30 +147,20 @@ bool Ctrl = false, Shift = false, Alt = false;
 #pragma endregion
 
 
-#include <fstream>
-#include <algorithm>
-bool saveFile() {
-	std::ofstream os("D:\\ps.txt", std::ios_base::out | std::ios_base::app);
-	if (os.fail()) return false;
-	printPolygon(os, CP1);
-	printPolygon(os, CP2);
-	os.close();
-	return true;
-}
-
 
 
 // ============================================ Rendering ============================================
 
-#define DARKBLUE 0x202080
-#define DARKGRAY 0x181818
 #define WHITE 0xFFFFFF
-#define YELLOW 0xFFFF00
 #define RED 0xFF0000
 #define ORANGE 0xFF8000
+#define YELLOW 0xFFFF00
 #define LIME 0x00FF00
 #define MAGENTA 0xFF00FF
-#define GRAY 0xA0A0A0
+#define POLYGON_FILL 0x20FF8000
+#define POLYGON_FILL1 0x20FFA000
+#define AABB_FILL 0x180000FF
+#define CVXH_FILL 0x14FF0000
 
 #define byteBlend(a,b,alpha) (byte)(((256-(int)(alpha))*byte(a)+(int)(alpha)*byte(b))>>8)
 #define COLORREFBlend(c0,c1,alpha) COLORREF(byteBlend(c0,c1,alpha))|((COLORREF)byteBlend((c0)>>8,(c1)>>8,alpha)<<8)|((COLORREF)byteBlend((c0)>>16,(c1)>>16,alpha)<<16)
@@ -157,14 +170,13 @@ typedef std::chrono::high_resolution_clock NTime;
 auto time_0 = NTime::now();
 
 void render() {
-	// debug
-	auto t0 = NTime::now();
 
 	// initialize window
+	auto t0 = NTime::now();
 	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
 
 	// rendering
-	auto drawLine = [&](vec2 p, vec2 q, COLORREF col) {  // dda
+	auto drawLine = [&](vec2 p, vec2 q, COLORREF Stroke) {  // dda
 		vec2 d = q - p;
 		double slope = d.y / d.x;
 		if (abs(slope) <= 1.0) {
@@ -173,7 +185,7 @@ void render() {
 			double yf = slope * x0 + (p.y - slope * p.x);
 			for (int x = x0; x <= x1; x++, yf += slope) {
 				y = (int)yf;
-				if (y >= 0 && y < _WIN_H) Canvas(x, y) = col;
+				if (y >= 0 && y < _WIN_H) Canvas(x, y) = Stroke;
 			}
 		}
 		else {
@@ -183,26 +195,26 @@ void render() {
 			double xf = slope * y0 + (p.x - slope * p.y);
 			for (int y = y0; y <= y1; y++, xf += slope) {
 				x = (int)xf;
-				if (x >= 0 && x < _WIN_W) Canvas(x, y) = col;
+				if (x >= 0 && x < _WIN_W) Canvas(x, y) = Stroke;
 			}
 		}
 	};
-	auto drawCross = [&](vec2 p, double r, COLORREF col) {
+	auto drawCross = [&](vec2 p, double r, COLORREF Color) {
 		p = fromFloat(p);
-		drawLine(p - vec2(r, 0), p + vec2(r, 0), col);
-		drawLine(p - vec2(0, r), p + vec2(0, r), col);
+		drawLine(p - vec2(r, 0), p + vec2(r, 0), Color);
+		drawLine(p - vec2(0, r), p + vec2(0, r), Color);
 	};
-	auto drawCircle = [&](vec2 c, double r, COLORREF col) {
+	auto drawCircle = [&](vec2 c, double r, COLORREF Color) {
 		int x0 = max(0, int(c.x - r)), x1 = min(_WIN_W - 1, int(c.x + r));
 		int y0 = max(0, int(c.y - r)), y1 = min(_WIN_H - 1, int(c.y + r));
 		int cx = (int)c.x, cy = (int)c.y, r2 = int(r*r);
 		for (int x = x0, dx = x - cx; x <= x1; x++, dx++) {
 			for (int y = y0, dy = y - cy; y <= y1; y++, dy++) {
-				if (dx * dx + dy * dy < r2) Canvas(x, y) = col;
+				if (dx * dx + dy * dy < r2) Canvas(x, y) = Color;
 			}
 		}
 	};
-	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {
+	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // pass polygon in world coordinate
 		int n = p.size(), y0 = _WIN_H - 1, y1 = 0;
 		polygon P = p; for (int i = 0; i < n; i++) P[i] = fromFloat(p[i]);
 		for (int i = 0; i < n; i++) {
@@ -219,11 +231,11 @@ void render() {
 				for (int i = 0; i < n; i++) {
 					if (y > P[i].y != y > P[(i + 1) % n].y) {
 						double t = (y - P[i].y) / (P[(i + 1) % n].y - P[i].y);
-						k.push_back((1 - t)*P[i].x + t * P[(i + 1) % n].x);
+						k.push_back((int)((1 - t)*P[i].x + t * P[(i + 1) % n].x));
 					}
 				}
 				std::sort(k.begin(), k.end());
-				for (int i = 1; i < k.size(); i += 2) {
+				for (unsigned i = 1; i < k.size(); i += 2) {
 					for (int x = max(k[i - 1], 0), x1 = min(k[i], _WIN_W - 1); x <= x1; x++) {
 						Canvas(x, y) = COLORREFBlend(Canvas(x, y), Fill, alpha);
 					}
@@ -231,31 +243,55 @@ void render() {
 			}
 		}
 		// stroke
-		for (int i = 0; i < n; i++) drawLine(P[i], P[(i + 1) % n], Stroke);
+		if (Stroke) for (int i = 0; i < n; i++) drawLine(P[i], P[(i + 1) % n], Stroke);
+	};
+	auto drawBox = [&](vec2 Min, vec2 Max, COLORREF Fill) {
+		int x0 = max(0, (int)Min.x), x1 = min(_WIN_W - 1, (int)Max.x);
+		int y0 = max(0, (int)Min.y), y1 = min(_WIN_H - 1, (int)Max.y);
+		int alpha = Fill >> 24;
+		for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++)
+			Canvas(x, y) = COLORREFBlend(Canvas(x, y), Fill, alpha);
 	};
 
 	// grid and axis
-	vec2 LB = fromInt(vec2(0, 0)), RT = fromInt(vec2(_WIN_W, _WIN_H));
-	COLORREF GridCol = clamp(0x10, (byte)sqrt(10.0*Unit), 0x20); GridCol = GridCol | (GridCol << 8) | (GridCol) << 16;  // adaptive grid color
-	for (int y = (int)round(LB.y), y1 = (int)round(RT.y); y <= y1; y++)
-		drawLine(fromFloat(vec2(LB.x, y)), fromFloat(vec2(RT.x, y)), GridCol);  // horizontal gridlines
-	for (int x = (int)round(LB.x), x1 = (int)round(RT.x); x <= x1; x++)
-		drawLine(fromFloat(vec2(x, LB.y)), fromFloat(vec2(x, RT.y)), GridCol);  // vertical gridlines
-	drawLine(vec2(0, Center.y), vec2(_WIN_W, Center.y), DARKBLUE);  // x-axis
-	drawLine(vec2(Center.x, 0), vec2(Center.x, _WIN_H), DARKBLUE);  // y-axis
+	{
+		vec2 LB = fromInt(vec2(0, 0)), RT = fromInt(vec2(_WIN_W, _WIN_H));
+		COLORREF GridCol = clamp(0x10, (byte)sqrt(10.0*Unit), 0x20); GridCol = GridCol | (GridCol << 8) | (GridCol) << 16;  // adaptive grid color
+		for (int y = (int)round(LB.y), y1 = (int)round(RT.y); y <= y1; y++)
+			drawLine(fromFloat(vec2(LB.x, y)), fromFloat(vec2(RT.x, y)), GridCol);  // horizontal gridlines
+		for (int x = (int)round(LB.x), x1 = (int)round(RT.x); x <= x1; x++)
+			drawLine(fromFloat(vec2(x, LB.y)), fromFloat(vec2(x, RT.y)), GridCol);  // vertical gridlines
+		drawLine(vec2(0, Center.y), vec2(_WIN_W, Center.y), 0x202080);  // x-axis
+		drawLine(vec2(Center.x, 0), vec2(Center.x, _WIN_H), 0x202080);  // y-axis
+	}
+
+	// bounding boxes
+	if (showAABB) {
+		vec2 Min, Max;
+		calcAABB(CP1, Min, Max), drawBox(fromFloat(Min), fromFloat(Max), AABB_FILL);
+		calcAABB(CP2, Min, Max), drawBox(fromFloat(Min), fromFloat(Max), AABB_FILL);
+	}
+	if (showConvexHull) {
+		drawPolygon(calcConvexHull(CP1), 0, CVXH_FILL);
+		drawPolygon(calcConvexHull(CP2), 0, CVXH_FILL);
+	}
+
+	polygon res = cutPolygonFromPlane(CP1, CP2[0], CP2[1] - CP2[0]);
+	//dbgprint("%s\n", &sprintPolygon(res)[0]);
+	//drawPolygon(res, 0, 0xFF808080);
 
 	// polygons
-	//drawPolygon(CP1, CP1_Dist < CP2_Dist ? WHITE : GRAY);
-	//drawPolygon(CP2, CP1_Dist > CP2_Dist ? WHITE : GRAY);
-	drawPolygon(CP1, isSelfIntersecting(CP1) ? RED : CP1_Dist < CP2_Dist ? WHITE : GRAY, 0x20FF8000);
-	drawPolygon(CP2, isSelfIntersecting(CP2) ? RED : CP1_Dist > CP2_Dist ? WHITE : GRAY, 0x20FF8000);
+	drawPolygon(CP1, isSelfIntersecting(CP1) ? RED : CP1_Dist < CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP1 ? POLYGON_FILL1 : POLYGON_FILL);
+	drawPolygon(CP2, isSelfIntersecting(CP2) ? RED : CP1_Dist > CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP2 ? POLYGON_FILL1 : POLYGON_FILL);
 
 	// center of polygons
-	CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
-	if (Shift || Alt || mouse_down) {
-		drawCross(calcCenter(CP1), 6, MAGENTA), drawCross(calcCenter(CP2), 6, MAGENTA);
-		drawCross(CP1_Center, 6, LIME), drawCross(CP2_Center, 6, LIME);
+	if (showCenter) {
+		drawCross(calcCenterE(CP1), 4, 0xD2691E), drawCross(calcCenterE(CP2), 4, 0xD2691E);  // edge center, orange
+		drawCross(calcCenter(CP1), 4, 0xC71585), drawCross(calcCenter(CP2), 4, 0xC71585);  // vertex center, purple
+		drawCross(calcCOM(CP1), 4, 0x228B22), drawCross(calcCOM(CP2), 4, 0x228B22);  // center of mass, green
 	}
+	drawCross(CP1_Center, showCenter || ((Shift || Alt) && CP1_Dist < CP2_Dist) || howerPolygon == &CP1 ? 6 : 4, LIME);
+	drawCross(CP2_Center, showCenter || ((Shift || Alt) && CP2_Dist < CP1_Dist) || howerPolygon == &CP2 ? 6 : 4, LIME);
 
 	// control points
 	if (showControl) {
@@ -272,13 +308,14 @@ void render() {
 		}
 	}
 
+	// rendering completed
 	auto t1 = NTime::now();
 	double dt = std::chrono::duration<double>(t1 - t0).count();
 	double fps = 1.0 / std::chrono::duration<double>(t1 - time_0).count();
 	time_0 = t0;
 	vec2 cursor = fromInt(Cursor);
-	sprintf(text, "P1=%.2lf, P2=%.2lf, A1=%.3lf, A2=%.3lf    (%.2lf,%.2lf)    %.2lfms (%.1lffps)",
-		calcPerimeter(CP1), calcPerimeter(CP2), calcArea(CP1), calcArea(CP2), cursor.x, cursor.y, 1000.0*dt, fps);
+	sprintf(text, " (%.2lf,%.2lf)    %.2lfms (%.1lffps)",
+		cursor.x, cursor.y, 1000.0*dt, fps);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -319,46 +356,52 @@ void MouseMove(int _X, int _Y) {
 	CP1_Insert = CP2_Insert = -1;
 
 	if (mouse_down) {
-		if (Alt) {  // drag object
-			if (CP1_Dist < CP2_Dist) for (unsigned i = 0; i < CP1.size(); i++) CP1[i] = CP1[i] + d;
-			else for (unsigned i = 0; i < CP2.size(); i++) CP2[i] = CP2[i] + d;
+		if (Shift || Alt) {
+			//CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
+			if (Shift) {  // rotate shape
+				if (CP1_Dist < CP2_Dist) rotatePolygon(CP1, CP1_Center, asin(det(normalize(p0 - CP1_Center), normalize(p - CP1_Center))));
+				else rotatePolygon(CP2, CP2_Center, asin(det(normalize(p0 - CP2_Center), normalize(p - CP2_Center))));
+			}
+			if (Alt) {  // scale shape
+				if (CP1_Dist < CP2_Dist) scalePolygon(CP1, CP1_Center, length(p - CP1_Center) / length(p0 - CP1_Center));
+				else scalePolygon(CP2, CP2_Center, length(p - CP2_Center) / length(p0 - CP2_Center));
+			}
 		}
-		else if (showControl && CP1_Selected != -1 || CP2_Selected != -1) {  // drag control point
-			if (CP1_Dist < CP2_Dist && CP1_Selected != -1) CP1[CP1_Selected] = CP1[CP1_Selected] + d;
+		else if (showControl && (CP1_Selected != -1 || CP2_Selected != -1)) {  // drag control point
+			if (CP1_DistE < CP2_DistE && CP1_Selected != -1) CP1[CP1_Selected] = CP1[CP1_Selected] + d;
 			else if (CP2_Selected != -1) CP2[CP2_Selected] = CP2[CP2_Selected] + d;
 		}
-		else if (Shift) {  // rotate shape
-			CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
-			auto rotate = [&](polygon &CP, vec2 C) {
-				vec2 R = vec2(det(normalize(p0 - C), normalize(p - C)), dot(normalize(p0 - C), normalize(p - C)));
-				for (int i = 0; i < CP.size(); i++) {
-					CP[i] = CP[i] - C;
-					CP[i] = vec2(det(CP[i], R), dot(R, CP[i])) + C;
-				}
-			};
-			if (CP1_Dist < CP2_Dist) rotate(CP1, CP1_Center);
-			else rotate(CP2, CP2_Center);
+		else if (!Ctrl && howerPolygon) {  // drag shape
+			if (howerPolygon == &CP1) translatePolygon(CP1, d);
+			else if (howerPolygon == &CP2) translatePolygon(CP2, d);
 		}
-		else {	// coordinate
+		else if (!Ctrl) {	// drag grid
 			Center = Center + d * Unit;
 		}
 	}
+	CP1_Center = isSelfIntersecting(CP1) ? (calcCenterE(CP1) + calcCenter(CP1)) * 0.5 : calcCOM(CP1);
+	CP2_Center = isSelfIntersecting(CP2) ? (calcCenterE(CP2) + calcCenter(CP2)) * 0.5 : calcCOM(CP2);
 
-	if (!Alt && !Shift && CP1_Selected == -1 && CP2_Selected == -1) {  // refresh distance to polygons
-		CP1_Insert = CP2_Insert = -1, CP1_Dist = CP2_Dist = 1e8;
+	if (!Alt && !Shift && CP1_Selected == -1 && CP2_Selected == -1 && !(mouse_down && howerPolygon)) {  // refresh distance to polygons
+		CP1_Insert = CP2_Insert = -1, CP1_DistE = CP2_DistE = 1e8;
 		for (int i = 0, n = CP1.size(); i < n; i++) {
 			double d = sdSqLine(p, CP1[i], CP1[(i + 1) % n]);
-			if (d < CP1_Dist) CP1_Dist = d, CP1_Insert = i;
+			if (d < CP1_DistE) CP1_DistE = d, CP1_Insert = i;
 		}
 		for (int i = 0, n = CP2.size(); i < n; i++) {
 			double d = sdSqLine(p, CP2[i], CP2[(i + 1) % n]);
-			if (d < CP2_Dist) CP2_Dist = d, CP2_Insert = i;
+			if (d < CP2_DistE) CP2_DistE = d, CP2_Insert = i;
 		}
+		CP1_Dist = length(p - CP1_Center);
+		CP2_Dist = length(p - CP2_Center);
 		if (Ctrl) {  // calculate fitted point
-			if (CP1_Dist < CP2_Dist) CP2_Insert = -1;
+			if (CP1_DistE < CP2_DistE) CP2_Insert = -1;
 			else CP1_Insert = -1;
 		}
 		else CP1_Insert = CP2_Insert = -1;
+		bool Hower1 = isInside(CP1, p), Hower2 = isInside(CP2, p);
+		if (Hower1) howerPolygon = Hower2 && CP1_Dist > CP2_Dist ? &CP2 : &CP1;
+		else howerPolygon = Hower2 ? &CP2 : 0;
 	}
 }
 
@@ -410,6 +453,7 @@ void MouseUpL(int _X, int _Y) {
 
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+	MouseMove(_X, _Y);
 }
 
 void MouseUpR(int _X, int _Y) {
@@ -418,7 +462,7 @@ void MouseUpR(int _X, int _Y) {
 	if (!showControl) return;
 
 	// #3 rightclick: remove a control point
-	if (CP1_Dist < CP2_Dist && CP1.size() > 3) {
+	if (CP1_DistE < CP2_DistE && CP1.size() > 3) {
 		double r2 = CPR / Unit; r2 *= r2;
 		for (unsigned i = 0; i < CP1.size(); i++) {
 			if ((CP1[i] - p).sqr() < r2) {
@@ -439,13 +483,17 @@ void MouseUpR(int _X, int _Y) {
 }
 
 void KeyDown(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = true, MouseMove(Cursor.x, Cursor.y);		// call MouseMove to calculate insert position
+	if (_KEY == VK_CONTROL) {
+		Ctrl = true;
+		if (CP1_Insert == -1 && CP2_Insert == -1) MouseMove((int)Cursor.x, (int)Cursor.y);  // call MouseMove to calculate insert position
+	}
 	else if (_KEY == VK_SHIFT) Shift = true;
 	else if (_KEY == VK_MENU) Alt = true;
 	if (Ctrl && (_KEY >= 'A' && _KEY <= 'Z')) {
 		Ctrl = false;
-		if (_KEY == 'S') {
-			if (!saveFile()) MessageBeep(MB_ICONERROR);
+		if (_KEY == 'P' || _KEY == 'S') {
+			dbgprint("CP1 = \"%s\"\n", &sprintPolygon(CP1)[0]);
+			dbgprint("CP2 = \"%s\"\n", &sprintPolygon(CP2)[0]);
 		}
 	}
 }
@@ -467,5 +515,8 @@ void KeyUp(WPARAM _KEY) {
 		else for (int i = 1, n = CP2.size(); i <= (n - 1) / 2; i++) std::swap(CP2[i], CP2[n - i]);
 	}
 	else if (_KEY == 'C') showControl = !showControl;
+	else if (_KEY == 'M') showCenter = !showCenter;
+	else if (_KEY == 'B') showAABB = !showAABB;
+	else if (_KEY == 'H') showConvexHull = !showConvexHull;
 }
 
