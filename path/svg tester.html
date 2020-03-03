@@ -1,0 +1,77 @@
+<html>
+<head>
+    <title>SVG Path Tester</title>
+    <meta charset="utf-8" />
+    <style>
+        body {
+            font-family: Consolas;
+            font-size: 16px;
+        }
+
+        #input {
+            width: 80%;
+            max-width: 800px;
+            min-height: 200px;
+            margin: 10px;
+            border: 2px solid #555;
+            padding: 15px;
+        }
+
+        #transform {
+            padding: 2px 5px;
+            width: 60%;
+            font-family: Consolas;
+            font-size: 16px;
+            font-style: italic;
+        }
+
+        :focus{
+            outline: none;
+        }
+
+        #svgdata {
+            width: max-content;
+            margin: 10px;
+            border: 2px solid #555;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="input" contenteditable="true" spellcheck="false" oninput="update()">
+        M 180 60 C 30 -60 -70 200 180 300 C 430 200 330 -60 180 60 Z
+    </div>
+    <div style="margin: 10px;">
+        transform = "<input id="transform" type="text" value="matrix(1,0,0,1,0,0)" oninput="update()"/>"
+    </div>
+    <div id="svgdata">
+        <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1200" height="1000">
+            <path id="path" style="fill:white;stroke:black;" vector-effect="non-scaling-stroke" d="M 0,0" />
+        </svg>
+    </div>
+    <script>
+        var input = document.getElementById("input"), path = document.getElementById("path"),
+            transform = document.getElementById("transform");
+        function update() {
+            input.style.borderColor = "#555";
+            transform.style.color = "black";
+
+            var txt = input.innerText;
+            txt = txt.replace(/\u00A0/g, " ");
+            txt = txt.replace(/\"/g, "");
+            try {
+                path.setAttribute('d', txt);
+            } catch (e) {  // doesn't work
+                input.style.borderColor = "red";
+            }
+            
+            try {
+                path.setAttribute('transform', transform.value)
+            } catch (e) {  // doesn't work
+                transform.style.color = "red";
+            }
+        }
+        update();
+    </script>
+</body>
+</html>
