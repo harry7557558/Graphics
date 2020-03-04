@@ -54,11 +54,41 @@ typedef std::vector<vec2> polygon;
 #include <sstream>
 std::wstring sprintPolygon(const polygon &p) {
 	std::wostringstream os;
-	for (unsigned i = 0; i < p.size(); i++) {
+	for (int i = 0, n = p.size(); i < n; i++) {
 		os << (i == 0 ? L"M " : L"L ") << p[i].x << L" " << p[i].y << L" ";
 	}
 	os << L"Z";
 	return os.str();
+}
+#define printPolygon(p) wprintf(L"%s\n", &sprintPolygon(p)[0])
+
+
+// polygon vertex order
+void shiftForward(polygon &P) {
+	P.insert(P.begin(), P[P.size() - 1]), P.pop_back();
+}
+void shiftBackward(polygon &P) {
+	P.push_back(P[0]), P.erase(P.begin());
+}
+void reverseDirection(polygon &P) {
+	for (int i = 1, n = P.size(); i <= (n - 1) / 2; i++) std::swap(P[i], P[n - i]);
+}
+
+// return false if already (counter)clockwise
+// for only testing cw and ccw, call calcArea()
+bool forceClockwise(polygon &P) {
+	double A = 0;
+	for (int i = 0, n = P.size(); i < n; i++) A += det(P[i], P[(i + 1) % n]);
+	if (A <= 0) return false;
+	reverseDirection(P);
+	return true;
+}
+bool forceCounterClockwise(polygon &P) {
+	double A = 0;
+	for (int i = 0, n = P.size(); i < n; i++) A += det(P[i], P[(i + 1) % n]);
+	if (A >= 0) return false;
+	reverseDirection(P);
+	return true;
 }
 
 
@@ -93,7 +123,7 @@ void scalePolygon(polygon &S, vec2 C, double s) {
 
 // $ return true if the polygon is self-intersecting
 bool isSelfIntersecting(const polygon &p) {  // brute force approach
-	for (unsigned i = 0, n = p.size(); i < n - 2; i++) for (unsigned j = i + 2; j < n; j++)
+	for (int i = 0, n = p.size(); i < n - 2; i++) for (int j = i + 2; j < n; j++)
 		if (intersect(p[i], p[i + 1], p[j], p[(j + 1) % n])) return true;
 	return false;
 }
@@ -101,7 +131,7 @@ bool isSelfIntersecting(const polygon &p) {  // brute force approach
 // $ return true if the polygon is convex
 bool isConvex(const polygon &p) {  // change all >0 to >=0 if this polygon is clockwise
 	bool k = det(p[0] - p[1], p[2] - p[1]) > 0;
-	for (unsigned i = 1, n = p.size(); i < n; i++) {
+	for (int i = 1, n = p.size(); i < n; i++) {
 		if (k != (det(p[i] - p[(i + 1) % n], p[(i + 2) % n] - p[(i + 1) % n]) > 0)) return false;
 	}
 	return true;
@@ -112,7 +142,7 @@ bool isConvex(const polygon &p) {  // change all >0 to >=0 if this polygon is cl
 // $ test if a point is inside a polygon
 bool isInside(const polygon &S, vec2 p) {
 	bool r = false; vec2 d;
-	for (unsigned i = 0, n = S.size(); i < n; i++) {
+	for (int i = 0, n = S.size(); i < n; i++) {
 		if (p.x > S[i].x == p.x <= S[(i + 1) % n].x &&
 			det(d = S[(i + 1) % n] - S[i], p - S[i]) * d.x > 0.0) r = !r;
 	}
@@ -124,16 +154,16 @@ bool isInside(const polygon &S, vec2 p) {
 // return the perimeter of a polygon
 double calcPerimeter(const polygon &p) {
 	double P = 0;
-	for (unsigned i = 0, n = p.size(); i < n; i++) {
+	for (int i = 0, n = p.size(); i < n; i++) {
 		P += length(p[(i + 1) % n] - p[i]);
 	}
 	return P;
 }
 
-// # return the (signed) area of a polygon
+// # return the area of a polygon, negative when vertexes ordered clockwise
 double calcArea(const polygon &p) {
 	double A = 0;
-	for (unsigned i = 0, n = p.size(); i < n; i++) {
+	for (int i = 0, n = p.size(); i < n; i++) {
 		A += det(p[i], p[(i + 1) % n]);
 	}
 	return 0.5*A;
@@ -144,14 +174,14 @@ double calcArea(const polygon &p) {
 // return the average of all vertexes
 vec2 calcCenter(const polygon &p) {
 	vec2 C(0.0);
-	for (unsigned i = 0; i < p.size(); i++) C = C + p[i];
+	for (int i = 0, n = p.size(); i < n; i++) C = C + p[i];
 	return C * (1.0 / p.size());
 }
 
 // # return the center of mass
 vec2 calcCOM(const polygon &p) {
 	vec2 C(0.0); double A = 0, dA;
-	for (unsigned i = 0, n = p.size(); i < n; i++) {
+	for (int i = 0, n = p.size(); i < n; i++) {
 		dA = det(p[i], p[(i + 1) % n]), A += dA;
 		C = C + (p[i] + p[(i + 1) % n]) * dA;
 	}
@@ -161,7 +191,7 @@ vec2 calcCOM(const polygon &p) {
 // return the average of all edges
 vec2 calcCenterE(const polygon &p) {
 	vec2 C(0.0); double S = 0, dS;
-	for (unsigned i = 0, n = p.size(); i < n; i++) {
+	for (int i = 0, n = p.size(); i < n; i++) {
 		dS = length(p[(i + 1) % n] - p[i]), S += dS;
 		C = C + (p[i] + p[(i + 1) % n]) * dS;
 	}
@@ -175,7 +205,7 @@ vec2 calcCenterE(const polygon &p) {
 // calculate the Axis-Aligned Bounding Box
 void calcAABB(const polygon &p, vec2 &Min, vec2 &Max) {
 	Min = Max = p[0];
-	for (unsigned i = 1; i < p.size(); i++) {
+	for (int i = 1, n = p.size(); i < n; i++) {
 		if (p[i].x < Min.x) Min.x = p[i].x;
 		if (p[i].y < Min.y) Min.y = p[i].y;
 		if (p[i].x > Max.x) Max.x = p[i].x;
@@ -223,7 +253,22 @@ polygon calcConvexHull(polygon P) {
 
 
 
-// cut a polygon, where dot(p-p0,n)>0 part is cut off
+
+
+#define _isEqual(p,q) (((p)-(q)).sqr()<1e-16)
+#define _isCollinear(a,b,c) (abs(det((b)-(a),(c)-(a)))<1e-8)
+
+auto _polygon_pushback = [](polygon &fig, vec2 p) {
+	if (0.0*p.x*p.y != 0.0) return;   // NAN, necessary for pathfinder functions
+	if (fig.empty()) fig.push_back(p);
+	else if (!_isEqual(p, fig.back())) {
+		if (fig.size() >= 2 && _isCollinear(p, fig.back(), fig[fig.size() - 2])) fig.back() = p;
+		else fig.push_back(p);
+	}
+};
+
+
+// $ cut a polygon, where dot(p-p0,n)>0 part is cut off
 polygon cutPolygonFromPlane(const polygon &fig, vec2 p0, vec2 n) {
 	const double c = dot(p0, n);
 	int l = fig.size();
@@ -239,31 +284,36 @@ polygon cutPolygonFromPlane(const polygon &fig, vec2 p0, vec2 n) {
 	// trace segment
 	auto intersect = [](vec2 p, vec2 q, const double &d, const vec2 &n)->vec2 {
 		q = q - p;
-		double t = (d - dot(n, p)) / dot(n, q);
+		double t = (d - dot(n, p)) / dot(n, q);   // sometimes NAN
 		return p + q * t;
 	};
 	for (int i = 0, d = d0, e = (d + 1) % l; i < l; i++, d = e, e = (e + 1) % l) {
 		if (dot(fig[d], n) < c) {
-			if (dot(fig[e], n) < c) res.push_back(fig[e]);
-			else res.push_back(intersect(fig[d], fig[e], c, n));
+			if (dot(fig[e], n) <= c) _polygon_pushback(res, fig[e]);
+			else _polygon_pushback(res, intersect(fig[d], fig[e], c, n));
 		}
 		else {
 			if (dot(fig[e], n) > c);
 			else {
-				res.push_back(intersect(fig[d], fig[e], c, n));
-				res.push_back(fig[e]);
+				_polygon_pushback(res, intersect(fig[d], fig[e], c, n));
+				_polygon_pushback(res, fig[e]);
 			}
 		}
 	}
 
-	// remove repeated vertex (appears when the line goes through a vertex, not always matter)
-	l = res.size();
-	for (unsigned i = 0; i < l; i++) {
-		if ((res[i] - res[(i + 1) % l]).sqr() < 1e-24) {
-			res.erase(res.begin() + i);
-			i--, l--;
-		}
-	}
+	// occurs when the line goes through a vertex
+	if (_isEqual(res[0], res.back())) res.pop_back();
+
+	// occurs when an edge lies on the line
+	bool op = false; do {
+		if ((l = res.size()) < 3) return polygon();
+		if (op = _isCollinear(res[0], res.back(), res[l - 2])) res.pop_back();
+		else if (op = _isCollinear(res.back(), res[0], res[1])) res.erase(res.begin());
+	} while (op);
+
 	return res;
 }
+
+
+// 
 
