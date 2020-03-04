@@ -214,7 +214,7 @@ void render() {
 			}
 		}
 	};
-	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // pass polygon in world coordinate
+	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // reveives polygon in world coordinate
 		int n = p.size(), y0 = _WIN_H - 1, y1 = 0;
 		polygon P = p; for (int i = 0; i < n; i++) P[i] = fromFloat(p[i]);
 		for (int i = 0; i < n; i++) {
@@ -276,9 +276,19 @@ void render() {
 		drawPolygon(calcConvexHull(CP2), 0, CVXH_FILL);
 	}
 
-	polygon res = cutPolygonFromPlane(CP1, CP2[0], CP2[1] - CP2[0]);
-	//dbgprint("%s\n", &sprintPolygon(res)[0]);
-	//drawPolygon(res, 0, 0xFF808080);
+	vec2 p0 = CP1[1], n = CP1[1] - CP1[0]; n = vec2(-n.y, n.x);
+	dbgprint("%s\n", &sprintPolygon(CP1)[0]);
+	polygon C1 = cutPolygonFromPlane(CP1, p0, n);
+	dbgprint("%s\n", &sprintPolygon(C1)[0]);
+	drawPolygon(C1, 0, 0xFFA08080);
+	polygon C2 = cutPolygonFromPlane(CP1, p0, -n);
+	dbgprint("%s\n", &sprintPolygon(C2)[0]);
+	drawPolygon(C2, 0, 0xFF8080A0);
+	if (!(abs(calcArea(C1) + calcArea(C2) - calcArea(CP1)) < 1e-8)) {
+		dbgprint("ERROR!\n");
+	}
+	n = normalize(n);
+	drawLine(fromFloat(CP1[0] + vec2(-n.y, n.x)), fromFloat(CP1[0] + vec2(n.y, -n.x)), 0xFFFFFF);
 
 	// polygons
 	drawPolygon(CP1, isSelfIntersecting(CP1) ? RED : CP1_Dist < CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP1 ? POLYGON_FILL1 : POLYGON_FILL);
