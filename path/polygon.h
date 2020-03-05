@@ -91,6 +91,19 @@ bool forceCounterClockwise(polygon &P) {
 	return true;
 }
 
+// force cw/ccw for polygons with self-intersection
+bool expandSelfIntersection(polygon &P);
+bool forceClockwiseEI(polygon &P) {
+	expandSelfIntersection(P);
+	forceClockwise(P);
+}
+bool forceCounterClockwiseEI(polygon &P) {
+	expandSelfIntersection(P);
+	forceCounterClockwise(P);
+}
+auto& forceAntiClockwise = forceCounterClockwise;
+auto& forceAntiClockwiseEI = forceCounterClockwiseEI;
+
 
 
 // geometrical transformations
@@ -266,6 +279,13 @@ auto _polygon_pushback = [](polygon &fig, vec2 p) {
 		else fig.push_back(p);
 	}
 };
+
+
+// $ return false if no self-intersection found - runs in O(N²)
+bool expandSelfIntersection(polygon &P) {
+	// debug
+	return false;
+}
 
 
 // $ cut a polygon, where dot(p-p0,n)>0 part is cut off
