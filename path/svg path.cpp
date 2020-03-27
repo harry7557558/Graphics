@@ -29,8 +29,8 @@ COLOR toCOLOR(double r, double g, double b) {
 	return C;
 }
 
-// https://github.com/miloyip/svpng.git
-#include "svpng-master/svpng.inc"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "libraries\stb_image_write.h"
 
 
 
@@ -558,9 +558,7 @@ int main() {
 		printf("%s\t  %.3lf secs\n", &LB[I][0], time_elapsed);
 		tot_time += time_elapsed;
 
-		FILE *fp = fopen("D:\\Coding\\Graphics\\light2d\\test.png", "wb");
-		svpng(fp, W, H, (unsigned char*)C, false);
-		fclose(fp);
+		stbi_write_png("D:\\test.png", W, H, 3, C, 3 * W);
 
 		delete C;
 		this_thread::sleep_for(2s);
