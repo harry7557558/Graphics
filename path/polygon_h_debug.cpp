@@ -1,5 +1,5 @@
 // debug this header file using Win32 GUI
-#include "D:\\polygon.h"
+#include "polygon.h"
 
 /* ==================== User Instructions ====================
  *  Print Polygon Data          ctrl + p, ctrl + s
@@ -275,20 +275,6 @@ void render() {
 		drawPolygon(calcConvexHull(CP1), 0, CVXH_FILL);
 		drawPolygon(calcConvexHull(CP2), 0, CVXH_FILL);
 	}
-
-	vec2 p0 = CP1[1], n = CP1[1] - CP1[0]; n = vec2(-n.y, n.x);
-	dbgprint("%s\n", &sprintPolygon(CP1)[0]);
-	polygon C1 = cutPolygonFromPlane(CP1, p0, n);
-	dbgprint("%s\n", &sprintPolygon(C1)[0]);
-	drawPolygon(C1, 0, 0xFFA08080);
-	polygon C2 = cutPolygonFromPlane(CP1, p0, -n);
-	dbgprint("%s\n", &sprintPolygon(C2)[0]);
-	drawPolygon(C2, 0, 0xFF8080A0);
-	if (!(abs(calcArea(C1) + calcArea(C2) - calcArea(CP1)) < 1e-8)) {
-		dbgprint("ERROR!\n");
-	}
-	n = normalize(n);
-	drawLine(fromFloat(CP1[0] + vec2(-n.y, n.x)), fromFloat(CP1[0] + vec2(n.y, -n.x)), 0xFFFFFF);
 
 	// polygons
 	drawPolygon(CP1, isSelfIntersecting(CP1) ? RED : CP1_Dist < CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP1 ? POLYGON_FILL1 : POLYGON_FILL);
