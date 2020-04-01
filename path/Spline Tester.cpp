@@ -7,7 +7,9 @@
  *  Move View:                  drag background
  *  Zoom:                       mouse scroll, hold shift to lock center
  *  Move Point:                 click and drag
- *  Move All Points:            alt + click and drag; shift + m
+ *  Move Shape:                 alt + drag; shift + m
+ *  Rotate Shape:               shift + drag
+ *  Scale Shape:                S + drag
  *  Add Point:                  ctrl + click
  *  Delete Point:               right click
  *  Switch Endpoint:            left / right
@@ -23,97 +25,66 @@
  */
 
 
+
  // ========================================= Win32 Standard =========================================
 
- // some compressed copy-and-paste code
+ // some compressed copy-paste code
 #pragma region Windows
-
-#define WIN_NAME "DEMO"
-#define WinW_Default 600
-#define WinH_Default 400
-#define MIN_WinW 400
-#define MIN_WinH 300
 
 #include <Windows.h>
 #include <windowsx.h>
 #include <tchar.h>
 
+#define WIN_NAME "Spline Tester"
+#define WinW_Default 600
+#define WinH_Default 400
+#define MIN_WinW 400
+#define MIN_WinH 300
+
+// implement the following functions:
+void render();
+void WindowCreate(int _W, int _H);
+void WindowResize(int _oldW, int _oldH, int _W, int _H);
+void WindowClose();
+void MouseMove(int _X, int _Y);
+void MouseWheel(int _DELTA);
+void MouseDownL(int _X, int _Y);
+void MouseUpL(int _X, int _Y);
+void MouseDownR(int _X, int _Y);
+void MouseUpR(int _X, int _Y);
+void KeyDown(WPARAM _KEY);
+void KeyUp(WPARAM _KEY);
+
 HWND _HWND; int _WIN_W, _WIN_H;
-HBITMAP _HIMG; COLORREF *_WINIMG;	// image
+HBITMAP _HIMG; COLORREF *_WINIMG;
 #define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	WNDCLASSEX wc;
-	wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance;
-	wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
-	if (!RegisterClassEx(&wc)) return -1;
-	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL);
-	ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
-	MSG message; while (GetMessage(&message, 0, 0, 0)) {
-		TranslateMessage(&message); DispatchMessage(&message);
-	}
-	return (int)message.wParam;
-}
-
-void render();
-void WindowCreate(int _W, int _H); void WindowResize(int _oldW, int _oldH, int _W, int _H); void WindowClose();
-void MouseMove(int _X, int _Y); void MouseWheel(int _DELTA); void MouseDownL(int _X, int _Y); void MouseUpL(int _X, int _Y); void MouseDownR(int _X, int _Y); void MouseUpR(int _X, int _Y);
-void KeyDown(WPARAM _KEY); void KeyUp(WPARAM _KEY);
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); \
-	render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
+#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
 	switch (message) {
-	case WM_CREATE: {
-		RECT Client; GetClientRect(hWnd, &Client);
-		_WIN_W = Client.right, _WIN_H = Client.bottom;
-		WindowCreate(_WIN_W, _WIN_H);
-		break;
-	}
-	case WM_CLOSE: { DestroyWindow(hWnd); WindowClose(); return 0; }
-	case WM_DESTROY: { PostQuitMessage(0); return 0; }
+	case WM_CREATE: { RECT Client; GetClientRect(hWnd, &Client); _WIN_W = Client.right, _WIN_H = Client.bottom; WindowCreate(_WIN_W, _WIN_H); break; }
+	case WM_CLOSE: { DestroyWindow(hWnd); WindowClose(); return 0; } case WM_DESTROY: { PostQuitMessage(0); return 0; }
 	case WM_MOVE:; case WM_SIZE: {
-		auto InitializeClientBitmap = [](HWND hWnd, HBITMAP &hbmp, COLORREF* &pixels, int w, int h) {
-			BITMAPINFO bmi;
-			bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = w, bmi.bmiHeader.biHeight = h, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32;
-			bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0;
-			bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
-			HDC hdc = GetDC(hWnd);
-			if (hbmp != NULL) DeleteObject(hbmp);
-			hbmp = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
-			DeleteDC(hdc);
-		};
-		RECT Client; GetClientRect(hWnd, &Client);
-		WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom);
-		_WIN_W = Client.right, _WIN_H = Client.bottom;
-		DeleteObject(_HIMG);
-		InitializeClientBitmap(hWnd, _HIMG, _WINIMG, Client.right, Client.bottom);
-		_RDBK
-	}
-	case WM_GETMINMAXINFO: {
-		LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
-		lpMMI->ptMinTrackSize.x = MIN_WinW, lpMMI->ptMinTrackSize.y = MIN_WinH;
-		break;
-	}
-	case WM_PAINT: {
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc);
-		HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG);
-		BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY);
-		SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps);
-		DeleteDC(HMem), DeleteDC(hdc); break;
-	}
+		RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom;
+		BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
+		if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK }
+	case WM_GETMINMAXINFO: { LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam; lpMMI->ptMinTrackSize.x = MIN_WinW, lpMMI->ptMinTrackSize.y = MIN_WinH; break; }
+	case WM_PAINT: { PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY); SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps); DeleteDC(HMem), DeleteDC(hdc); break; }
 #define _USER_FUNC_PARAMS GET_X_LPARAM(lParam), _WIN_H - 1 - GET_Y_LPARAM(lParam)
 	case WM_MOUSEMOVE: { MouseMove(_USER_FUNC_PARAMS); _RDBK }
+	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
 	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK }
 	case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
 	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK }
 	case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
-	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
 	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { KeyDown(wParam); _RDBK }
 	case WM_SYSKEYUP:; case WM_KEYUP: { KeyUp(wParam); _RDBK }
-	}
-	return DefWindowProc(hWnd, message, wParam, lParam);
+	} return DefWindowProc(hWnd, message, wParam, lParam);
+}
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME); if (!RegisterClassEx(&wc)) return -1;
+	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL); ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
+	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
 }
 
 // debug
@@ -162,6 +133,7 @@ public:
 	vec2 operator / (const float &a) const { return vec2(x / a, y / a); }
 	void operator /= (const float &a) { x /= a, y /= a; }
 #endif
+	vec2 rot() const { return vec2(-y, x); }   // not standard
 };
 
 float sdSqLine(vec2 p, vec2 a, vec2 b) {	// by iq
@@ -217,7 +189,7 @@ bool showBackground = false;	// background image for trace
 // user parameters
 vec2 Cursor = vec2(0, 0);
 bool mouse_down = false;
-bool Ctrl = false, Shift = false, Alt = false;
+bool Ctrl = false, Shift = false, Alt = false, S_Key = false;
 
 #pragma endregion
 
@@ -291,8 +263,36 @@ public:
 	spline3(vec2 C3, vec2 C2, vec2 C1, vec2 C0) :C3(C3), C2(C2), C1(C1), C0(C0) {}
 };
 #define SpCatmullRom(A,B,C,D) spline3((D-A)*0.5+(B-C)*1.5, A-B*2.5+C*2.0-D*0.5, (C-A)*0.5, B)
-#define SpQuadraticB(A,B,C,D) spline3(vec2(0.), (A+C)*0.5-B, B-A, (A+B)*0.5)
+#define SpQuadraticB(A,B,C) spline3(vec2(0.), (A+C)*0.5-B, B-A, (A+B)*0.5)
 #define SpCubicB(A,B,C,D) spline3((D-A)*_16+(B-C)*0.5, (A+C)*0.5-B, (C-A)*0.5, (A+B*4.+C)*_16)
+
+spline3 getSpline(int i) {
+	int n = CP.size();
+	switch (IntpMethod) {
+	case Linear: {
+		return spline3(vec2(0.0), vec2(0.0), CP[(i + 1) % n] - CP[i], CP[i]);
+	}
+	case CatmullRom: {
+		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
+		return SpCatmullRom(A, B, C, D);
+	}
+	case QuadraticB: {
+		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n];
+		return SpQuadraticB(A, B, C);
+	}
+	case CubicB: {
+		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
+		return SpCubicB(A, B, C, D);
+	}
+	default: {
+		return spline3(0, 0, 0, 0);
+	}
+	}
+}
+
+spline3 fromFloatSp(spline3 s) {
+	return spline3(s.C3*Unit, s.C2*Unit, s.C1*Unit, s.C0*Unit + Center);
+}
 
 void calcFourierParameter(vec2 *a, vec2 *b, int N) {
 	float t, dt;
@@ -309,156 +309,16 @@ void calcFourierParameter(vec2 *a, vec2 *b, int N) {
 	a[0] = a[0] * 0.5;
 }
 
-
-#include <sstream>
-#include <iomanip>
-bool saveFile() {
-	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetSaveFileName(&ofn)) return false;
-	FILE *fp = _wfopen(filename, L"ab");
-	if (fp == 0) return false;
-
-	// encode binary data
-	fprintf(fp, "NO#EDIT#");
-	byte d = 137;
-	auto encode = [&](const void* p, int l) {
-		for (int i = 0; i < l; d += ((byte*)p)[i] + 13, i++) {
-			byte c = ~(53 * (((byte*)p)[i] + d));  // just don't want "xx000000" to appear in the text
-			byte c0 = c & 0xF, c1 = c >> 4;
-			fprintf(fp, "%c%c", c1 > 9 ? c1 + 55 : c1 + '0', c0 > 9 ? c0 + 55 : c0 + '0');
-		}
-	};
-	int n = CP.size(), method = IntpMethod;
-	encode(&method, sizeof(method));
-	encode(&n, sizeof(n));
-	for (int i = 0; i < n; i++) encode(&CP[i], sizeof(vec2));
-	fprintf(fp, "\n\n");
-
-	// write code text data
-	fprintf(fp, "# %s\n\n", IntpName[method]);
-	fprintf(fp, "vec2 path[%d];\n", n);
-	for (int i = 0; i < n; i++) fprintf(fp, "path[%d] = vec2(%f, %f);\n", i, CP[i].x, CP[i].y);
-	fprintf(fp, "\n");
-	if (IntpMethod == FourierSeries) {	// print Fourier coefficients
-		int N = CP.size() / 2 + 1;
-		vec2 *a = new vec2[N], *b = new vec2[N];
-		calcFourierParameter(a, b, N);
-		fprintf(fp, "vec2 a[%d], b[%d];\n", N, N);
-		for (int i = 0; i < N; i++) fprintf(fp, "a[%d] = vec2(%f, %f);\n", i, a[i].x, a[i].y);
-		for (int i = 0; i < N; i++) fprintf(fp, "b[%d] = vec2(%f, %f);\n", i, b[i].x, b[i].y);
-		delete a, b;
-		fprintf(fp, "\n");
-	}
-	else {
-		// print svg path
-		fprintf(fp, "<path transform='matrix(%.1f,0,0,%.1f,%.1f,%.1f)' d='", Unit, -Unit, Center.x, _WIN_H - 1.0 - Center.y);
-
-		auto svg_printf = [&](float x) {
-			if (abs(x) < 1e-4) { fprintf(fp, "0"); return; }
-			if (abs(x) < 0.1) { fprintf(fp, "%.4f", x); return; }
-			std::stringstream buf;
-			buf << std::setprecision(4) << x;
-			fprintf(fp, "%s", &buf.str()[0]);
-		};
-		auto svg_printv = [&](vec2 p) {
-			svg_printf(p.x);
-			if (p.y > 1e-4) fputc(',', fp);
-			svg_printf(p.y);
-		};
-		auto svg_printv2 = [&](vec2 p, vec2 q) {
-			svg_printv(p);
-			if (q.x > 1e-4) fputc(' ', fp);
-			svg_printv(q);
-		};
-		auto svg_printv3 = [&](vec2 p, vec2 q, vec2 r) {
-			svg_printv2(p, q);
-			if (r.x > 1e-4) fputc(' ', fp);
-			svg_printv(r);
-		};
-
-		switch (IntpMethod) {
-		case Linear: {  // print svg path
-			fputc('M', fp), svg_printv(CP[0]);
-			for (unsigned i = 1; i < CP.size(); i++) fputc('L', fp), svg_printv(CP[i]);
-			fputc('Z', fp); break;
-		}
-		case CatmullRom: {
-			fputc('M', fp), svg_printv(CP[0]);
-			for (unsigned i = 0, n = CP.size(); i < n; i++) {
-				fputc('C', fp);
-				vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
-				spline3 Sp = SpCatmullRom(A, B, C, D);
-				svg_printv3(B + Sp.C1 * _13, B + (Sp.C2 + Sp.C1 * 2.0)*_13, C);
-			}
-			break;
-		}
-		case QuadraticB: {
-			fputc('M', fp), svg_printv((CP[0] + CP.back())*0.5);
-			fputc('Q', fp), svg_printv2(CP[0], (CP[0] + CP[1])*0.5);
-			for (unsigned i = 1, n = CP.size(); i < n; i++) {
-				fputc('T', fp), svg_printv((CP[i] + CP[(i + 1) % n])*0.5);
-			}
-			break;
-		}
-		case CubicB: {
-			fputc('M', fp), svg_printv((CP[0] * 4.0 + CP[1] + CP.back())*_16);
-			fputc('C', fp), svg_printv3((CP[0] * 2.0 + CP[1])*_13, (CP[0] + CP[1] * 2.0)*_13, (CP[0] + CP[1] * 4.0 + CP[2])*_16);
-			for (unsigned i = 1, n = CP.size(); i < n; i++) {
-				fputc('S', fp), svg_printv2((CP[i] + CP[(i + 1) % n] * 2.0)*_13, (CP[i] + CP[(i + 1) % n] * 4.0 + CP[(i + 2) % n])*_16);
-			}
-			break;
-		}
-		}
-
-		fprintf(fp, "'></path>\n\n");
-	}
-	fprintf(fp, "\n\n");
-	fclose(fp);
-	return true;
+// return the average of all control points
+vec2 calcCenter() {
+	vec2 p(0.0);
+	for (int i = 0, n = CP.size(); i < n; i++) p = p + CP[i];
+	return p * (1.0 / CP.size());
 }
 
-bool readFile() {
-	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetOpenFileName(&ofn)) return false;
-	FILE *fp = _wfopen(filename, L"rb");
-	if (fp == 0) return false;
-
-	char k[8]; if (!fread(k, 1, 8, fp)) return false;
-	for (int i = 0; i < 8; i++) if (k[i] != "NO#EDIT#"[i]) return false;  // file has been modified
-	byte d = 137;
-	auto decode = [&](void* p, int l) -> bool {
-		for (int i = 0; i < l; i++) {
-			byte b[2] = { fgetc(fp), fgetc(fp) };
-			for (int i = 0; i < 2; i++) {
-				if (!((b[i] >= '0' && b[i] <= '9') || (b[i] >= 'A' && b[i] <= 'F'))) return false;	// safe check
-				b[i] = b[i] > '9' ? b[i] - 55 : b[i] - '0';
-			}
-			((byte*)p)[i] = 29 * (~((b[0] << 4) | b[1])) - d, d += ((byte*)p)[i] + 13;  // "decrypt" data: byte(29*53) = 1
-		}
-		return true;
-	};
-	int n, method;
-	if (!decode(&method, sizeof(method))) return false;
-	if (!decode(&n, sizeof(n))) return false;
-	vec2 *P = new vec2[n];
-	for (int i = 0; i < n; i++) {
-		if (!decode(&P[i], sizeof(vec2))) return false;
-		if (0.0*(P[i].x*P[i].y) != 0.0) return false;
-	}
-	IntpMethod = (Interpolation)method;
-	CP.resize(n);
-	for (int i = 0; i < n; i++) CP[i] = P[i];
-	delete P;
-	return true;
-}
+// put this at the end because they contain long string code
+bool saveFile();
+bool readFile();
 
 
 // ============================================ Rendering ============================================
@@ -477,6 +337,7 @@ bool readFile() {
 #include <chrono>
 typedef std::chrono::high_resolution_clock NTime;
 auto t0 = NTime::now();
+
 
 void render() {
 	// debug
@@ -551,39 +412,12 @@ void render() {
 
 	// interpolation curve
 	switch (IntpMethod) {
-	case Linear: {  // C0
+	case Linear: {
 		for (int i = 0; i < n; i++)
 			drawLine(fromFloat(CP[i]), fromFloat(CP[(i + 1) % n]), WHITE);
 		break;
 	}
-	case CatmullRom: {  // C1
-		for (int i = 0; i < n; i++) {
-			vec2 A = fromFloat(CP[(i + n - 1) % n]), B = fromFloat(CP[i]), C = fromFloat(CP[(i + 1) % n]), D = fromFloat(CP[(i + 2) % n]);
-			drawSpline(SpCatmullRom(A, B, C, D), WHITE);
-		}
-		break;
-	}
-	case QuadraticB: {  // C1
-		for (int i = 0; i < n; i++) {
-			vec2 A = fromFloat(CP[(i + n - 1) % n]), B = fromFloat(CP[i]), C = fromFloat(CP[(i + 1) % n]);
-			drawSpline(SpQuadraticB(A, B, C, D), WHITE);
-		}
-		break;
-	}
-	case CubicB: {  // C2
-		for (int i = 0; i < n; i++) {
-			vec2 A = fromFloat(CP[(i + n - 1) % n]), B = fromFloat(CP[i]), C = fromFloat(CP[(i + 1) % n]), D = fromFloat(CP[(i + 2) % n]);
-			drawSpline(SpCubicB(A, B, C, D), WHITE);
-		}
-		break;
-	}
-	case QuadraticInt: {
-		break;
-	}
-	case CubicBInt: {  // I want it to be at least C2
-		break;
-	}
-	case FourierSeries: {	 // C∞
+	case FourierSeries: {
 		int N = n / 2 + 1;
 		vec2 *a = new vec2[N], *b = new vec2[N];
 		calcFourierParameter(a, b, N);
@@ -591,12 +425,6 @@ void render() {
 			vec2 r = a[0];
 			for (int k = 1; k < N; k++) r = r + a[k] * cos(k*t) + b[k] * sin(k*t);
 			return fromFloat(r);
-			/*vec2 r(0.0);
-			for (int i = 0; i < n; i++) {
-				r = r + CP[i] * 0.5;
-				for (int k = 1; k < N; k++) r = r + CP[i] * cos(k*(t - 2.0*i*PI / n));
-			}
-			return fromFloat(r * (2.0 / n));*/
 		};
 		const int D = 100 * CP.size();
 		float t = 0.0, dt = 1.0 / D;
@@ -606,13 +434,12 @@ void render() {
 			drawLine(p, q, WHITE);
 			p = q;
 		}
-		// show the center of the figure
-		if (showControl) {
-			vec2 C = fromFloat(a[0]);
-			drawLine(C - vec2(5, 0), C + vec2(5, 0), LIME);
-			drawLine(C - vec2(0, 5), C + vec2(0, 5), LIME);
-		}
 		delete a, b;
+		break;
+	}
+	default: {
+		for (int i = 0; i < n; i++)
+			drawSpline(fromFloatSp(getSpline(i)), WHITE);
 		break;
 	}
 	}
@@ -625,6 +452,13 @@ void render() {
 			COLORREF col = CP_Insert != -1 && (i == CP_Insert || i == (CP_Insert + 1) % n) ? LIME : RED;	// highlight insert position
 			drawCircle(P, CPR - min(i, 2), col);	// the two larger points are startpoint
 		}
+	}
+
+	// show the center of the figure
+	if ((IntpMethod == FourierSeries && showControl) || Alt || Shift || S_Key) {
+		vec2 C = fromFloat(calcCenter());
+		drawLine(C - vec2(5, 0), C + vec2(5, 0), LIME);
+		drawLine(C - vec2(0, 5), C + vec2(0, 5), LIME);
 	}
 
 	//if (dt < 0.016) Sleep(16 - int(1000 * dt)), t0 = NTime::now();	// max 60fps reduce CPU usage
@@ -666,7 +500,19 @@ void MouseMove(int _X, int _Y) {
 	if (mouse_down) {
 		if (Alt) for (unsigned i = 0; i < CP.size(); i++) CP[i] = CP[i] + d;
 		else if (showControl && CP_Selected != -1) CP[CP_Selected] = CP[CP_Selected] + d;	// control point
-		else {	// coordinate
+		else if (Shift || S_Key) {
+			vec2 C = calcCenter();
+			if (Shift) {
+				double s = det(normalize(p0 - C), normalize(p - C)), c = sqrt(1.0 - s * s);
+				vec2 R(s, c);
+				for (int i = 0, n = CP.size(); i < n; i++) CP[i] = vec2(det(CP[i] - C, R), dot(CP[i] - C, R)) + C;
+			}
+			if (S_Key) {
+				double S = length(p - C) / length(p0 - C);
+				for (int i = 0, n = CP.size(); i < n; i++) CP[i] = (CP[i] - C)*S + C;
+			}
+		}
+		else {	// drag axis and grid
 			Center = Center + d * Unit;
 			if (lockBackground) BKGPos = BKGPos + d * Unit;
 		}
@@ -764,7 +610,8 @@ void MouseUpR(int _X, int _Y) {
 void KeyDown(WPARAM _KEY) {
 	if (_KEY == VK_CONTROL) Ctrl = true, MouseMove(Cursor.x, Cursor.y);		// call MouseMove to calculate insert position
 	else if (_KEY == VK_SHIFT) Shift = true;
-	else if (_KEY == VK_MENU) { Alt = true; dbgprint("Alt\n"); }
+	else if (_KEY == VK_MENU) Alt = true;
+	else if (_KEY == 'S') S_Key = true;
 	if (Ctrl && (_KEY >= 'A' && _KEY <= 'Z')) {
 		Ctrl = false;
 		if (_KEY == 'S')
@@ -791,12 +638,187 @@ void KeyUp(WPARAM _KEY) {
 	if (_KEY == VK_CONTROL) Ctrl = false, CP_Insert = -1;
 	else if (_KEY == VK_SHIFT) Shift = false;
 	else if (_KEY == VK_MENU) Alt = false;
-	else if (_KEY == VK_LEFT) CP.insert(CP.begin(), CP[CP.size() - 1]), CP.pop_back();		// switch endpoint
+	else if (_KEY == 'S') S_Key = false;
+	if (_KEY == VK_LEFT) CP.insert(CP.begin(), CP[CP.size() - 1]), CP.pop_back();		// switch endpoint
 	else if (_KEY == VK_RIGHT) CP.push_back(CP[0]), CP.erase(CP.begin());	// switch endpoint
 	else if (_KEY == VK_SPACE) for (int i = 1, n = CP.size(); i <= (n - 1) / 2; i++) std::swap(CP[i], CP[n - i]);	// reverse point direction
 	else if (_KEY == VK_TAB) IntpMethod = (Ctrl || Shift) ? Intp((IntpMethod + IntN - 1) % IntN) : Intp((IntpMethod + 1) % IntN);	// previous/next interpolation method
 	else if (_KEY == 'B') showBackground = !showBackground;
 	else if (_KEY == 'C') showControl = !showControl;
 	else if (_KEY == 'L') if (showBackground) lockBackground = !lockBackground;
+}
+
+
+
+// ======================================== File Operations ========================================
+
+bool saveFile() {
+	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
+	WCHAR filename[MAX_PATH] = L"";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+	if (!GetSaveFileName(&ofn)) return false;
+	FILE *fp = _wfopen(filename, L"ab");
+	if (fp == 0) return false;
+
+	// encode binary data
+	fprintf(fp, "NO#EDIT#");
+	byte d = 137;
+	auto encode = [&](const void* p, int l) {
+		for (int i = 0; i < l; d += ((byte*)p)[i] + 13, i++) {
+			byte c = ~(53 * (((byte*)p)[i] + d));  // just don't want "xx000000" to appear in text
+			byte c0 = c & 0xF, c1 = c >> 4;
+			fprintf(fp, "%c%c", c1 > 9 ? c1 + 55 : c1 + '0', c0 > 9 ? c0 + 55 : c0 + '0');
+		}
+	};
+	int n = CP.size(), method = IntpMethod;
+	encode(&method, sizeof(method));
+	encode(&n, sizeof(n));
+	for (int i = 0; i < n; i++) encode(&CP[i], sizeof(vec2));
+	fprintf(fp, "\n\n");
+
+	// write text expression
+	fprintf(fp, "# %s\n\n", IntpName[method]);
+
+	// control points
+	fprintf(fp, "// control points\n");
+	fprintf(fp, "vec2 path[%d] = {", n);
+	for (int i = 0; i < n; i++) fprintf(fp, " vec2(%f,%f)%c", CP[i].x, CP[i].y, i + 1 == n ? ' ' : ',');
+	fprintf(fp, "};\n");
+
+	if (IntpMethod == FourierSeries) {	// print Fourier coefficients
+		int N = CP.size() / 2 + 1;
+		vec2 *a = new vec2[N], *b = new vec2[N];
+		calcFourierParameter(a, b, N);
+
+		// computed Fourier parameters
+		fprintf(fp, "\n// computed Fourier parameters\n");
+		fprintf(fp, "vec2 a[%d] = { ", N);
+		for (int i = 0; i < N; i++) fprintf(fp, "vec2(%f,%f)%c", a[i].x, a[i].y, i + 1 == N ? ' ' : ',');
+		fprintf(fp, "};\n");
+		fprintf(fp, "vec2 b[%d] = { ", N);
+		for (int i = 0; i < N; i++) fprintf(fp, "vec2(%f,%f)%c", b[i].x, b[i].y, i + 1 == N ? ' ' : ',');
+		fprintf(fp, "};\n");
+
+		// mathematical expression
+		fprintf(fp, "\n// mathematical expression\n");
+		fprintf(fp, "(");
+		bool sign = false;
+		for (int i = 0; i < N; i++) {
+			if (abs(a[i].x) > 1e-4) {
+				if (sign) fprintf(fp, "%+.4g", a[i].x); else { fprintf(fp, "%.4g", a[i].x); sign = true; }
+				if (i != 0) { if (i != 1) fprintf(fp, "cos(%dt)", i); else fprintf(fp, "cos(t)"); }
+			}
+			if (abs(b[i].x) > 1e-4) {
+				if (sign) fprintf(fp, "%+.4g", b[i].x); else { fprintf(fp, "%.4g", b[i].x); sign = true; }
+				if (i != 1) fprintf(fp, "sin(%dt)", i); else fprintf(fp, "sin(t)");
+			}
+		}
+		fprintf(fp, ", "); sign = false;
+		for (int i = 0; i < N; i++) {
+			if (abs(a[i].y) > 1e-4) {
+				if (sign) fprintf(fp, "%+.4g", a[i].y); else { fprintf(fp, "%.4g", a[i].y); sign = true; }
+				if (i != 0) { if (i != 1) fprintf(fp, "cos(%dt)", i); else fprintf(fp, "cos(t)"); }
+			}
+			if (abs(b[i].y) > 1e-4) {
+				if (sign) fprintf(fp, "%+.4g", b[i].y); else { fprintf(fp, "%.4g", b[i].y); sign = true; }
+				if (i != 1) fprintf(fp, "sin(%dt)", i); else fprintf(fp, "sin(t)");
+			}
+		}
+		fprintf(fp, ")\n\n");
+
+		delete a, b;
+	}
+	else {
+		// print svg path
+		fprintf(fp, "\n// svg path\n");
+		fprintf(fp, "<path transform='matrix(%.1f,0,0,%.1f,%.1f,%.1f)' d='", Unit, -Unit, Center.x, _WIN_H - 1.0 - Center.y);
+
+		auto svg_printf = [&](float x) { if (abs(x) < 1e-4) fprintf(fp, "0"); else fprintf(fp, "%.4g", x); };
+		auto svg_printv = [&](vec2 p) { svg_printf(p.x); if (p.y > 1e-4) fputc(',', fp); svg_printf(p.y); };
+		auto svg_printv2 = [&](vec2 p, vec2 q) { svg_printv(p); if (q.x > 1e-4) fputc(' ', fp); svg_printv(q); };
+		auto svg_printv3 = [&](vec2 p, vec2 q, vec2 r) { svg_printv2(p, q); if (r.x > 1e-4) fputc(' ', fp); svg_printv(r); };
+
+		switch (IntpMethod) {
+		case Linear: {
+			fputc('M', fp), svg_printv(CP[0]);
+			for (int i = 1, n = CP.size(); i < n; i++) fputc('L', fp), svg_printv(CP[i]);
+			fputc('Z', fp); break;
+		}
+		case CatmullRom: {
+			fputc('M', fp), svg_printv(CP[0]);
+			for (int i = 1, n = CP.size(); i < n; i++) {
+				fputc('C', fp);
+				vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
+				spline3 Sp = SpCatmullRom(A, B, C, D);
+				svg_printv3(B + Sp.C1 * _13, B + (Sp.C2 + Sp.C1 * 2.0)*_13, C);
+			}
+			break;
+		}
+		case QuadraticB: {
+			fputc('M', fp), svg_printv((CP[0] + CP.back())*0.5);
+			fputc('Q', fp), svg_printv2(CP[0], (CP[0] + CP[1])*0.5);
+			for (int i = 1, n = CP.size(); i < n; i++) {
+				fputc('T', fp);
+				svg_printv((CP[i] + CP[(i + 1) % n])*0.5);
+			}
+			break;
+		}
+		case CubicB: {
+			fputc('M', fp), svg_printv((CP[0] * 4.0 + CP[1] + CP.back())*_16);
+			fputc('C', fp), svg_printv3((CP[0] * 2.0 + CP[1])*_13, (CP[0] + CP[1] * 2.0)*_13, (CP[0] + CP[1] * 4.0 + CP[2])*_16);
+			for (int i = 1, n = CP.size(); i < n; i++) {
+				fputc('S', fp);
+				svg_printv2((CP[i] + CP[(i + 1) % n] * 2.0)*_13, (CP[i] + CP[(i + 1) % n] * 4.0 + CP[(i + 2) % n])*_16);
+			}
+			break;
+		}
+		}
+
+		fprintf(fp, "'></path>\n\n");
+	}
+	fprintf(fp, "\n\n");
+	fclose(fp);
+	return true;
+}
+
+bool readFile() {
+	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
+	WCHAR filename[MAX_PATH] = L"";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+	if (!GetOpenFileName(&ofn)) return false;
+	FILE *fp = _wfopen(filename, L"rb");
+	if (fp == 0) return false;
+
+	char k[8]; if (!fread(k, 1, 8, fp)) return false;
+	for (int i = 0; i < 8; i++) if (k[i] != "NO#EDIT#"[i]) return false;
+	byte d = 137;
+	auto decode = [&](void* p, int l) -> bool {
+		for (int i = 0; i < l; i++) {
+			byte b[2] = { (byte)fgetc(fp), (byte)fgetc(fp) };
+			for (int i = 0; i < 2; i++) {
+				if (!((b[i] >= '0' && b[i] <= '9') || (b[i] >= 'A' && b[i] <= 'F'))) return false;	// security check
+				b[i] = b[i] > '9' ? b[i] - 55 : b[i] - '0';
+			}
+			((byte*)p)[i] = 29 * (~((b[0] << 4) | b[1])) - d, d += ((byte*)p)[i] + 13;  // "decrypt" data: byte(29*53) = 1
+		}
+		return true;
+	};
+	int n, method;
+	if (!decode(&method, sizeof(method))) return false;
+	if (!decode(&n, sizeof(n))) return false;
+	vec2 *P = new vec2[n];
+	for (int i = 0; i < n; i++) {
+		if (!decode(&P[i], sizeof(vec2))) return false;
+		if (0.0*(P[i].x*P[i].y) != 0.0) return false;
+	}
+	IntpMethod = (Interpolation)method;
+	CP.resize(n);
+	for (int i = 0; i < n; i++) CP[i] = P[i];
+	delete P;
+	return true;
 }
 
