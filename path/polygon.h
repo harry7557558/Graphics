@@ -95,11 +95,11 @@ bool forceCounterClockwise(polygon &P) {
 bool expandSelfIntersection(polygon &P);
 bool forceClockwiseEI(polygon &P) {
 	expandSelfIntersection(P);
-	forceClockwise(P);
+	return forceClockwise(P);
 }
 bool forceCounterClockwiseEI(polygon &P) {
 	expandSelfIntersection(P);
-	forceCounterClockwise(P);
+	return forceCounterClockwise(P);
 }
 auto& forceAntiClockwise = forceCounterClockwise;
 auto& forceAntiClockwiseEI = forceCounterClockwiseEI;
