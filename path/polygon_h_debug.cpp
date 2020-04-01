@@ -1,90 +1,105 @@
-// Test Different Splines and Interpolation Methods
-// Imcompleted, still updating
-
+// debug this header file using Win32 GUI
+#include "polygon.h"
 
 /* ==================== User Instructions ====================
-
+ *  Print Polygon Data          ctrl + p, ctrl + s
  *  Move View:                  drag background
- *  Zoom:                       mouse scroll, hold shift to lock center
- *  Move Point:                 click and drag
- *  Move Shape:                 alt + drag; shift + m
- *  Rotate Shape:               shift + drag
- *  Scale Shape:                S + drag
- *  Add Point:                  ctrl + click
- *  Delete Point:               right click
- *  Switch Endpoint:            left / right
- *  Reverse Point Direction:    space
- *  Center Points:              shift + c (only available in FourierSeries mode)
- *  Hide/Unhide Points:         c
- *  Next Method:                tab
- *  Last Method:                ctrl/shift + tab
- *  Show/Hide Trace:            b
- *  Lock/Unlock Trace:          l
- *  Trace Alpha:                ctrl + mouse scroll
- *  Save File (append):         ctrl + s
+ *  Zoom:                       mouse scroll
+ *  Move Polygon:               drag shape
+ *  Rotate Polygon:             shift + drag
+ *  Scale Polygon:              alt + drag
+ *  Move Vertex:                click and drag
+ *  Add Vertex:                 ctrl + click
+ *  Delete Vertex:              right click
+ *  Shift Vertex Order:         left / right
+ *  Reverse Vertex Order:       space
+ *  Hide/Unhide Vertexes:       c
+ *  Show/Hide Center:           m
+ *  Show/Hide AABB:             b
+ *  Show/Hide Convex Hull:      h
  */
-
 
 
  // ========================================= Win32 Standard =========================================
 
- // some compressed copy-paste code
+ // some compressed copy-and-paste code
 #pragma region Windows
 
-#include <Windows.h>
-#include <windowsx.h>
-#include <tchar.h>
-
-#define WIN_NAME "Spline Tester"
+#define WIN_NAME "DEMO"
 #define WinW_Default 600
 #define WinH_Default 400
 #define MIN_WinW 400
 #define MIN_WinH 300
 
-// implement the following functions:
-void render();
-void WindowCreate(int _W, int _H);
-void WindowResize(int _oldW, int _oldH, int _W, int _H);
-void WindowClose();
-void MouseMove(int _X, int _Y);
-void MouseWheel(int _DELTA);
-void MouseDownL(int _X, int _Y);
-void MouseUpL(int _X, int _Y);
-void MouseDownR(int _X, int _Y);
-void MouseUpR(int _X, int _Y);
-void KeyDown(WPARAM _KEY);
-void KeyUp(WPARAM _KEY);
+#include <Windows.h>
+#include <windowsx.h>
+#include <tchar.h>
 
 HWND _HWND; int _WIN_W, _WIN_H;
-HBITMAP _HIMG; COLORREF *_WINIMG;
+HBITMAP _HIMG; COLORREF *_WINIMG;	// image
 #define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
 
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+	WNDCLASSEX wc;
+	wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance;
+	wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
+	if (!RegisterClassEx(&wc)) return -1;
+	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL);
+	ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
+	MSG message; while (GetMessage(&message, 0, 0, 0)) TranslateMessage(&message), DispatchMessage(&message);
+	return (int)message.wParam;
+}
+
+void render();
+void WindowCreate(int _W, int _H); void WindowResize(int _oldW, int _oldH, int _W, int _H); void WindowClose();
+void MouseMove(int _X, int _Y); void MouseWheel(int _DELTA); void MouseDownL(int _X, int _Y); void MouseUpL(int _X, int _Y); void MouseDownR(int _X, int _Y); void MouseUpR(int _X, int _Y);
+void KeyDown(WPARAM _KEY); void KeyUp(WPARAM _KEY);
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
+#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); \
+	render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
 	switch (message) {
 	case WM_CREATE: { RECT Client; GetClientRect(hWnd, &Client); _WIN_W = Client.right, _WIN_H = Client.bottom; WindowCreate(_WIN_W, _WIN_H); break; }
-	case WM_CLOSE: { DestroyWindow(hWnd); WindowClose(); return 0; } case WM_DESTROY: { PostQuitMessage(0); return 0; }
+	case WM_CLOSE: { DestroyWindow(hWnd); WindowClose(); return 0; }
+	case WM_DESTROY: { PostQuitMessage(0); return 0; }
 	case WM_MOVE:; case WM_SIZE: {
-		RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom;
-		BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
-		if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK }
-	case WM_GETMINMAXINFO: { LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam; lpMMI->ptMinTrackSize.x = MIN_WinW, lpMMI->ptMinTrackSize.y = MIN_WinH; break; }
-	case WM_PAINT: { PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY); SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps); DeleteDC(HMem), DeleteDC(hdc); break; }
+		RECT Client; GetClientRect(hWnd, &Client);
+		WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom);
+		_WIN_W = Client.right, _WIN_H = Client.bottom;
+		BITMAPINFO bmi;
+		bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32;
+		bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0;
+		bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
+		if (_HIMG != NULL) DeleteObject(_HIMG);
+		HDC hdc = GetDC(hWnd);
+		_HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0);
+		DeleteDC(hdc);
+		_RDBK
+	}
+	case WM_GETMINMAXINFO: {
+		LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
+		lpMMI->ptMinTrackSize.x = MIN_WinW, lpMMI->ptMinTrackSize.y = MIN_WinH;
+		break;
+	}
+	case WM_PAINT: {
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc);
+		HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG);
+		BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY);
+		SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps);
+		DeleteDC(HMem), DeleteDC(hdc); break;
+	}
 #define _USER_FUNC_PARAMS GET_X_LPARAM(lParam), _WIN_H - 1 - GET_Y_LPARAM(lParam)
 	case WM_MOUSEMOVE: { MouseMove(_USER_FUNC_PARAMS); _RDBK }
-	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
 	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK }
 	case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
 	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK }
 	case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
+	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
 	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { KeyDown(wParam); _RDBK }
 	case WM_SYSKEYUP:; case WM_KEYUP: { KeyUp(wParam); _RDBK }
-	} return DefWindowProc(hWnd, message, wParam, lParam);
-}
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME); if (!RegisterClassEx(&wc)) return -1;
-	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL); ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
-	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
+	}
+	return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
 // debug
@@ -93,379 +108,210 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #pragma endregion
 
 
-// ================================== GLSL Style Classes/Functions ==================================
-
-#pragma region GLSL Classes/Functions
-
-#include <cmath>
-#pragma warning(disable: 4244 4305)
-
-#define PI 3.1415926535897932384626
-#define mix(x,y,a) ((x)*(1.0-(a))+(y)*(a))
-#define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
-
-class vec2 {
-public:
-	float x, y;
-	vec2() {}
-	vec2(float a) :x(a), y(a) {}
-	vec2(float x, float y) :x(x), y(y) {}
-	vec2 operator - () const { return vec2(-x, -y); }
-	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
-	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
-	vec2 operator * (const vec2 &v) const { return vec2(x * v.x, y * v.y); }	// not standard but useful
-	vec2 operator * (const float &a) const { return vec2(x*a, y*a); }
-	float sqr() const { return x * x + y * y; } 	// not standard
-	friend float length(const vec2 &v) { return sqrt(v.x*v.x + v.y*v.y); }
-	friend vec2 normalize(const vec2 &v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y)); }
-	friend float dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
-	friend float det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; } 	// not standard
-#if 0
-	vec2 operator == (const vec2 &v) const { return x == v.x && y == v.y; }
-	vec2 operator != (const vec2 &v) const { return x != v.x || y != v.y; }
-	void operator += (const vec2 &v) { x += v.x, y += v.y; }
-	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }
-	void operator *= (const vec2 &v) { x *= v.x, y *= v.y; }
-	vec2 operator / (const vec2 &v) const { return vec2(x / v.x, y / v.y); }
-	void operator /= (const vec2 &v) { x /= v.x, y /= v.y; }
-	friend vec2 operator * (const float &a, const vec2 &v) { return vec2(a*v.x, a*v.y); }
-	void operator *= (const float &a) { x *= a, y *= a; }
-	vec2 operator / (const float &a) const { return vec2(x / a, y / a); }
-	void operator /= (const float &a) { x /= a, y /= a; }
-#endif
-	vec2 rot() const { return vec2(-y, x); }   // not standard
-};
-
-float sdSqLine(vec2 p, vec2 a, vec2 b) {	// by iq
-	vec2 pa = p - a, ba = b - a;
-	float h = dot(pa, ba) / dot(ba, ba);
-	return (pa - ba * clamp(h, 0.0, 1.0)).sqr();
-}
-
-#pragma endregion
-
 
 // ======================================== Data / Parameters ========================================
 
 #include <stdio.h>
 #pragma warning(disable: 4996)
 
-enum Interpolation {  // or fitting
-	Linear, CatmullRom,
-	QuadraticB, CubicB,
-	QuadraticInt, CubicBInt,
-	FourierSeries,
-	IntN  // number of supported interpolations
-};
-const char* IntpName[] = {
-	"Linear Interpolation", "Centripetal Catmull-Rom Spline",
-	"Quadratic B-Spline", "Standard Cubic B-Spline",
-	"Quadratic Interpolation ###", "Cubic B-Spline Interpolation ###",
-	"Fourier Series Fitting"
-};
-Interpolation IntpMethod = Linear;
-typedef Interpolation Intp;
-
 
 #pragma region Global Variables
 
-#include <vector>
-std::vector<vec2> CP({ vec2(1,-1), vec2(1,1), vec2(-1,1), vec2(-1,-1) });	// control points
-int CP_Selected = -1;	// selected (drag)
-int CP_Insert = -1;	// insert index
+polygon CP1({ vec2(-1,-1), vec2(.5,-1), vec2(.5,.5), vec2(-1,.5) });
+polygon CP2({ vec2(1,1), vec2(-.5,1), vec2(-.5,-.5), vec2(1,-.5) });
+int CP1_Selected = -1, CP1_Insert = -1;
+int CP2_Selected = -1, CP2_Insert = -1;
+vec2 CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
+double CP1_DistE, CP2_DistE, CP1_Dist, CP2_Dist;
 
 // window parameters
-char text[64];	// window title
+char text[256];	// window title
 vec2 Center = vec2(0, 0);	// origin in screen coordinate
-float Unit = 100.0;		// screen unit to object unit
+double Unit = 100.0;		// screen unit to object unit
 #define fromInt(p) (((p) - Center) * (1.0 / Unit))
 #define fromFloat(p) ((p) * Unit + Center)
 
 // rendering parameters
 int CPR = 8;	// rendering radius of control point
 bool showControl = true;	// control points
-bool showBackground = false;	// background image for trace
+bool showCenter = false;
+bool showAABB = false;
+bool showConvexHull = false;
+polygon* howerPolygon = 0;
 
 // user parameters
 vec2 Cursor = vec2(0, 0);
 bool mouse_down = false;
-bool Ctrl = false, Shift = false, Alt = false, S_Key = false;
+bool Ctrl = false, Shift = false, Alt = false;
 
 #pragma endregion
 
-#pragma region Background Image
 
-// image format library, https://github.com/nothings/stb
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_WINDOWS_UTF8
-#include "libraries\stb_image.h"
-
-COLORREF *BKG_ORIGIN = 0, *BKG = 0;	// background image for tracing, where BKG has transparency
-int BKG_W, BKG_H;
-bool lockBackground = false;
-vec2 BKGPos(0.0);		// lower-left corner on screen coordinate
-float BKGUnit = 1.0;	// to screen coordinate
-float BKGAlpha = 0.5;	// transparency
-
-// load background image from file
-bool loadBackground(const wchar_t* filename) {
-	FILE *fp = _wfopen(filename, L"rb");
-	if (fp == 0) return false;
-	COLORREF* temp = (COLORREF*)stbi_load_from_file(fp, &BKG_W, &BKG_H, 0, 4);
-	fclose(fp);
-	if (temp == 0) return false;
-	if (BKG_ORIGIN != 0) delete BKG_ORIGIN;
-	BKG_ORIGIN = temp;
-	for (int i = 0; i < BKG_H / 2; i++) for (int j = 0; j < BKG_W; j++)
-		std::swap(BKG_ORIGIN[i*BKG_W + j], BKG_ORIGIN[(BKG_H - 1 - i)*BKG_W + j]);  // flip back: different image coordinates
-	int L = BKG_W * BKG_H;
-	for (int i = 0; i < L; i++) std::swap(((byte*)&temp[i])[0], ((byte*)&temp[i])[2]);	// rgb vs bgr
-	if (BKG != 0) delete BKG;
-	BKG = new COLORREF[L];
-	for (int i = 0; i < 4 * L; i++) ((byte*)BKG)[i] = BKGAlpha * ((byte*)BKG_ORIGIN)[i];
-	return true;
-}
-bool selectBackground() {
-	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetOpenFileName(&ofn)) return false;
-	if (!loadBackground(filename)) return false;
-	showBackground = true;
-	lockBackground = false;
-	return true;
-}
-
-// call this when alpha changed
-void refreshBackground() {
-	if (BKG && BKG_ORIGIN)
-		for (int i = 0, l = 4 * BKG_W*BKG_H; i < l; i++)
-			((byte*)BKG)[i] = BKGAlpha * ((byte*)BKG_ORIGIN)[i];
-}
-
-// get backgroud color from screen coordinate
-COLORREF getBackground(int x, int y) {
-	x = (x - BKGPos.x)*BKGUnit, y = (y - BKGPos.y)*BKGUnit;
-	if (x < 0 || y < 0 || x >= BKG_W || y >= BKG_H) return 0;
-	return BKG[y*BKG_W + x];
-}
-
-#pragma endregion For Tracing
-
-
-#define _13 0.33333333f
-#define _16 0.16666667f
-class spline3 {
-public:
-	vec2 C3, C2, C1, C0;
-	spline3(vec2 C3, vec2 C2, vec2 C1, vec2 C0) :C3(C3), C2(C2), C1(C1), C0(C0) {}
-};
-#define SpCatmullRom(A,B,C,D) spline3((D-A)*0.5+(B-C)*1.5, A-B*2.5+C*2.0-D*0.5, (C-A)*0.5, B)
-#define SpQuadraticB(A,B,C) spline3(vec2(0.), (A+C)*0.5-B, B-A, (A+B)*0.5)
-#define SpCubicB(A,B,C,D) spline3((D-A)*_16+(B-C)*0.5, (A+C)*0.5-B, (C-A)*0.5, (A+B*4.+C)*_16)
-
-spline3 getSpline(int i) {
-	int n = CP.size();
-	switch (IntpMethod) {
-	case Linear: {
-		return spline3(vec2(0.0), vec2(0.0), CP[(i + 1) % n] - CP[i], CP[i]);
-	}
-	case CatmullRom: {
-		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
-		return SpCatmullRom(A, B, C, D);
-	}
-	case QuadraticB: {
-		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n];
-		return SpQuadraticB(A, B, C);
-	}
-	case CubicB: {
-		vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
-		return SpCubicB(A, B, C, D);
-	}
-	default: {
-		return spline3(0, 0, 0, 0);
-	}
-	}
-}
-
-spline3 fromFloatSp(spline3 s) {
-	return spline3(s.C3*Unit, s.C2*Unit, s.C1*Unit, s.C0*Unit + Center);
-}
-
-void calcFourierParameter(vec2 *a, vec2 *b, int N) {
-	float t, dt;
-	int n = CP.size();
-	for (int k = 0; k < N; k++) {
-		a[k] = vec2(0.0), b[k] = vec2(0.0);
-		t = 0.0, dt = 2.0 * k * PI / n;  // uniform distribute parameter
-		for (int i = 0; i < n; i++, t += dt) {
-			a[k] = a[k] + CP[i] * cos(t);
-			b[k] = b[k] + CP[i] * sin(t);
-		}
-		a[k] = a[k] * (2.0 / n), b[k] = b[k] * (2.0 / n);
-	}
-	a[0] = a[0] * 0.5;
-}
-
-// return the average of all control points
-vec2 calcCenter() {
-	vec2 p(0.0);
-	for (int i = 0, n = CP.size(); i < n; i++) p = p + CP[i];
-	return p * (1.0 / CP.size());
-}
-
-// put this at the end because they contain long string code
-bool saveFile();
-bool readFile();
 
 
 // ============================================ Rendering ============================================
 
-#define DARKBLUE 0x202080
 #define WHITE 0xFFFFFF
-#define YELLOW 0xFFFF00
 #define RED 0xFF0000
-#define RED0 0xFF0080
-#define RED1 0xFF0040
 #define ORANGE 0xFF8000
+#define YELLOW 0xFFFF00
 #define LIME 0x00FF00
 #define MAGENTA 0xFF00FF
-#define DARKGRAY 0x404040
+#define POLYGON_FILL 0x20FF8000
+#define POLYGON_FILL1 0x20FFA000
+#define AABB_FILL 0x180000FF
+#define CVXH_FILL 0x14FF0000
+
+#define byteBlend(a,b,alpha) (byte)(((256-(int)(alpha))*byte(a)+(int)(alpha)*byte(b))>>8)
+#define COLORREFBlend(c0,c1,alpha) COLORREF(byteBlend(c0,c1,alpha))|((COLORREF)byteBlend((c0)>>8,(c1)>>8,alpha)<<8)|((COLORREF)byteBlend((c0)>>16,(c1)>>16,alpha)<<16)
 
 #include <chrono>
 typedef std::chrono::high_resolution_clock NTime;
-auto t0 = NTime::now();
-
+auto time_0 = NTime::now();
 
 void render() {
-	// debug
-	auto t1 = NTime::now();
-	float dt = std::chrono::duration<float>(t1 - t0).count();
-	dbgprint("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
-	t0 = t1;
 
 	// initialize window
-	if (showBackground && BKG)
-		for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++)
-			_WINIMG[j*_WIN_W + i] = getBackground(i, j);
-	else for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
+	auto t0 = NTime::now();
+	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
 
 	// rendering
-	auto drawLine = [&](vec2 p, vec2 q, COLORREF col) {
+	auto drawLine = [&](vec2 p, vec2 q, COLORREF Stroke) {  // dda
 		vec2 d = q - p;
-		float slope = d.y / d.x;
+		double slope = d.y / d.x;
 		if (abs(slope) <= 1.0) {
 			if (p.x > q.x) std::swap(p, q);
 			int x0 = max(0, int(p.x)), x1 = min(_WIN_W - 1, int(q.x)), y;
-			float yf = slope * x0 + (p.y - slope * p.x);
-			for (int x = x0; x <= x1; x++) {
+			double yf = slope * x0 + (p.y - slope * p.x);
+			for (int x = x0; x <= x1; x++, yf += slope) {
 				y = (int)yf;
-				if (y >= 0 && y < _WIN_H) Canvas(x, y) = col;
-				yf += slope;
+				if (y >= 0 && y < _WIN_H) Canvas(x, y) = Stroke;
 			}
 		}
 		else {
 			slope = d.x / d.y;
 			if (p.y > q.y) std::swap(p, q);
 			int y0 = max(0, int(p.y)), y1 = min(_WIN_H - 1, int(q.y)), x;
-			float xf = slope * y0 + (p.x - slope * p.y);
-			for (int y = y0; y <= y1; y++) {
+			double xf = slope * y0 + (p.x - slope * p.y);
+			for (int y = y0; y <= y1; y++, xf += slope) {
 				x = (int)xf;
-				if (x >= 0 && x < _WIN_W) Canvas(x, y) = col;
-				xf += slope;
+				if (x >= 0 && x < _WIN_W) Canvas(x, y) = Stroke;
 			}
 		}
 	};
-	auto drawCircle = [&](vec2 c, float r, COLORREF col) {
+	auto drawCross = [&](vec2 p, double r, COLORREF Color) {
+		p = fromFloat(p);
+		drawLine(p - vec2(r, 0), p + vec2(r, 0), Color);
+		drawLine(p - vec2(0, r), p + vec2(0, r), Color);
+	};
+	auto drawCircle = [&](vec2 c, double r, COLORREF Color) {
 		int x0 = max(0, int(c.x - r)), x1 = min(_WIN_W - 1, int(c.x + r));
 		int y0 = max(0, int(c.y - r)), y1 = min(_WIN_H - 1, int(c.y + r));
-		int cx = (int)c.x, cy = (int)c.y, r2 = int(r*r), dx, dy;
-		for (int x = x0; x <= x1; x++) {
-			dx = x - cx;
-			for (int y = y0; y <= y1; y++) {
-				dy = y - cy;
-				if (dx*dx + dy * dy < r2) Canvas(x, y) = col;
+		int cx = (int)c.x, cy = (int)c.y, r2 = int(r*r);
+		for (int x = x0, dx = x - cx; x <= x1; x++, dx++) {
+			for (int y = y0, dy = y - cy; y <= y1; y++, dy++) {
+				if (dx * dx + dy * dy < r2) Canvas(x, y) = Color;
 			}
 		}
 	};
-	auto drawSpline = [&](spline3 Sp, COLORREF col) {	// screen coordinate, C3 t³ + C2 t² + C1 t + C0
-		const float dt = 0.01;
-		vec2 p = Sp.C0, q;
-		for (float t = dt; t < 1.0; t += dt) {
-			q = ((Sp.C3*t + Sp.C2)*t + Sp.C1)*t + Sp.C0;
-			drawLine(p, q, col);
-			p = q;
+	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // reveives polygon in world coordinate
+		int n = p.size(), y0 = _WIN_H - 1, y1 = 0;
+		polygon P = p; for (int i = 0; i < n; i++) P[i] = fromFloat(p[i]);
+		for (int i = 0; i < n; i++) {
+			if ((int)P[i].y < y0) y0 = (int)P[i].y; if ((int)P[i].y > y1) y1 = (int)P[i].y;
 		}
+		if (y0 < 0) y0 = 0; if (y1 >= _WIN_H) y1 = _WIN_H - 1;
+
+		// scan-line filling - I think it has a lot of room for optimization
+		int alpha = Fill >> 24;
+		if (alpha != 0) {
+			std::vector<int> k;
+			for (int y = y0; y <= y1; y++) {
+				k.clear();
+				for (int i = 0; i < n; i++) {
+					if (y > P[i].y != y > P[(i + 1) % n].y) {
+						double t = (y - P[i].y) / (P[(i + 1) % n].y - P[i].y);
+						k.push_back((int)((1 - t)*P[i].x + t * P[(i + 1) % n].x));
+					}
+				}
+				std::sort(k.begin(), k.end());
+				for (unsigned i = 1; i < k.size(); i += 2) {
+					for (int x = max(k[i - 1], 0), x1 = min(k[i], _WIN_W - 1); x <= x1; x++) {
+						Canvas(x, y) = COLORREFBlend(Canvas(x, y), Fill, alpha);
+					}
+				}
+			}
+		}
+		// stroke
+		if (Stroke) for (int i = 0; i < n; i++) drawLine(P[i], P[(i + 1) % n], Stroke);
+	};
+	auto drawBox = [&](vec2 Min, vec2 Max, COLORREF Fill) {
+		int x0 = max(0, (int)Min.x), x1 = min(_WIN_W - 1, (int)Max.x);
+		int y0 = max(0, (int)Min.y), y1 = min(_WIN_H - 1, (int)Max.y);
+		int alpha = Fill >> 24;
+		for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++)
+			Canvas(x, y) = COLORREFBlend(Canvas(x, y), Fill, alpha);
 	};
 
-	// axis
-	drawLine(vec2(0, Center.y), vec2(_WIN_W, Center.y), DARKBLUE);
-	drawLine(vec2(Center.x, 0), vec2(Center.x, _WIN_H), DARKBLUE);
-
-	// control polygon
-	int n = CP.size();
-	if (showControl) for (int i = 0; i < n; i++) {
-		drawLine(fromFloat(CP[i]), fromFloat(CP[(i + 1) % n]), i == CP_Insert ? WHITE : DARKGRAY);
+	// grid and axis
+	{
+		vec2 LB = fromInt(vec2(0, 0)), RT = fromInt(vec2(_WIN_W, _WIN_H));
+		COLORREF GridCol = clamp(0x10, (byte)sqrt(10.0*Unit), 0x20); GridCol = GridCol | (GridCol << 8) | (GridCol) << 16;  // adaptive grid color
+		for (int y = (int)round(LB.y), y1 = (int)round(RT.y); y <= y1; y++)
+			drawLine(fromFloat(vec2(LB.x, y)), fromFloat(vec2(RT.x, y)), GridCol);  // horizontal gridlines
+		for (int x = (int)round(LB.x), x1 = (int)round(RT.x); x <= x1; x++)
+			drawLine(fromFloat(vec2(x, LB.y)), fromFloat(vec2(x, RT.y)), GridCol);  // vertical gridlines
+		drawLine(vec2(0, Center.y), vec2(_WIN_W, Center.y), 0x202080);  // x-axis
+		drawLine(vec2(Center.x, 0), vec2(Center.x, _WIN_H), 0x202080);  // y-axis
 	}
 
-	// interpolation curve
-	switch (IntpMethod) {
-	case Linear: {
-		for (int i = 0; i < n; i++)
-			drawLine(fromFloat(CP[i]), fromFloat(CP[(i + 1) % n]), WHITE);
-		break;
+	// bounding boxes
+	if (showAABB) {
+		vec2 Min, Max;
+		calcAABB(CP1, Min, Max), drawBox(fromFloat(Min), fromFloat(Max), AABB_FILL);
+		calcAABB(CP2, Min, Max), drawBox(fromFloat(Min), fromFloat(Max), AABB_FILL);
 	}
-	case FourierSeries: {
-		int N = n / 2 + 1;
-		vec2 *a = new vec2[N], *b = new vec2[N];
-		calcFourierParameter(a, b, N);
-		auto eval = [&](float t) ->vec2 {
-			vec2 r = a[0];
-			for (int k = 1; k < N; k++) r = r + a[k] * cos(k*t) + b[k] * sin(k*t);
-			return fromFloat(r);
-		};
-		const int D = 100 * CP.size();
-		float t = 0.0, dt = 1.0 / D;
-		vec2 p = eval(t), q;
-		for (t = dt; t < 2.0*PI; t += dt) {
-			q = eval(t);
-			drawLine(p, q, WHITE);
-			p = q;
-		}
-		delete a, b;
-		break;
+	if (showConvexHull) {
+		drawPolygon(calcConvexHull(CP1), 0, CVXH_FILL);
+		drawPolygon(calcConvexHull(CP2), 0, CVXH_FILL);
 	}
-	default: {
-		for (int i = 0; i < n; i++)
-			drawSpline(fromFloatSp(getSpline(i)), WHITE);
-		break;
+
+	// polygons
+	drawPolygon(CP1, isSelfIntersecting(CP1) ? RED : CP1_Dist < CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP1 ? POLYGON_FILL1 : POLYGON_FILL);
+	drawPolygon(CP2, isSelfIntersecting(CP2) ? RED : CP1_Dist > CP2_Dist ? WHITE : 0xA0A0A0, howerPolygon == &CP2 ? POLYGON_FILL1 : POLYGON_FILL);
+
+	// center of polygons
+	if (showCenter) {
+		drawCross(calcCenterE(CP1), 4, 0xD2691E), drawCross(calcCenterE(CP2), 4, 0xD2691E);  // edge center, orange
+		drawCross(calcCenter(CP1), 4, 0xC71585), drawCross(calcCenter(CP2), 4, 0xC71585);  // vertex center, purple
+		drawCross(calcCOM(CP1), 4, 0x228B22), drawCross(calcCOM(CP2), 4, 0x228B22);  // center of mass, green
 	}
-	}
+	drawCross(CP1_Center, showCenter || ((Shift || Alt) && CP1_Dist < CP2_Dist) || howerPolygon == &CP1 ? 6 : 4, LIME);
+	drawCross(CP2_Center, showCenter || ((Shift || Alt) && CP2_Dist < CP1_Dist) || howerPolygon == &CP2 ? 6 : 4, LIME);
 
 	// control points
-	if (showControl) for (int i = n - 1; i >= 0; i--) {
-		vec2 P = fromFloat(CP[i]);
-		if (i == CP_Selected) drawCircle(P, CPR, YELLOW);
-		else {
-			COLORREF col = CP_Insert != -1 && (i == CP_Insert || i == (CP_Insert + 1) % n) ? LIME : RED;	// highlight insert position
-			drawCircle(P, CPR - min(i, 2), col);	// the two larger points are startpoint
+	if (showControl) {
+		int n1 = CP1.size(), n2 = CP2.size();
+		for (int i = n1 - 1; i >= 0; i--) {
+			vec2 P = fromFloat(CP1[i]);
+			if (i == CP1_Selected) drawCircle(P, CPR, YELLOW);
+			else drawCircle(P, CPR - min(i, 2), CP1_Insert != -1 && (i == CP1_Insert || i == (CP1_Insert + 1) % n1) ? LIME : RED);
+		}
+		for (int i = n2 - 1; i >= 0; i--) {
+			vec2 P = fromFloat(CP2[i]);
+			if (i == CP2_Selected) drawCircle(P, CPR, YELLOW);
+			else drawCircle(P, CPR - min(i, 2), CP2_Insert != -1 && (i == CP2_Insert || i == (CP2_Insert + 1) % n2) ? LIME : RED);
 		}
 	}
 
-	// show the center of the figure
-	if ((IntpMethod == FourierSeries && showControl) || Alt || Shift || S_Key) {
-		vec2 C = fromFloat(calcCenter());
-		drawLine(C - vec2(5, 0), C + vec2(5, 0), LIME);
-		drawLine(C - vec2(0, 5), C + vec2(0, 5), LIME);
-	}
-
-	//if (dt < 0.016) Sleep(16 - int(1000 * dt)), t0 = NTime::now();	// max 60fps reduce CPU usage
+	// rendering completed
+	auto t1 = NTime::now();
+	double dt = std::chrono::duration<double>(t1 - t0).count();
+	double fps = 1.0 / std::chrono::duration<double>(t1 - time_0).count();
+	time_0 = t0;
 	vec2 cursor = fromInt(Cursor);
-	sprintf(text, "%s - %d points %s (%.2f,%.2f)", IntpName[IntpMethod], CP.size(),
-		showBackground ? (lockBackground ? " locked " : " unlock ") : "  ",
-		cursor.x, cursor.y);
+	sprintf(text, " (%.2lf,%.2lf)    %.2lfms (%.1lffps)",
+		cursor.x, cursor.y, 1000.0*dt, fps);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -475,78 +321,97 @@ void render() {
 
 void WindowCreate(int _W, int _H) {
 	Center = vec2(_W, _H) * 0.5;
-	loadBackground(L"D:\\trace.png");
+
+	// test perfermance
+	/*{
+		vec2 a[21] = { vec2(0.285528,0.441513),vec2(-0.120229,-0.827634),vec2(0.362113,-0.659311),vec2(-0.418880,-0.131927),vec2(-0.011258,0.239604),vec2(0.046156,-0.084705),vec2(0.251175,0.175976),vec2(-0.109171,-0.075648),vec2(-0.021327,0.036144),vec2(-0.084662,-0.028716),vec2(-0.036200,-0.025998),vec2(0.081147,-0.067187),vec2(0.041652,-0.070299),vec2(0.073204,-0.015663),vec2(-0.012340,-0.029848),vec2(-0.075957,0.008711),vec2(-0.043883,-0.027078),vec2(0.043032,-0.074274),vec2(-0.028872,-0.046507),vec2(-0.029267,-0.010998),vec2(0.018142,-0.073762) },
+			b[21] = { vec2(0.000000,0.000000),vec2(0.895598,0.180168),vec2(0.373547,0.372804),vec2(0.088225,0.004491),vec2(-0.049367,-0.524011),vec2(-0.211382,0.153020),vec2(0.042170,-0.053641),vec2(-0.120638,-0.029826),vec2(0.108581,0.017927),vec2(0.043941,0.001481),vec2(0.034297,0.046155),vec2(0.014269,0.052746),vec2(0.001654,0.079682),vec2(-0.073158,0.020828),vec2(-0.021989,0.080393),vec2(0.010579,0.023657),vec2(0.086257,-0.018580),vec2(0.074851,0.002612),vec2(-0.054539,0.001691),vec2(0.008488,-0.007624),vec2(0.000000,0.000000) };
+		CP1.clear(), CP2.clear();
+		for (double t = 0; t < 2.0*PI; t += 0.03) {
+			vec2 v(-1.0);
+			for (int i = 0; i < 21; i++) v = v + a[i] * cos(i*t) + b[i] * sin(i*t);
+			CP1.push_back(v + vec2(sin(7393.43*t), cos(9972.56*t))*0.05), CP2.push_back(-v + vec2(cos(6231.97*t), sin(8622.36*t))*0.05);
+		}
+	}*/
 }
 void WindowResize(int _oldW, int _oldH, int _W, int _H) {
 	if (_W*_H == 0 || _oldW * _oldH == 0) return;
-	float pw = _oldW, ph = _oldH, w = _W, h = _H;
-	float s = sqrt((w * h) / (pw * ph));
+	double pw = _oldW, ph = _oldH, w = _W, h = _H;
+	double s = sqrt((w * h) / (pw * ph));
 	Unit *= s;
-	if (lockBackground) BKGUnit /= s, BKGPos = fromInt(BKGPos) * s;
 	Center.x *= w / pw, Center.y *= h / ph;
-	if (lockBackground) BKGPos = fromFloat(BKGPos);
 }
 void WindowClose() {
-	delete BKG, BKG_ORIGIN;
+	return;
 }
 
 void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y);
 	Cursor = P;
 	vec2 p0 = fromInt(P0), p = fromInt(P), d = p - p0;
-	CP_Insert = -1;
+	CP1_Insert = CP2_Insert = -1;
 
-	// click and drag
 	if (mouse_down) {
-		if (Alt) for (unsigned i = 0; i < CP.size(); i++) CP[i] = CP[i] + d;
-		else if (showControl && CP_Selected != -1) CP[CP_Selected] = CP[CP_Selected] + d;	// control point
-		else if (Shift || S_Key) {
-			vec2 C = calcCenter();
-			if (Shift) {
-				double s = det(normalize(p0 - C), normalize(p - C)), c = sqrt(1.0 - s * s);
-				vec2 R(s, c);
-				for (int i = 0, n = CP.size(); i < n; i++) CP[i] = vec2(det(CP[i] - C, R), dot(CP[i] - C, R)) + C;
+		if (Shift || Alt) {
+			//CP1_Center = calcCOM(CP1), CP2_Center = calcCOM(CP2);
+			if (Shift) {  // rotate shape
+				if (CP1_Dist < CP2_Dist) rotatePolygon(CP1, CP1_Center, asin(det(normalize(p0 - CP1_Center), normalize(p - CP1_Center))));
+				else rotatePolygon(CP2, CP2_Center, asin(det(normalize(p0 - CP2_Center), normalize(p - CP2_Center))));
 			}
-			if (S_Key) {
-				double S = length(p - C) / length(p0 - C);
-				for (int i = 0, n = CP.size(); i < n; i++) CP[i] = (CP[i] - C)*S + C;
+			if (Alt) {  // scale shape
+				if (CP1_Dist < CP2_Dist) scalePolygon(CP1, CP1_Center, length(p - CP1_Center) / length(p0 - CP1_Center));
+				else scalePolygon(CP2, CP2_Center, length(p - CP2_Center) / length(p0 - CP2_Center));
 			}
 		}
-		else {	// drag axis and grid
+		else if (showControl && (CP1_Selected != -1 || CP2_Selected != -1)) {  // drag control point
+			if (CP1_DistE < CP2_DistE && CP1_Selected != -1) CP1[CP1_Selected] = CP1[CP1_Selected] + d;
+			else if (CP2_Selected != -1) CP2[CP2_Selected] = CP2[CP2_Selected] + d;
+		}
+		else if (!Ctrl && howerPolygon) {  // drag shape
+			if (howerPolygon == &CP1) translatePolygon(CP1, d);
+			else if (howerPolygon == &CP2) translatePolygon(CP2, d);
+		}
+		else if (!Ctrl) {	// drag grid
 			Center = Center + d * Unit;
-			if (lockBackground) BKGPos = BKGPos + d * Unit;
 		}
 	}
+	CP1_Center = isSelfIntersecting(CP1) ? (calcCenterE(CP1) + calcCenter(CP1)) * 0.5 : calcCOM(CP1);
+	CP2_Center = isSelfIntersecting(CP2) ? (calcCenterE(CP2) + calcCenter(CP2)) * 0.5 : calcCOM(CP2);
 
-	// #2 Ctrl: add a control point
-	CP_Insert = -1;
-	if (Ctrl) {
-		float d, mind = 1e+8;
-		for (int i = 0, n = CP.size(); i < n; i++) {
-			d = sdSqLine(p, CP[i], CP[(i + 1) % n]);
-			if (d < mind) mind = d, CP_Insert = i;
+	if (!Alt && !Shift && CP1_Selected == -1 && CP2_Selected == -1 && !(mouse_down && howerPolygon)) {  // refresh distance to polygons
+		CP1_Insert = CP2_Insert = -1, CP1_DistE = CP2_DistE = 1e8;
+		for (int i = 0, n = CP1.size(); i < n; i++) {
+			double d = sdSqLine(p, CP1[i], CP1[(i + 1) % n]);
+			if (d < CP1_DistE) CP1_DistE = d, CP1_Insert = i;
 		}
+		for (int i = 0, n = CP2.size(); i < n; i++) {
+			double d = sdSqLine(p, CP2[i], CP2[(i + 1) % n]);
+			if (d < CP2_DistE) CP2_DistE = d, CP2_Insert = i;
+		}
+		CP1_Dist = length(p - CP1_Center);
+		CP2_Dist = length(p - CP2_Center);
+		if (Ctrl) {  // calculate fitted point
+			if (CP1_DistE < CP2_DistE) CP2_Insert = -1;
+			else CP1_Insert = -1;
+		}
+		else CP1_Insert = CP2_Insert = -1;
+		bool Hower1 = isInside(CP1, p), Hower2 = isInside(CP2, p);
+		if (Hower1) howerPolygon = Hower2 && CP1_Dist > CP2_Dist ? &CP2 : &CP1;
+		else howerPolygon = Hower2 ? &CP2 : 0;
 	}
 }
 
 void MouseWheel(int _DELTA) {
-	if (Ctrl && showBackground) {
-		BKGAlpha = clamp(BKGAlpha + 0.0001*_DELTA, 0.01, 0.99);
-		refreshBackground();
+	if (Ctrl) {
+		if (_DELTA > 0) CPR++;
+		else if (_DELTA < 0 && CPR > 4) CPR--;
 		return;
 	}
-	float s = exp((Alt ? 0.0001 : 0.001)*_DELTA);
-	float D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.02*D;
+	double s = exp((Alt ? 0.0001 : 0.001)*_DELTA);
+	double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.02*D;
 	if (Unit * s > Max) s = Max / Unit;
 	else if (Unit * s < Min) s = Min / Unit;
-	if (Shift) {
-		if (lockBackground) BKGPos = fromFloat(fromInt(BKGPos) * s);
-	}
-	else {
-		Center = mix(Cursor, Center, s);
-		if (lockBackground) BKGPos = (BKGPos - Cursor) * s + Cursor;
-	}
-	if (lockBackground) BKGUnit /= s;
+	Center = mix(Cursor, Center, s);
 	Unit *= s;
 }
 
@@ -557,11 +422,12 @@ void MouseDownL(int _X, int _Y) {
 	vec2 p = fromInt(Cursor);
 
 	// #1 drag: move a control point
-	float r2 = CPR / Unit; r2 *= r2;
-	for (unsigned i = 0; i < CP.size(); i++) {
-		if ((CP[i] - p).sqr() < r2) {
-			CP_Selected = i; return;
-		}
+	double r2 = CPR / Unit; r2 *= r2;
+	for (unsigned i = 0; i < CP1.size(); i++) {
+		if ((CP1[i] - p).sqr() < r2) { CP1_Selected = i; return; }
+	}
+	for (unsigned i = 0; i < CP2.size(); i++) {
+		if ((CP2[i] - p).sqr() < r2) { CP2_Selected = i; return; }
 	}
 }
 
@@ -572,22 +438,18 @@ void MouseUpL(int _X, int _Y) {
 	vec2 p = fromInt(Cursor);
 
 	// #1 drag: move a control point
-	float r2 = CPR / Unit; r2 *= r2;
-	for (unsigned i = 0; i < CP.size(); i++) {
-		if ((CP[i] - p).sqr() < r2) {
-			CP_Selected = -1;
-		}
-	}
+	CP1_Selected = CP2_Selected = -1;
 
 	// #2 Ctrl: add a control point
-	if (Ctrl && CP_Insert != -1) {
-		CP.insert(CP.begin() + CP_Insert + 1, p);
-		CP_Selected = -1;
+	if (Ctrl) {
+		if (CP1_Insert != -1) CP1.insert(CP1.begin() + CP1_Insert + 1, p), CP1_Selected = -1;
+		if (CP2_Insert != -1) CP2.insert(CP2.begin() + CP2_Insert + 1, p), CP2_Selected = -1;
 	}
 }
 
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+	MouseMove(_X, _Y);
 }
 
 void MouseUpR(int _X, int _Y) {
@@ -596,229 +458,60 @@ void MouseUpR(int _X, int _Y) {
 	if (!showControl) return;
 
 	// #3 rightclick: remove a control point
-	if (CP.size() > 3) {
-		float r2 = CPR / Unit; r2 *= r2;
-		for (unsigned i = 0; i < CP.size(); i++) {
-			if ((CP[i] - p).sqr() < r2) {
-				CP.erase(CP.begin() + i);
-				CP_Selected = -1;
+	if (CP1_DistE < CP2_DistE && CP1.size() > 3) {
+		double r2 = CPR / Unit; r2 *= r2;
+		for (unsigned i = 0; i < CP1.size(); i++) {
+			if ((CP1[i] - p).sqr() < r2) {
+				CP1.erase(CP1.begin() + i);
+				CP1_Selected = -1; return;
+			}
+		}
+	}
+	else if (CP2.size() > 3) {
+		double r2 = CPR / Unit; r2 *= r2;
+		for (unsigned i = 0; i < CP2.size(); i++) {
+			if ((CP2[i] - p).sqr() < r2) {
+				CP2.erase(CP2.begin() + i);
+				CP2_Selected = -1; return;
 			}
 		}
 	}
 }
 
 void KeyDown(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = true, MouseMove(Cursor.x, Cursor.y);		// call MouseMove to calculate insert position
+	if (_KEY == VK_CONTROL) {
+		Ctrl = true;
+		if (CP1_Insert == -1 && CP2_Insert == -1) MouseMove((int)Cursor.x, (int)Cursor.y);  // call MouseMove to calculate insert position
+	}
 	else if (_KEY == VK_SHIFT) Shift = true;
 	else if (_KEY == VK_MENU) Alt = true;
-	else if (_KEY == 'S') S_Key = true;
 	if (Ctrl && (_KEY >= 'A' && _KEY <= 'Z')) {
 		Ctrl = false;
-		if (_KEY == 'S')
-			if (!saveFile()) MessageBeep(MB_ICONSTOP);
-		if (_KEY == 'O')
-			if (!readFile()) MessageBeep(MB_ICONSTOP);
-		if (_KEY == 'R')
-			if (!selectBackground()) MessageBeep(MB_ICONSTOP);
-	}
-	if (Shift && (_KEY >= 'A' && _KEY <= 'Z')) {
-		vec2 c(0.0);
-		for (unsigned i = 0; i < CP.size(); i++) c = c + CP[i];
-		c = c * (1.0 / CP.size());
-		if (_KEY == 'C') {
-			for (unsigned i = 0; i < CP.size(); i++) CP[i] = CP[i] - c;
-			showControl = !showControl;
+		if (_KEY == 'P' || _KEY == 'S') {
+			dbgprint("CP1 = \"%s\"\n", &sprintPolygon(CP1)[0]);
+			dbgprint("CP2 = \"%s\"\n", &sprintPolygon(CP2)[0]);
 		}
-		if (_KEY == 'M')
-			for (unsigned i = 0; i < CP.size(); i++) CP[i] = CP[i] - c + fromInt(Cursor);
 	}
 }
 
 void KeyUp(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = false, CP_Insert = -1;
+	if (_KEY == VK_CONTROL) Ctrl = false, CP1_Insert = CP2_Insert = -1;
 	else if (_KEY == VK_SHIFT) Shift = false;
 	else if (_KEY == VK_MENU) Alt = false;
-	else if (_KEY == 'S') S_Key = false;
-	if (_KEY == VK_LEFT) CP.insert(CP.begin(), CP[CP.size() - 1]), CP.pop_back();		// switch endpoint
-	else if (_KEY == VK_RIGHT) CP.push_back(CP[0]), CP.erase(CP.begin());	// switch endpoint
-	else if (_KEY == VK_SPACE) for (int i = 1, n = CP.size(); i <= (n - 1) / 2; i++) std::swap(CP[i], CP[n - i]);	// reverse point direction
-	else if (_KEY == VK_TAB) IntpMethod = (Ctrl || Shift) ? Intp((IntpMethod + IntN - 1) % IntN) : Intp((IntpMethod + 1) % IntN);	// previous/next interpolation method
-	else if (_KEY == 'B') showBackground = !showBackground;
+	else if (_KEY == VK_LEFT) {		// shift endpoint
+		if (CP1_Dist < CP2_Dist) CP1.insert(CP1.begin(), CP1[CP1.size() - 1]), CP1.pop_back();
+		else CP2.insert(CP2.begin(), CP2[CP2.size() - 1]), CP2.pop_back();
+	}
+	else if (_KEY == VK_RIGHT) {	// shift endpoint
+		if (CP1_Dist < CP2_Dist) CP1.push_back(CP1[0]), CP1.erase(CP1.begin());
+		else CP2.push_back(CP2[0]), CP2.erase(CP2.begin());
+	}
+	else if (_KEY == VK_SPACE) {	// reverse point direction
+		if (CP1_Dist < CP2_Dist) for (int i = 1, n = CP1.size(); i <= (n - 1) / 2; i++) std::swap(CP1[i], CP1[n - i]);
+		else for (int i = 1, n = CP2.size(); i <= (n - 1) / 2; i++) std::swap(CP2[i], CP2[n - i]);
+	}
 	else if (_KEY == 'C') showControl = !showControl;
-	else if (_KEY == 'L') if (showBackground) lockBackground = !lockBackground;
+	else if (_KEY == 'M') showCenter = !showCenter;
+	else if (_KEY == 'B') showAABB = !showAABB;
+	else if (_KEY == 'H') showConvexHull = !showConvexHull;
 }
-
-
-
-// ======================================== File Operations ========================================
-
-bool saveFile() {
-	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetSaveFileName(&ofn)) return false;
-	FILE *fp = _wfopen(filename, L"ab");
-	if (fp == 0) return false;
-
-	// encode binary data
-	fprintf(fp, "NO#EDIT#");
-	byte d = 137;
-	auto encode = [&](const void* p, int l) {
-		for (int i = 0; i < l; d += ((byte*)p)[i] + 13, i++) {
-			byte c = ~(53 * (((byte*)p)[i] + d));  // just don't want "xx000000" to appear in text
-			byte c0 = c & 0xF, c1 = c >> 4;
-			fprintf(fp, "%c%c", c1 > 9 ? c1 + 55 : c1 + '0', c0 > 9 ? c0 + 55 : c0 + '0');
-		}
-	};
-	int n = CP.size(), method = IntpMethod;
-	encode(&method, sizeof(method));
-	encode(&n, sizeof(n));
-	for (int i = 0; i < n; i++) encode(&CP[i], sizeof(vec2));
-	fprintf(fp, "\n\n");
-
-	// write text expression
-	fprintf(fp, "# %s\n\n", IntpName[method]);
-
-	// control points
-	fprintf(fp, "// control points\n");
-	fprintf(fp, "vec2 path[%d] = {", n);
-	for (int i = 0; i < n; i++) fprintf(fp, " vec2(%f,%f)%c", CP[i].x, CP[i].y, i + 1 == n ? ' ' : ',');
-	fprintf(fp, "};\n");
-
-	if (IntpMethod == FourierSeries) {	// print Fourier coefficients
-		int N = CP.size() / 2 + 1;
-		vec2 *a = new vec2[N], *b = new vec2[N];
-		calcFourierParameter(a, b, N);
-
-		// computed Fourier parameters
-		fprintf(fp, "\n// computed Fourier parameters\n");
-		fprintf(fp, "vec2 a[%d] = { ", N);
-		for (int i = 0; i < N; i++) fprintf(fp, "vec2(%f,%f)%c", a[i].x, a[i].y, i + 1 == N ? ' ' : ',');
-		fprintf(fp, "};\n");
-		fprintf(fp, "vec2 b[%d] = { ", N);
-		for (int i = 0; i < N; i++) fprintf(fp, "vec2(%f,%f)%c", b[i].x, b[i].y, i + 1 == N ? ' ' : ',');
-		fprintf(fp, "};\n");
-
-		// mathematical expression
-		fprintf(fp, "\n// mathematical expression\n");
-		fprintf(fp, "(");
-		bool sign = false;
-		for (int i = 0; i < N; i++) {
-			if (abs(a[i].x) > 1e-4) {
-				if (sign) fprintf(fp, "%+.4g", a[i].x); else { fprintf(fp, "%.4g", a[i].x); sign = true; }
-				if (i != 0) { if (i != 1) fprintf(fp, "cos(%dt)", i); else fprintf(fp, "cos(t)"); }
-			}
-			if (abs(b[i].x) > 1e-4) {
-				if (sign) fprintf(fp, "%+.4g", b[i].x); else { fprintf(fp, "%.4g", b[i].x); sign = true; }
-				if (i != 1) fprintf(fp, "sin(%dt)", i); else fprintf(fp, "sin(t)");
-			}
-		}
-		fprintf(fp, ", "); sign = false;
-		for (int i = 0; i < N; i++) {
-			if (abs(a[i].y) > 1e-4) {
-				if (sign) fprintf(fp, "%+.4g", a[i].y); else { fprintf(fp, "%.4g", a[i].y); sign = true; }
-				if (i != 0) { if (i != 1) fprintf(fp, "cos(%dt)", i); else fprintf(fp, "cos(t)"); }
-			}
-			if (abs(b[i].y) > 1e-4) {
-				if (sign) fprintf(fp, "%+.4g", b[i].y); else { fprintf(fp, "%.4g", b[i].y); sign = true; }
-				if (i != 1) fprintf(fp, "sin(%dt)", i); else fprintf(fp, "sin(t)");
-			}
-		}
-		fprintf(fp, ")\n\n");
-
-		delete a, b;
-	}
-	else {
-		// print svg path
-		fprintf(fp, "\n// svg path\n");
-		fprintf(fp, "<path transform='matrix(%.1f,0,0,%.1f,%.1f,%.1f)' d='", Unit, -Unit, Center.x, _WIN_H - 1.0 - Center.y);
-
-		auto svg_printf = [&](float x) { if (abs(x) < 1e-4) fprintf(fp, "0"); else fprintf(fp, "%.4g", x); };
-		auto svg_printv = [&](vec2 p) { svg_printf(p.x); if (p.y > 1e-4) fputc(',', fp); svg_printf(p.y); };
-		auto svg_printv2 = [&](vec2 p, vec2 q) { svg_printv(p); if (q.x > 1e-4) fputc(' ', fp); svg_printv(q); };
-		auto svg_printv3 = [&](vec2 p, vec2 q, vec2 r) { svg_printv2(p, q); if (r.x > 1e-4) fputc(' ', fp); svg_printv(r); };
-
-		switch (IntpMethod) {
-		case Linear: {
-			fputc('M', fp), svg_printv(CP[0]);
-			for (int i = 1, n = CP.size(); i < n; i++) fputc('L', fp), svg_printv(CP[i]);
-			fputc('Z', fp); break;
-		}
-		case CatmullRom: {
-			fputc('M', fp), svg_printv(CP[0]);
-			for (int i = 1, n = CP.size(); i < n; i++) {
-				fputc('C', fp);
-				vec2 A = CP[(i + n - 1) % n], B = CP[i], C = CP[(i + 1) % n], D = CP[(i + 2) % n];
-				spline3 Sp = SpCatmullRom(A, B, C, D);
-				svg_printv3(B + Sp.C1 * _13, B + (Sp.C2 + Sp.C1 * 2.0)*_13, C);
-			}
-			break;
-		}
-		case QuadraticB: {
-			fputc('M', fp), svg_printv((CP[0] + CP.back())*0.5);
-			fputc('Q', fp), svg_printv2(CP[0], (CP[0] + CP[1])*0.5);
-			for (int i = 1, n = CP.size(); i < n; i++) {
-				fputc('T', fp);
-				svg_printv((CP[i] + CP[(i + 1) % n])*0.5);
-			}
-			break;
-		}
-		case CubicB: {
-			fputc('M', fp), svg_printv((CP[0] * 4.0 + CP[1] + CP.back())*_16);
-			fputc('C', fp), svg_printv3((CP[0] * 2.0 + CP[1])*_13, (CP[0] + CP[1] * 2.0)*_13, (CP[0] + CP[1] * 4.0 + CP[2])*_16);
-			for (int i = 1, n = CP.size(); i < n; i++) {
-				fputc('S', fp);
-				svg_printv2((CP[i] + CP[(i + 1) % n] * 2.0)*_13, (CP[i] + CP[(i + 1) % n] * 4.0 + CP[(i + 2) % n])*_16);
-			}
-			break;
-		}
-		}
-
-		fprintf(fp, "'></path>\n\n");
-	}
-	fprintf(fp, "\n\n");
-	fclose(fp);
-	return true;
-}
-
-bool readFile() {
-	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetOpenFileName(&ofn)) return false;
-	FILE *fp = _wfopen(filename, L"rb");
-	if (fp == 0) return false;
-
-	char k[8]; if (!fread(k, 1, 8, fp)) return false;
-	for (int i = 0; i < 8; i++) if (k[i] != "NO#EDIT#"[i]) return false;
-	byte d = 137;
-	auto decode = [&](void* p, int l) -> bool {
-		for (int i = 0; i < l; i++) {
-			byte b[2] = { (byte)fgetc(fp), (byte)fgetc(fp) };
-			for (int i = 0; i < 2; i++) {
-				if (!((b[i] >= '0' && b[i] <= '9') || (b[i] >= 'A' && b[i] <= 'F'))) return false;	// security check
-				b[i] = b[i] > '9' ? b[i] - 55 : b[i] - '0';
-			}
-			((byte*)p)[i] = 29 * (~((b[0] << 4) | b[1])) - d, d += ((byte*)p)[i] + 13;  // "decrypt" data: byte(29*53) = 1
-		}
-		return true;
-	};
-	int n, method;
-	if (!decode(&method, sizeof(method))) return false;
-	if (!decode(&n, sizeof(n))) return false;
-	vec2 *P = new vec2[n];
-	for (int i = 0; i < n; i++) {
-		if (!decode(&P[i], sizeof(vec2))) return false;
-		if (0.0*(P[i].x*P[i].y) != 0.0) return false;
-	}
-	IntpMethod = (Interpolation)method;
-	CP.resize(n);
-	for (int i = 0; i < n; i++) CP[i] = P[i];
-	delete P;
-	return true;
-}
-
