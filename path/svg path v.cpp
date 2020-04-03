@@ -37,6 +37,7 @@ public:
 	double a, b, c, d, x, y;
 	mat2x3() :a(1), b(0), c(0), d(1), x(0), y(0) {}
 	mat2x3(double a, double b, double c, double d) :a(a), b(b), c(c), d(d), x(0), y(0) {}
+	mat2x3(double s) :a(s), b(0), c(0), d(s), x(0), y(0) {}
 	mat2x3(double x, double y) :a(1), b(0), c(0), d(1), x(x), y(y) {}
 	mat2x3(double a, double b, double c, double d, double x, double y) :a(a), b(b), c(c), d(d), x(x), y(y) {}
 	mat2x3 operator * (const mat2x3 &m) const {
@@ -54,6 +55,7 @@ public:
 // applyTo(vec2): have translation
 
 mat2x3 RotationMatrix(double a) { return mat2x3(cos(a), -sin(a), sin(a), cos(a)); }
+#define radians(deg) ((deg)*0.017453292519943295)
 
 
 //===================== Cubic Spline Class and Operations =====================//
@@ -340,7 +342,7 @@ bool fromPath(const string &S, vector<spline3> &V) {
 		}
 		case 'A':; case 'a': {		// possibly have bugs
 			vec2 r; readPoint(r);
-			double theta; readFloat(theta); theta *= PI / 180;
+			double theta; readFloat(theta); theta = radians(theta);
 			bool laf, sf; readFloat(laf); readFloat(sf);
 			vec2 Q; readPoint(Q);
 			if (cmd == 'a') Q = P + Q;
@@ -442,28 +444,208 @@ string toMath(const vector<spline3> &v) {
 }
 
 
-// read an svg file - no "transform" attribute!
-vector<vector<spline3>> readFile(string file) {
+
+//================== Read SVG file - No error handling, valid svg please! ==================//
+
+struct Element {
+	// XML
+	struct attribute { string name, value; };
+	string tagName;
+	vector<attribute> attributes;
+	string value;
+	vector<Element> childs;
+	// Vector Graphics
+	mat2x3 transform;
+	vector<spline3> d;
+};
+
+#define isXMLName(c) (((c)>='a'&&(c)<='z')||((c)>='A'&&(c)<='Z')||((c)>='0'&&(c)<='9')||(c)=='-'||(c)=='_'||(c)=='.'||(c)==':')
+#define skipSpace(s,d) while(s[d]>0&&s[d]<=' ')d++;
+#define readName(r,s,d) while(isXMLName(s[d]))r.push_back(s[d++]);
+#define readValue(r,s,d) while(s[d]&&s[d]!='\"'&&s[d]!='\''&&s[d]!='<'&&s[d]!='>')r.push_back(s[d++]);
+bool readXML(const char *s, int &d, Element &r) {
+	if (s[d++] != '<') return false;
+	// read tagname
+	r.tagName = "";
+	skipSpace(s, d); readName(r.tagName, s, d); skipSpace(s, d);
+	//cout << r.tagName << endl;
+	// read attributes
+	r.attributes.clear();
+	while (s[d] != '/' && s[d] != '>') {
+		r.attributes.push_back(Element::attribute());
+		readName(r.attributes.back().name, s, d);
+		skipSpace(s, d);
+		if (s[d] == '=') {
+			d++; skipSpace(s, d);  // xx="
+			if (s[d] != '\"'&&s[d] != '\'') printf("[%d] No\": %d\n", __LINE__, d);
+			d++; readValue(r.attributes.back().value, s, d);
+			if (s[d] != '\"'&&s[d] != '\'') printf("[%d] No\": %d\n", __LINE__, d);
+			d++;
+			//cout << r.attributes.back().name << "      \t" << r.attributes.back().value << endl;
+		}
+		else printf("[%d] No=: %d\n", __LINE__, d);
+		skipSpace(s, d);
+	}
+	if (s[d] == '/') {  // inline close element
+		while (s[d++] != '>');
+		return true;
+	}
+	else if (s[d] == '>') {
+		d++;
+		readValue(r.value, s, d);
+		if (s[d] != '<') printf("[%d] No<: %d\n", __LINE__, d);
+		while (s[d] == '<') {
+			int d0 = d;
+			d++; skipSpace(s, d);
+			if (s[d] == '/') {  // close element
+				while (s[d++] != '>');
+				return true;
+			}
+			else d = d0;
+			// read subtree
+			r.childs.push_back(Element());
+			//cout << endl;
+			if (!readXML(s, d, r.childs.back())) return false;
+			//cout << endl;
+			readValue(r.value, s, d);
+		}
+		return true;
+	}
+	else return false;
+}
+
+void writeXML(const Element &E, FILE *fp) {
+	if (E.tagName == "clipPath") return;  // remove it for some reason
+	fprintf(fp, "<%s", &E.tagName[0]);
+	for (int i = 0, n = E.attributes.size(); i < n; i++) {
+		fprintf(fp, " %s=\"%s\"", &E.attributes[i].name[0], &E.attributes[i].value[0]);
+	}
+	fprintf(fp, ">");
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		writeXML(E.childs[i], fp);
+	}
+	fprintf(fp, "</%s>", &E.tagName[0]);
+}
+
+#define readFloat(r,s,d) do{while(s[d]&&s[d]<'-')d++;unsigned sz;r=stod(&s[d],(size_t*)&sz);d+=sz;}while(0)
+bool extractTransform(Element &E) {
+	E.transform = mat2x3();
+	bool ok = true;
+	for (int i = 0, n = E.attributes.size(); i < n; i++) {
+		if (E.attributes[i].name == "transform") {
+			string t = E.attributes[i].value;
+			int d = 0;
+			while (t[d]) {
+				while (t[d] < 'A' && t[d] != '\"') d++;
+				string c; readName(c, t, d); skipSpace(t, d);
+				if (c == "matrix") {
+					double a, b, c, d_, x, y;
+					readFloat(a, t, d); readFloat(c, t, d); readFloat(b, t, d); readFloat(d_, t, d); readFloat(x, t, d); readFloat(y, t, d);
+					E.transform = E.transform * mat2x3(a, b, c, d_, x, y);
+				}
+				else if (c == "translate") {
+					double x, y;
+					readFloat(x, t, d); readFloat(y, t, d);
+					E.transform = E.transform * mat2x3(x, y);
+				}
+				else {
+					printf("[%d] %s\n", __LINE__, &c[0]);  // not supported
+					ok = false; break;
+				}
+				break;
+			}
+		}
+	}
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		ok &= extractTransform(E.childs[i]);
+	}
+	return ok;
+}
+
+bool extractPath(Element &E) {
+	E.d.clear();
+	bool ok = true;
+	for (int i = 0, n = E.attributes.size(); i < n; i++) {
+		if (E.attributes[i].name == "d") {
+			ok &= fromPath(E.attributes[i].value, E.d);
+		}
+	}
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		ok &= extractPath(E.childs[i]);
+	}
+	return ok;
+}
+
+void flattenTransform(Element &E, mat2x3 T) {
+	T = T * E.transform; E.transform = mat2x3();
+	applyMatrix(E.d, T);
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		flattenTransform(E.childs[i], T);
+	}
+}
+
+void refreshTransform(Element &E) {
+	stringstream ss;
+	ss << "matrix(" << E.transform.a << "," << E.transform.c << "," << E.transform.b << "," << E.transform.d << "," << E.transform.x << "," << E.transform.y << ")";
+	string s = ss.str();
+	if (s == "matrix(1,0,0,1,0,0)") s = "";
+	bool find = false;
+	for (int i = 0, n = E.attributes.size(); i < n; i++) {
+		if (E.attributes[i].name == "transform") {
+			E.attributes[i].value = s;
+			find = true; break;
+		}
+	}
+	if (!find && !s.empty()) {
+		E.attributes.push_back(Element::attribute{ "transform", s });
+	}
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		refreshTransform(E.childs[i]);
+	}
+}
+
+void refreshPath(Element &E) {
+	if (E.tagName == "path") {
+		string s = toPath(E.d);
+		for (int i = 0, n = E.attributes.size(); i < n; i++) {
+			if (E.attributes[i].name == "d") {
+				E.attributes[i].value = s; break;
+			}
+		}
+	}
+	for (int i = 0, n = E.childs.size(); i < n; i++) {
+		refreshPath(E.childs[i]);
+	}
+}
+
+void getPath(const Element &E, vector<vector<spline3>> &p) {
+	if (!E.d.empty() && E.tagName != "clipPath") p.push_back(E.d);
+	for (int i = 0, n = E.childs.size(); i < n; i++) getPath(E.childs[i], p);
+}
+
+// read a svg file - no "defs" please!
+vector<vector<spline3>> readSVG(string filename) {
 	vector<vector<spline3>> r;
-	ifstream _if(file);
+	ifstream _if(filename);
 	if (_if.fail()) return r;
 	string s((istreambuf_iterator<char>(_if)), istreambuf_iterator<char>());
 	_if.close();
-	int d = 0;
-	while (s.find("=", d) != -1) {
-		d = s.find("=", d) + 1;
-		if (d >= s.size()) return r;
-		int d1 = s.find(s[d], d + 1);
-		if (d1 == -1) return r;
-		string t = s.substr(d + 1, d1 - d - 1);
-		r.push_back(vector<spline3>());
-		if (!fromPath(t, r.back())) r.pop_back();
-	}
-	return r;
+	const int n = s.size();
+	int d = s.find("<svg");
+	if (d == -1) return r;
+	Element SVG;
+	if (!readXML(&s[0], d, SVG)) printf("Error! [%d]\n", __LINE__);
+	extractTransform(SVG);
+	extractPath(SVG);
+	flattenTransform(SVG, mat2x3());
+	getPath(SVG, r); return r;
+	//refreshTransform(SVG);
+	//refreshPath(SVG);
+	//FILE *fp = fopen("D:\\ex+.svg", "w"); writeXML(SVG, fp); fclose(fp);
 }
 
 int main() {
-#if 1
+#if 0
 	string s;
 	ifstream fin("D:\\temp.dat");
 	getline(fin, s);
@@ -476,10 +658,10 @@ int main() {
 	applyMatrix(path, mat2x3(S, 0, 0, -S) * mat2x3(-C.x, -C.y));
 	cout << toMath(path) << endl;
 #else
-	vector<vector<spline3>> paths = readFile("D:\\ex.svg");
+	vector<vector<spline3>> paths = readSVG("D:\\ex.svg");
 	if (paths.empty()) { cout << "Error!\n"; return 0; }
 	vec2 Min, Max; getRange(paths, Min, Max);
-	double S = 1.0 / sqrt((Max.x - Min.x)*(Max.y - Min.y));
+	double S = 5.0 / sqrt((Max.x - Min.x)*(Max.y - Min.y));
 	vec2 C = calcCenter(paths);
 	applyMatrix(paths, mat2x3(S, 0, 0, -S) * mat2x3(-C.x, -C.y));
 	for (int i = 0, n = paths.size(); i < n; i++) {
@@ -487,5 +669,5 @@ int main() {
 	}
 #endif
 	return 0;
-	}
+}
 
