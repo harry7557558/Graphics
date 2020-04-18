@@ -1,6 +1,3 @@
-// Graphing Implicit Surface
-
-
 /* ==================== User Instructions ====================
 
  *  Move View:                  drag background
@@ -179,7 +176,7 @@ double sdNode(vec2 p, const Node& n) {
 double newNode_r = 1.0;
 std::vector<Node> PL = { Node{vec2(0,0), newNode_r} };
 
-int closestNode = 0;
+int fittedNode = 0;
 int calcClosestNode(vec2 p, bool selected_only = false) {
 	int c = -1; double md = 2.0 / Unit;
 	for (int i = 0, n = PL.size(); i < n; i++) {
@@ -189,6 +186,13 @@ int calcClosestNode(vec2 p, bool selected_only = false) {
 		}
 	}
 	return c;
+}
+int calcHoverNode(vec2 p) {
+	int mm = 2.0 / Unit;
+	for (int n = PL.size() - 1; n >= 0; n--) {
+		if (sdNode(p, PL[n]) < mm) return n;
+	}
+	return -1;
 }
 double calcSDF(vec2 p, bool selected_only = false) {
 	double md = INFINITY;
@@ -315,8 +319,8 @@ void render() {
 		}
 	}
 	// highlight fitted object
-	if (closestNode != -1) {
-		drawCrossF(PL[closestNode].p, 6, LIME);
+	if (fittedNode != -1) {
+		drawCrossF(PL[fittedNode].p, 6, LIME);
 	}
 	// highlight transformation center
 	if (Rotate || Scale) {
@@ -390,7 +394,7 @@ void MouseMove(int _X, int _Y) {
 		}
 	}
 
-	closestNode = calcClosestNode(p);
+	fittedNode = calcHoverNode(p);
 }
 
 void MouseWheel(int _DELTA) {
@@ -403,7 +407,7 @@ void MouseWheel(int _DELTA) {
 			return;
 		}
 	}
-	double s = exp((Alt ? 0.0001 : 0.001)*_DELTA);
+	double s = exp(0.001*_DELTA);
 	double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.02*D;
 	if (Unit * s > Max) s = Max / Unit;
 	else if (Unit * s < Min) s = Min / Unit;
@@ -433,7 +437,7 @@ void MouseUpL(int _X, int _Y) {
 		}
 		else {
 			if (!Shift) for (int i = 0, n = PL.size(); i < n; i++) PL[i].selected = false;
-			if (closestNode != -1) PL[closestNode].selected ^= 1;
+			if (fittedNode != -1) PL[fittedNode].selected ^= 1;
 		}
 	}
 }
@@ -462,7 +466,7 @@ void KeyUp(WPARAM _KEY) {
 		for (int i = 0; i < PL.size(); i++) {
 			if (PL[i].selected) PL.erase(PL.begin() + i), i--;
 		}
-		closestNode = calcClosestNode(fromInt(Cursor));
+		fittedNode = calcHoverNode(fromInt(Cursor));
 	}
 	else if (Ctrl) {
 		if (_KEY == 'A') for (int i = 0, n = PL.size(); i < n; i++) PL[i].selected = true;
