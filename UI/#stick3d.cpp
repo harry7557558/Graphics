@@ -72,7 +72,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 // ================================== Vector Classes/Functions ==================================
 
-#pragma region Vector & Matrix Classes/Functions
+#pragma region Vector & Matrix
 
 #include <cmath>
 #pragma warning(disable: 4244 4305)
@@ -98,8 +98,6 @@ public:
 	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
 	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; } 	// not standard
 #if 1
-	//vec2 operator == (const vec2 &v) const { return x == v.x && y == v.y; }
-	//vec2 operator != (const vec2 &v) const { return x != v.x || y != v.y; }
 	void operator += (const vec2 &v) { x += v.x, y += v.y; }
 	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }
 	void operator *= (const vec2 &v) { x *= v.x, y *= v.y; }
@@ -109,10 +107,14 @@ public:
 	void operator *= (const double &a) { x *= a, y *= a; }
 	vec2 operator / (const double &a) const { return vec2(x / a, y / a); }
 	void operator /= (const double &a) { x /= a, y /= a; }
-	friend vec2 abs(const vec2 &a) { return vec2(abs(a.x), abs(a.y)); }
 #endif
 	vec2 yx() const { return vec2(y, x); }
 	vec2 rot() const { return vec2(-y, x); }
+#if 1
+	friend vec2 abs(const vec2 &a) { return vec2(abs(a.x), abs(a.y)); }
+	friend vec2 floor(const vec2 &a) { return vec2(floor(a.x), floor(a.y)); }
+	friend vec2 ceil(const vec2 &a) { return vec2(ceil(a.x), ceil(a.y)); }
+#endif
 };
 
 class vec3 {
@@ -141,26 +143,59 @@ public:
 	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
 	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
-	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
 #endif
 	vec2 xy() const { return vec2(x, y); }
 	vec2 xz() const { return vec2(x, z); }
 	vec2 yz() const { return vec2(y, z); }
+#if 1
+	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
+	friend vec3 floor(const vec3 &a) { return vec3(floor(a.x), floor(a.y), floor(a.z)); }
+	friend vec3 ceil(const vec3 &a) { return vec3(ceil(a.x), ceil(a.y), ceil(a.z)); }
+#endif
 };
 
 const vec3 veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
+#define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
 
-#if 0
-class mat3 {
-public:
-	vec3 _0, _1, _2;  // columns
-	mat3() :_0(1, 0, 0), _1(0, 1, 0), _2(0, 0, 1) {}
-	mat3(const double &s) :_0(s, 0, 0), _1(0, s, 0), _2(0, 0, s) {}
-	mat3(const vec3 &d) :_0(d.x, 0, 0), _1(0, d.y, 0), _2(0, 0, d.z) {}
-	mat3(const vec3 &u, const vec3 &v, const vec3 &w) :_0(u), _1(v), _2(w) {}
-
+// 4x4 matrix
+struct Affine {
+	vec3 u, v, w;  // first row, second row, third row
+	vec3 t, p;  // translation, perspective
+	double s;  // scaling
 };
-#endif
+vec3 operator * (Affine T, vec3 p) {
+	vec3 q = vec3(dot(T.u, p), dot(T.v, p), dot(T.w, p)) + T.t;
+	double d = 1.0 / (dot(T.p, p) + T.s);
+	//return d < 0.0 ? vec3(NAN) : q * d;
+	return q * d;
+}
+Affine operator * (const Affine &A, const Affine &B) {
+	Affine R;
+	R.u = A.u.x*B.u + A.u.y*B.v + A.u.z*B.w + A.t.x*B.p;
+	R.v = A.v.x*B.u + A.v.y*B.v + A.v.z*B.w + A.t.y*B.p;
+	R.w = A.w.x*B.u + A.w.y*B.v + A.w.z*B.w + A.t.z*B.p;
+	R.t = vec3(dot(A.u, B.t), dot(A.v, B.t), dot(A.w, B.t)) + A.t*B.s;
+	R.p = vec3(A.p.x*B.u.x + A.p.y*B.v.x + A.p.z*B.w.x, A.p.x*B.u.y + A.p.y*B.v.y + A.p.z*B.w.y, A.p.x*B.u.z + A.p.y*B.v.z + A.p.z*B.w.z) + B.p*A.s;
+	R.s = dot(A.p, B.t) + A.s*B.s;
+	return R;
+}
+
+#pragma endregion
+
+
+#pragma region Intersection Functions - NOT DESIGNED FOR RT!
+
+double intXOY(vec3 p, vec3 d) {
+	return -p.z / d.z;
+}
+double intSphere(vec3 O, double r, vec3 p, vec3 d) {
+	p = p - O; if (dot(p, d) >= 0.0) return NAN;
+	vec3 k = cross(p, d); double rd2 = dot(k, k); if (rd2 > r*r) return NAN;
+	return sqrt(dot(p, p) - rd2) - sqrt(r*r - rd2);
+}
+
+#pragma endregion return the distance, NAN means no intersection
+
 
 // COLORREF
 enum WebSafeColors {
@@ -191,10 +226,6 @@ enum WebSafeColors {
 	WHITE = 0xFFFFFF, WHITESMOKE = 0xF5F5F5, YELLOW = 0xFFFF00, YELLOWGREEN = 0x9ACD32,
 };
 
-
-#pragma endregion
-
-
 // ======================================== Data / Parameters ========================================
 
 #include <stdio.h>
@@ -204,35 +235,9 @@ enum WebSafeColors {
 
 // window parameters
 char text[64];	// window title
-vec3 Center(0.0);
-double rz = 0.25*PI, rx = 0.2*PI, inv_d = 0.08, Unit = 50.0;  // spherical, inverse of camera distance, scale to screen
-struct Affine { vec3 u, v, w, t, p; double s; };  // 4x4 matrix: first row, second row, third row, translation, perspective, scale
-vec3 operator * (Affine T, vec3 p) {
-	vec3 q = vec3(dot(T.u, p), dot(T.v, p), dot(T.w, p)) + T.t;
-	double d = dot(T.p, p) + T.s;
-	//return d < 0.0 ? vec3(NAN) : q * (1. / d);
-	return q * (1. / d);
-}
-Affine operator * (const Affine &A, const Affine &B) {
-	Affine R;
-	R.u = A.u.x*B.u + A.u.y*B.v + A.u.z*B.w + A.t.x*B.p;
-	R.v = A.v.x*B.u + A.v.y*B.v + A.v.z*B.w + A.t.y*B.p;
-	R.w = A.w.x*B.u + A.w.y*B.v + A.w.z*B.w + A.t.z*B.p;
-	R.t = vec3(dot(A.u, B.t), dot(A.v, B.t), dot(A.w, B.t)) + A.t*B.s;
-	R.p = vec3(A.p.x*B.u.x + A.p.y*B.v.x + A.p.z*B.w.x, A.p.x*B.u.y + A.p.y*B.v.y + A.p.z*B.w.y, A.p.x*B.u.z + A.p.y*B.v.z + A.p.z*B.w.z) + B.p*A.s;
-	R.s = A.s*B.s;
-	return R;
-}
-Affine calcMat(double rx, double rz) {
-	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
-	Affine D{ veci, vecj, veck, -Center, vec3(0), 1.0 };  // global translation
-	Affine R{ vec3(-sz, cz, 0), vec3(-cz * sx, -sz * sx, cx), vec3(-cz * cx, -sz * cx, -sx), vec3(0), vec3(0), 1.0 };  // rotation
-	Affine T{ veci, vecj, veck, vec3(0.5*vec2(_WIN_W, _WIN_H), 0.0), vec3(0), 1.0 };  // translation
-	Affine P{ veci, vecj, veck, vec3(0), vec3(0, 0, inv_d), 1.0 };  // perspective
-	Affine S{ veci, vecj, veck, vec3(0), vec3(0), 1.0 / Unit };  // scale
-	return T * S * P * R * D;
-}
-
+vec3 Center(1);
+double rz = 0.25*PI, rx = 0.1*PI, dist = 12.0, Unit = 50.0;  // spherical, camera distance, scale to screen
+Affine Tr;  // matrix
 
 // user parameters
 vec2 Cursor = vec2(0, 0), clickCursor;
@@ -243,6 +248,36 @@ bool Ctrl = false, Shift = false, Alt = false;
 typedef std::chrono::high_resolution_clock NTime;
 NTime::time_point _Global_Timer = NTime::now();
 #define iTime std::chrono::duration<double>(NTime::now()-_Global_Timer).count()
+
+#pragma endregion
+
+
+#pragma region Global Variable Related Functions
+
+// projection
+void calcMat() {
+	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
+	Affine D{ veci, vecj, veck, -Center, vec3(0), 1.0 };  // world translation
+	Affine R{ vec3(-sz, cz, 0), vec3(-cz * sx, -sz * sx, cx), vec3(-cz * cx, -sz * cx, -sx), vec3(0), vec3(0), 1.0 };  // rotation
+	Affine P{ veci, vecj, veck, vec3(0), vec3(0, 0, 1.0 / dist), 1.0 };  // perspective
+	Affine S{ veci, vecj, veck, vec3(0), vec3(0), 1.0 / Unit };  // scale
+	Affine T{ veci, vecj, veck, vec3(SCRCTR, 0.0), vec3(0), 1.0 };  // screen translation
+	Tr = T * S * P * R * D;
+}
+void getRay(vec2 Cursor, vec3 &p, vec3 &d) {
+	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
+	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
+	p = Center + w * dist;
+	vec2 uv = (Cursor - SCRCTR) / Unit;
+	d = normalize((uv.x*u + uv.y*v) - w * dist);
+}
+void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
+	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
+	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
+	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= dist;
+	P = Center + w;
+	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
+}
 
 #pragma endregion
 
@@ -304,28 +339,94 @@ auto fillCircle = [&](vec2 c, double r, COLORREF Color) {
 		}
 	}
 };
+auto drawTriangle = [](vec2 A, vec2 B, vec2 C, COLORREF col, bool stroke = false, COLORREF strokecol = WHITE) {
+	int x0 = max((int)min(min(A.x, B.x), C.x), 0), x1 = min((int)max(max(A.x, B.x), C.x), _WIN_W - 1);
+	int y0 = max((int)min(min(A.y, B.y), C.y), 0), y1 = min((int)max(max(A.y, B.y), C.y), _WIN_H - 1);
+	for (int i = y0; i <= y1; i++) for (int j = x0; j <= x1; j++) {
+		// the slow way
+		vec2 P(j, i);
+		if (((det(P - A, P - B) < 0) + (det(P - B, P - C) < 0) + (det(P - C, P - A) < 0)) % 3 == 0)
+			Canvas(j, i) = col;
+	}
+	if (stroke) {
+		drawLine(A, B, strokecol); drawLine(A, C, strokecol); drawLine(B, C, strokecol);
+	}
+};
 
+auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = WHITE) {
+	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
+	if (u > 0 && v > 0) { drawLine((Tr*A).xy(), (Tr*B).xy(), col); return; }
+	if (u < 0 && v < 0) return;
+	if (u < v) std::swap(A, B), std::swap(u, v);
+	double t = u / (u - v) - 0.001;
+	B = A + (B - A)*t;
+	drawLine((Tr*A).xy(), (Tr*B).xy(), col);
+};
+auto drawTriangle_F = [](vec3 A, vec3 B, vec3 C, COLORREF col) {
+	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s, w = dot(Tr.p, C) + Tr.s;
+	if (u > 0 && v > 0 && w > 0) { drawTriangle((Tr*A).xy(), (Tr*B).xy(), (Tr*C).xy(), col); return; }
+	if (u < 0 && v < 0 && w < 0) return;
+
+};
+auto drawCross3D = [&](vec3 P, double r, COLORREF col) {
+	r /= Unit;
+	drawLine_F(P - vec3(r, 0, 0), P + vec3(r, 0, 0), col);
+	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
+	drawLine_F(P - vec3(0, 0, r), P + vec3(0, 0, r), col);
+};
 
 void render() {
 	// debug
 	auto t1 = NTime::now();
 	double dt = std::chrono::duration<double>(t1 - t0).count();
-	dbgprint("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
+	//dbgprint("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
+	sprintf(text, "[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt); SetWindowTextA(_HWND, text);
 	t0 = t1;
 
 	// initialize window
 	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
-	Affine Tr = calcMat(rx, rz);
+	calcMat();
 
-	auto drawLine_F = [&](vec3 A, vec3 B, COLORREF col) {
-		double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
-		if (u > 0 && v > 0) { drawLine((Tr*A).xy(), (Tr*B).xy(), col); return; }
-		if (u < 0 && v < 0) return;
-		if (u < v) std::swap(A, B), std::swap(u, v);
-		double t = u / (u - v) - 0.001;
-		B = A + (B - A)*t;
-		drawLine((Tr*A).xy(), (Tr*B).xy(), col);
-	};
+#if 0
+	/* ray tracing */
+	{
+		vec3 P, O, A, B; getScreen(P, O, A, B);
+		vec3 cP, cD; getRay(Cursor, cP, cD);
+		const double eps = 1e-6;
+		const double r = 1.0; const vec3 C(0, 0, r);
+		vec3 sphcol = intSphere(C, r, cP, cD) > eps ? vec3(1.0, 0.9, 0.0) : vec3(1.0, 0.9, 0.8);
+		int cU = floor(cP.x + intXOY(cP, cD)*cD.x), cV = floor(cP.y + intXOY(cP, cD)*cD.y);
+		for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) {
+			vec3 p = P, d = normalize(O + (i / (double)_WIN_W)*A + (j / (double)_WIN_H)*B - P), n(0.0);
+			vec3 col(1.0), ccol;
+			for (int i = 0; i < 64; i++) {
+				double t0 = intXOY(p, d), t1 = intSphere(C, r, p, d), t;
+				if (t0 > eps && !(t0 > t1)) {
+					t = t0, n = vec3(0, 0, 1);
+					vec2 uv = p.xy() + t * d.xy(); int u = floor(uv.x), v = floor(uv.y);
+					ccol = abs(uv.y) < 0.1 ? vec3(1.0, 0.4, 0.4) : abs(uv.x) < 0.1 ? vec3(0.3, 0.8, 0.4) : u == cU && v == cV ? vec3(1.0, 0.2, 0.0) : (u + v) & 1 ? vec3(0.4, 0.6, 0.8) : vec3(0.6, 0.6, 0.7);
+				}
+				else if (t1 > eps) t = t1, n = normalize(p + t * d - C), ccol = sphcol;
+				else break;
+				col *= ccol;
+				p = p + t * d, d = d - n * (2.0*dot(d, n));
+			}
+			col *= abs(d.z);
+			byte* c = (byte*)&Canvas(i, j);
+			c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
+		}
+	}
+	return;
+#endif
+
+	{
+		vec3 p, d; getRay(Cursor, p, d);
+		double t; if ((t = intXOY(p, d)) > 0) {
+			p = vec3(floor(p.xy() + d.xy()*t), 0.0);
+			drawTriangle_F(p, p + veci, p + vecj, GRAY);
+			drawTriangle_F(p + veci + vecj, p + veci, p + vecj, GRAY);
+		}
+	}
 
 	// axis and grid
 	{
@@ -339,9 +440,15 @@ void render() {
 		drawLine_F(vec3(0.0), vec3(0, 0, R), BLUE);
 	}
 
+	// a cube for debug
+	//drawLine_F(vec3(0, 0, 0), vec3(1, 0, 0)); drawLine_F(vec3(1, 0, 0), vec3(1, 1, 0)); drawLine_F(vec3(1, 1, 0), vec3(0, 1, 0)); drawLine_F(vec3(0, 1, 0), vec3(0, 0, 0)); drawLine_F(vec3(0, 0, 1), vec3(1, 0, 1)); drawLine_F(vec3(1, 0, 1), vec3(1, 1, 1)); drawLine_F(vec3(1, 1, 1), vec3(0, 1, 1)); drawLine_F(vec3(0, 1, 1), vec3(0, 0, 1)); drawLine_F(vec3(0, 0, 0), vec3(0, 0, 1)); drawLine_F(vec3(1, 0, 0), vec3(1, 0, 1)); drawLine_F(vec3(1, 1, 0), vec3(1, 1, 1)); drawLine_F(vec3(0, 1, 0), vec3(0, 1, 1));
 
-	sprintf(text, "");
-	SetWindowTextA(_HWND, text);
+	drawCircle(SCRCTR, 6, YELLOW);
+	drawCross3D(Center, 6, LIME);
+
+
+	//sprintf(text, "");
+	//SetWindowTextA(_HWND, text);
 }
 
 
