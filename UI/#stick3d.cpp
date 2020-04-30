@@ -213,12 +213,14 @@ Affine operator * (const Affine &A, const Affine &B) {
 	return R;
 }
 
+
 #pragma endregion
 
 
 #pragma region Intersection Functions - NOT DESIGNED FOR RAY-TRACING!
 
 // Many from https://www.iquilezles.org/www/articles/intersectors/intersectors.htm
+// All direction vectors should be normalized
 
 double intXOY(vec3 p, vec3 d) {
 	return -p.z / d.z;
@@ -258,6 +260,11 @@ double intCylinder(vec3 pa, vec3 pb, double ra, vec3 ro, vec3 rd) {
 	return NAN;
 }
 
+double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
+	vec3 n = cross(rd, cross(rd, d));
+	return dot(ro - P, n) / dot(d, n);
+}
+
 
 #pragma endregion return the distance, NAN means no intersection
 
@@ -267,7 +274,7 @@ double intCylinder(vec3 pa, vec3 pb, double ra, vec3 ro, vec3 rd) {
 
 
 vec3 Center(0.0);
-double rz = 0.25*PI, rx = 0.1*PI, dist = 12.0, Unit = 50.0;  // spherical, camera distance, scale to screen
+double rz = 0.25*PI, rx = 0.1*PI, dist = 25.0, Unit = 50.0;  // spherical, camera distance, scale to screen
 
 #pragma region Global Variables
 
@@ -337,6 +344,24 @@ void projRange_Cylinder(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 	p0 = pMin(p0, q0), p1 = pMax(p1, q1);
 }
 
+double Units(vec3 p) {
+	return Unit;
+	// debug
+	double Pp = dot(Tr.p, p), Up = dot(Tr.u, p), Vp = dot(Tr.v, p), Wp = dot(Tr.w, p);
+	vec3 U, V, W;
+	U.x = Tr.u.x*(Pp + Tr.s) - Tr.p.x*(Up + Tr.t.x);
+	U.y = Tr.u.y*(Pp + Tr.s) - Tr.p.y*(Up + Tr.t.x);
+	U.z = Tr.u.z*(Pp + Tr.s) - Tr.p.z*(Up + Tr.t.x);
+	V.x = Tr.v.x*(Pp + Tr.s) - Tr.p.x*(Vp + Tr.t.y);
+	V.y = Tr.v.y*(Pp + Tr.s) - Tr.p.y*(Vp + Tr.t.y);
+	V.z = Tr.v.z*(Pp + Tr.s) - Tr.p.z*(Vp + Tr.t.y);
+	W.x = Tr.w.x*(Pp + Tr.s) - Tr.p.x*(Wp + Tr.t.z);
+	W.y = Tr.w.y*(Pp + Tr.s) - Tr.p.y*(Wp + Tr.t.z);
+	W.z = Tr.w.z*(Pp + Tr.s) - Tr.p.z*(Wp + Tr.t.z);
+	double det = dot(U, cross(V, W)) / pow(Pp + Tr.s, 6.0);
+	return -cbrt(det);
+}
+
 #pragma endregion
 
 
@@ -346,8 +371,8 @@ const double selAxisRatio = 0.3;
 const double selLength = 60.0;
 vec3 CP(1.0, 1.0, 1.0);
 bool selected = true, dragPoint = false;
-enum moveDirection { unlimited, xAxis, yAxis, zAxis, xOy, xOz, yOz };
-moveDirection moveAlong(unlimited);
+enum moveDirection { none = -1, unlimited, xAxis, yAxis, zAxis, xOy, xOz, yOz };
+moveDirection moveAlong(none);
 
 
 // ============================================ Rendering ============================================
@@ -428,7 +453,7 @@ auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = WHITE) {
 	if (u > 0 && v > 0) { drawLine((Tr*A).xy(), (Tr*B).xy(), col); return; }
 	if (u < 0 && v < 0) return;
 	if (u < v) std::swap(A, B), std::swap(u, v);
-	double t = u / (u - v) - 0.001;
+	double t = u / (u - v) - 1e-6;
 	B = A + (B - A)*t;
 	drawLine((Tr*A).xy(), (Tr*B).xy(), col);
 };
@@ -512,7 +537,13 @@ void render() {
 	//drawLine_F(vec3(0, 0, 0), vec3(1, 0, 0)); drawLine_F(vec3(1, 0, 0), vec3(1, 1, 0)); drawLine_F(vec3(1, 1, 0), vec3(0, 1, 0)); drawLine_F(vec3(0, 1, 0), vec3(0, 0, 0)); drawLine_F(vec3(0, 0, 1), vec3(1, 0, 1)); drawLine_F(vec3(1, 0, 1), vec3(1, 1, 1)); drawLine_F(vec3(1, 1, 1), vec3(0, 1, 1)); drawLine_F(vec3(0, 1, 1), vec3(0, 0, 1)); drawLine_F(vec3(0, 0, 0), vec3(0, 0, 1)); drawLine_F(vec3(1, 0, 0), vec3(1, 0, 1)); drawLine_F(vec3(1, 1, 0), vec3(1, 1, 1)); drawLine_F(vec3(0, 1, 0), vec3(0, 1, 1));
 
 	if (selected) {
+		double Unit = Units(CP);
 		double sR = selRadius / Unit, sL = selLength / Unit, sA = selAxisRatio * sR;
+		if (mouse_down) {
+			if (moveAlong == xAxis) drawLine_F(CP - 1e4*veci, CP + 1e4*veci, 0x80FF00);
+			if (moveAlong == yAxis) drawLine_F(CP - 1e4*vecj, CP + 1e4*vecj, 0x80FF00);
+			if (moveAlong == zAxis) drawLine_F(CP - 1e4*veck, CP + 1e4*veck, 0x80FF00);
+		}
 		drawRod(CP, CP + vec3(sL, 0, 0), sA, moveAlong == xAxis ? YELLOW : RED);
 		drawRod(CP, CP + vec3(0, sL, 0), sA, moveAlong == yAxis ? YELLOW : GREEN);
 		drawRod(CP, CP + vec3(0, 0, sL), sA, moveAlong == zAxis ? YELLOW : BLUE);
@@ -550,22 +581,35 @@ void WindowClose() {
 void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y), D = P - P0;
 	Cursor = P;
-	if (mouse_down) {
+	if (mouse_down && moveAlong == none) {
 		rz -= 0.01*D.x;
 		rx -= 0.01*D.y;
 	}
 
 	if (selected) {
-		vec3 p, d; getRay(Cursor, p, d);
-		double sR = selRadius / Unit, sL = selLength / Unit, sA = selAxisRatio * sR;
-		double t, mt = intSphere(CP, sR, p, d);
-		moveDirection dir = unlimited;
-		if (0.0*mt != 0.0) mt = INFINITY, dir = (moveDirection)-1;
-		t = intCylinder(CP, CP + vec3(sL, 0, 0), sA, p, d); if (t < mt) mt = t, dir = xAxis;
-		t = intCylinder(CP, CP + vec3(0, sL, 0), sA, p, d); if (t < mt) mt = t, dir = yAxis;
-		t = intCylinder(CP, CP + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
-		moveAlong = dir;
+		getScreen(CamP, ScrO, ScrA, ScrB);
+		if (mouse_down) {
+			if (moveAlong >= xAxis && moveAlong <= zAxis) {
+				vec3 vecd = moveAlong == xAxis ? veci : moveAlong == yAxis ? vecj : veck;
+				double t0 = closestPoint(CP, vecd, CamP, scrDir(P0));
+				double t1 = closestPoint(CP, vecd, CamP, scrDir(P));
+				CP += (t1 - t0)*vecd;
+			}
+		}
+		else {
+			vec3 p, d; getRay(Cursor, p, d);
+			double Unit = Units(CP);
+			double sR = selRadius / Unit, sL = selLength / Unit, sA = selAxisRatio * sR;
+			double t, mt = intSphere(CP, sR, p, d);
+			moveDirection dir = unlimited;
+			if (0.0*mt != 0.0) mt = INFINITY, dir = none;
+			t = intCylinder(CP, CP + vec3(sL, 0, 0), sA, p, d); if (t < mt) mt = t, dir = xAxis;
+			t = intCylinder(CP, CP + vec3(0, sL, 0), sA, p, d); if (t < mt) mt = t, dir = yAxis;
+			t = intCylinder(CP, CP + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
+			moveAlong = dir;
+		}
 	}
+	else moveAlong = none;
 }
 
 void MouseWheel(int _DELTA) {
@@ -574,7 +618,7 @@ void MouseWheel(int _DELTA) {
 	if (Unit * s > Max) s = Max / Unit;
 	else if (Unit * s < Min) s = Min / Unit;
 	Unit *= s;
-	//dist /= s;
+	dist /= s;
 }
 
 void MouseDownL(int _X, int _Y) {
