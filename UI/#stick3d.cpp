@@ -161,8 +161,9 @@ public:
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
+	vec3 operator * (const vec3 &v) const { return vec3(x * v.x, y * v.y, z * v.z); }
 	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
-	double sqr() { return x * x + y * y + z * z; } 	// non-standard
+	double sqr() const { return x * x + y * y + z * z; } 	// non-standard
 	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
 	friend vec3 normalize(vec3 v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y + v.z*v.z)); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
@@ -265,6 +266,11 @@ double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
 	return dot(ro - P, n) / dot(d, n);
 }
 
+double sdBox(vec2 p, vec2 b) {
+	vec2 d = abs(p) - b;
+	return length(pMax(d, vec2(0))) + min(max(d.x, d.y), 0.0);
+}
+
 
 #pragma endregion return the distance, NAN means no intersection
 
@@ -273,8 +279,8 @@ double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
 // ======================================== Data / Parameters ========================================
 
 
-vec3 Center(0.0);
-double rz = 0.25*PI, rx = 0.1*PI, dist = 25.0, Unit = 50.0;  // spherical, camera distance, scale to screen
+vec3 Center(0, 0, 1);
+double rz = 0.25*PI, rx = 0.1*PI, dist = 5.0, Unit = 50.0;  // spherical, camera distance, scale to screen
 
 #pragma region Global Variables
 
@@ -309,7 +315,7 @@ void calcMat() {
 	Tr = T * S * P * R * D;
 }
 void getRay(vec2 Cursor, vec3 &p, vec3 &d) {
-#if 0
+#if 1
 	p = CamP;
 	d = normalize(ScrO + (Cursor.x / _WIN_W)*ScrA + (Cursor.y / _WIN_H)*ScrB - CamP);
 #else
@@ -343,34 +349,60 @@ void projRange_Cylinder(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 	vec2 q0, q1; projRange_Circle(B, u, v, q0, q1);
 	p0 = pMin(p0, q0), p1 = pMax(p1, q1);
 }
-
-double Units(vec3 p) {
-	return Unit;
-	// debug
-	double Pp = dot(Tr.p, p), Up = dot(Tr.u, p), Vp = dot(Tr.v, p), Wp = dot(Tr.w, p);
-	vec3 U, V, W;
-	U.x = Tr.u.x*(Pp + Tr.s) - Tr.p.x*(Up + Tr.t.x);
-	U.y = Tr.u.y*(Pp + Tr.s) - Tr.p.y*(Up + Tr.t.x);
-	U.z = Tr.u.z*(Pp + Tr.s) - Tr.p.z*(Up + Tr.t.x);
-	V.x = Tr.v.x*(Pp + Tr.s) - Tr.p.x*(Vp + Tr.t.y);
-	V.y = Tr.v.y*(Pp + Tr.s) - Tr.p.y*(Vp + Tr.t.y);
-	V.z = Tr.v.z*(Pp + Tr.s) - Tr.p.z*(Vp + Tr.t.y);
-	W.x = Tr.w.x*(Pp + Tr.s) - Tr.p.x*(Wp + Tr.t.z);
-	W.y = Tr.w.y*(Pp + Tr.s) - Tr.p.y*(Wp + Tr.t.z);
-	W.z = Tr.w.z*(Pp + Tr.s) - Tr.p.z*(Wp + Tr.t.z);
-	double det = dot(U, cross(V, W)) / pow(Pp + Tr.s, 6.0);
-	return -cbrt(det);
+void projRange_Sphere(vec3 P, double r, vec2 &p0, vec2 &p1) {  // available when camera distance not too large
+	if (dot(Tr.p, P) + Tr.s < r * length(Tr.p)) {
+		//if (dot(Tr.p, P) + Tr.s < -r * length(Tr.p)) {
+		p0 = p1 = vec2(NAN); return;
+	}
+	vec3 O = ScrO - CamP, k = CamP - P;
+	vec3 Ak = cross(ScrA, k), Bk = cross(ScrB, k), Ok = cross(O, k);
+	double r2 = r * r;
+	// A x² + B y² + C xy + D x + E y + F = 0
+	double A = r2 * ScrA.sqr() - Ak.sqr();
+	double B = r2 * ScrB.sqr() - Bk.sqr();
+	double C = 2.0*(r2*dot(ScrA, ScrB) - dot(Ak, Bk));
+	double D = 2.0*(r2*dot(ScrA, O) - dot(Ak, Ok));
+	double E = 2.0*(r2*dot(ScrB, O) - dot(Bk, Ok));
+	double F = r2 * O.sqr() - Ok.sqr();
+	double a = 4 * A*A*B - A * C*C, b = 4 * A*B*D - 2 * A*C*E, c = B * D*D - C * D*E + C * C*F;
+	double delta = sqrt(b*b - 4 * a*c);
+	double t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a);
+	t0 = (-D - 2 * A*t0) / C, t1 = (-D - 2 * A*t1) / C; if (t0 > t1) std::swap(t0, t1);
+	p0.y = t0 * _WIN_H, p1.y = t1 * _WIN_H;
+	a = 4 * A*B*B - B * C*C, b = 4 * A*B*E - 2 * B*C*D, c = A * E*E - C * D*E + C * C*F;
+	delta = sqrt(b*b - 4 * a*c);
+	t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a);
+	t0 = (-E - 2 * B*t0) / C, t1 = (-E - 2 * B*t1) / C; if (t0 > t1) std::swap(t0, t1);
+	p0.x = t0 * _WIN_W, p1.x = t1 * _WIN_W;
 }
+
 
 #pragma endregion
 
 
 #include <vector>
+
+struct ControlPoint {
+	vec3 P;
+	bool selected = false;
+};
+enum ControlPoints {
+	Head, Neck, Chest, Tail, Shoulder_L, Shoulder_R, Elbow_L, Elbow_R, Hand_L, Hand_R, Butt_L, Butt_R, Knee_L, Knee_R, Foot_L, Foot_R
+};
+#define CP(...) ControlPoint{vec3(##__VA_ARGS__)}
+std::vector<ControlPoint> CPs({
+	CP(0,-0.02,2.05), CP(0,0,1.76), CP(0,0.02,1.6), CP(0,0,0.96),
+	CP(-0.23,0,1.68), CP(0.23,0,1.68), CP(-0.25,-0.1,1.3), CP(0.25,-0.1,1.3), CP(-0.27,0.1,0.9), CP(0.27,0.1,0.9),
+	CP(-0.16,0,1.06), CP(0.16,0,1.06), CP(-0.18,0.1,0.5), CP(0.18,0.1,0.5), CP(-0.18,0,0), CP(0.18,0,0)
+	});
+#undef CP
+
+// dragger
+vec3 CPC(NAN); bool selected = false;
+const double selRadiusP = 3.0;
 const double selRadius = 6.0;
 const double selAxisRatio = 0.3;
 const double selLength = 60.0;
-vec3 CP(1.0, 1.0, 1.0);
-bool selected = true, dragPoint = false;
 enum moveDirection { none = -1, unlimited, xAxis, yAxis, zAxis, xOy, xOz, yOz };
 moveDirection moveAlong(none);
 
@@ -447,6 +479,17 @@ auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
 	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col);
 	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col);
 };
+auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
+	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, _WIN_W - 1);
+	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, _WIN_H - 1);
+	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) Canvas(x, y) = col;
+};
+auto drawSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
+	drawBox(C - vec2(r, r), C + vec2(r, r), col);
+};
+auto fillSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
+	fillBox(C - vec2(r, r), C + vec2(r, r), col);
+};
 
 auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = WHITE) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
@@ -469,10 +512,10 @@ auto drawCross3D = [&](vec3 P, double r, COLORREF col = WHITE) {
 	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
 	drawLine_F(P - vec3(0, 0, r), P + vec3(0, 0, r), col);
 };
-auto drawRod = [](vec3 A, vec3 B, double r, COLORREF col) {  // need to handle perspective issue
+auto drawRod = [](vec3 A, vec3 B, double r, COLORREF col) {
 	vec3 d = normalize(B - A);
 	vec2 p0, p1; projRange_Cylinder(A, B, r, p0, p1);
-	for (int i = max((int)p0.x, 0), im = min((int)p1.x, _WIN_W - 1); i <= im; i++)
+	for (int i = max((int)p0.x, 0), im = min((int)p1.x, _WIN_W - 1); i <= im; i++)  // need to handle perspective issue
 		for (int j = max((int)p0.y, 0), jm = min((int)p1.y, _WIN_H - 1); j <= jm; j++)
 			if (intCylinder(A, B, r, CamP, scrDir(vec2(i, j))) > 0) Canvas(i, j) = col;
 };
@@ -486,39 +529,28 @@ void render() {
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
 
-#if 0
+#if 1
 	/* ray tracing */
 	{
 		vec3 cP, cD; getRay(Cursor, cP, cD);
-		const double eps = 1e-6;
-		const double r = 0.8; const vec3 C(0, 0, r), D(C + vec3(1.2, 0.5, 0.3));
-		vec3 sphcol = intSphere(C, r, cP, cD) > eps ? vec3(1.0, 0.9, 0.0) : vec3(1.0, 0.9, 0.8);
+		const double r = 0.8; const vec3 C(0, 3.0, r);
 		int cU = floor(cP.x + intXOY(cP, cD)*cD.x), cV = floor(cP.y + intXOY(cP, cD)*cD.y);
 		for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) {
-			vec3 p = CamP, d = normalize(ScrO + (i / (double)_WIN_W)*ScrA + (j / (double)_WIN_H)*ScrB - CamP), n(0.0);
-			double t;
-			vec3 col(1.0), ccol;
-			for (int i = 0; i < 64; i++) {
-				double t0 = intXOY(p, d);
-				//double t1 = intSphere(C, r, p, d);
-				double t1 = intCylinder(C, D, r, p, d);
-				if (t0 > eps && !(t0 > t1)) {
-					t = t0, n = vec3(0, 0, 1);
-					vec2 uv = p.xy() + t * d.xy(); int u = floor(uv.x), v = floor(uv.y);
-					ccol = abs(uv.y) < 0.1 ? vec3(1.0, 0.4, 0.4) : abs(uv.x) < 0.1 ? vec3(0.3, 0.8, 0.4) : u == cU && v == cV ? vec3(1.0, 0.2, 0.0) : (u + v) & 1 ? vec3(0.4, 0.6, 0.8) : vec3(0.7, 0.6, 0.7);
-				}
-				else if (t1 > eps) t = t1, n = normalize(p + t * d - C), ccol = sphcol;
-				else break;
-				col *= ccol;
+			vec3 p, d; getRay(vec2(i, j), p, d);
+			double t = intSphere(C, r, p, d);
+			vec3 col(0.0);
+			if (t > 0.0) {
+				vec3 n = (p + t * d - C) / r;
+				col = vec3(1.0, 0.9, 0.8);
 				p = p + t * d, d = d - n * (2.0*dot(d, n));
+				col *= abs(d.z);
 			}
-			col *= abs(d.z);
 			byte* c = (byte*)&Canvas(i, j);
 			c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
 		}
-		vec2 p0, p1; projRange_Cylinder(C, D, r, p0, p1); drawBox(p0, p1, YELLOW);
+		vec2 p0, p1; projRange_Sphere(C, r, p0, p1); drawBox(p0, p1, YELLOW);
 	}
-	return;
+	//return;
 #endif
 
 	// axis and grid
@@ -535,24 +567,36 @@ void render() {
 
 	// a cube for debug
 	//drawLine_F(vec3(0, 0, 0), vec3(1, 0, 0)); drawLine_F(vec3(1, 0, 0), vec3(1, 1, 0)); drawLine_F(vec3(1, 1, 0), vec3(0, 1, 0)); drawLine_F(vec3(0, 1, 0), vec3(0, 0, 0)); drawLine_F(vec3(0, 0, 1), vec3(1, 0, 1)); drawLine_F(vec3(1, 0, 1), vec3(1, 1, 1)); drawLine_F(vec3(1, 1, 1), vec3(0, 1, 1)); drawLine_F(vec3(0, 1, 1), vec3(0, 0, 1)); drawLine_F(vec3(0, 0, 0), vec3(0, 0, 1)); drawLine_F(vec3(1, 0, 0), vec3(1, 0, 1)); drawLine_F(vec3(1, 1, 0), vec3(1, 1, 1)); drawLine_F(vec3(0, 1, 0), vec3(0, 1, 1));
-
-	if (selected) {
-		double Unit = Units(CP);
-		double sR = selRadius / Unit, sL = selLength / Unit, sA = selAxisRatio * sR;
-		if (mouse_down) {
-			if (moveAlong == xAxis) drawLine_F(CP - 1e4*veci, CP + 1e4*veci, 0x80FF00);
-			if (moveAlong == yAxis) drawLine_F(CP - 1e4*vecj, CP + 1e4*vecj, 0x80FF00);
-			if (moveAlong == zAxis) drawLine_F(CP - 1e4*veck, CP + 1e4*veck, 0x80FF00);
-		}
-		drawRod(CP, CP + vec3(sL, 0, 0), sA, moveAlong == xAxis ? YELLOW : RED);
-		drawRod(CP, CP + vec3(0, sL, 0), sA, moveAlong == yAxis ? YELLOW : GREEN);
-		drawRod(CP, CP + vec3(0, 0, sL), sA, moveAlong == zAxis ? YELLOW : BLUE);
-		if (moveAlong == unlimited) fillCircle((Tr*CP).xy(), selRadius, YELLOW);
-		drawCircle((Tr*CP).xy(), selRadius, LIME);
+	{
+#define DW(p,q) drawLine_F(CPs[p].P,CPs[q].P)
+		DW(Head, Neck); DW(Neck, Chest); DW(Chest, Tail);
+		DW(Shoulder_L, Shoulder_R); DW(Shoulder_L, Elbow_L), DW(Shoulder_R, Elbow_R); DW(Elbow_L, Hand_L), DW(Elbow_R, Hand_R);
+		DW(Butt_L, Knee_L), DW(Butt_R, Knee_R); DW(Knee_L, Foot_L), DW(Knee_R, Foot_R);
+#undef DW
 	}
-	drawCross3D(CP, selRadius, selected ? YELLOW : LIME);
 
+	// dragger
+	if (selected) {
+		double Unit = dot(CPC, Tr.p) + Tr.s;
+		double sR = selRadius * Unit, sL = selLength * Unit, sA = selAxisRatio * sR;
+		if (mouse_down) {
+			if (moveAlong == xAxis) drawLine_F(CPC - 1e4*veci, CPC + 1e4*veci, 0x80FF00);
+			if (moveAlong == yAxis) drawLine_F(CPC - 1e4*vecj, CPC + 1e4*vecj, 0x80FF00);
+			if (moveAlong == zAxis) drawLine_F(CPC - 1e4*veck, CPC + 1e4*veck, 0x80FF00);
+		}
+		drawRod(CPC, CPC + vec3(sL, 0, 0), sA, moveAlong == xAxis ? YELLOW : RED);
+		drawRod(CPC, CPC + vec3(0, sL, 0), sA, moveAlong == yAxis ? YELLOW : GREEN);
+		drawRod(CPC, CPC + vec3(0, 0, sL), sA, moveAlong == zAxis ? YELLOW : BLUE);
+		if (moveAlong == unlimited) fillCircle((Tr*CPC).xy(), selRadius, YELLOW);
+		drawCircle((Tr*CPC).xy(), selRadius, LIME);
+	}
+	//drawCross3D(CPC, selRadius, selected ? YELLOW : LIME);
 
+	// control points
+	for (int i = 0, n = CPs.size(); i < n; i++) {
+		if (CPs[i].selected) fillSquare((Tr*CPs[i].P).xy(), selRadiusP, mouse_down && moveAlong != none ? YELLOW : ORANGE);
+		else drawSquare((Tr*CPs[i].P).xy(), selRadiusP);
+	}
 
 	// timer
 	auto t1 = NTime::now();
@@ -589,23 +633,27 @@ void MouseMove(int _X, int _Y) {
 	if (selected) {
 		getScreen(CamP, ScrO, ScrA, ScrB);
 		if (mouse_down) {
+			vec3 vecd(0.0);
 			if (moveAlong >= xAxis && moveAlong <= zAxis) {
-				vec3 vecd = moveAlong == xAxis ? veci : moveAlong == yAxis ? vecj : veck;
-				double t0 = closestPoint(CP, vecd, CamP, scrDir(P0));
-				double t1 = closestPoint(CP, vecd, CamP, scrDir(P));
-				CP += (t1 - t0)*vecd;
+				vecd = moveAlong == xAxis ? veci : moveAlong == yAxis ? vecj : veck;
+				double t0 = closestPoint(CPC, vecd, CamP, scrDir(P0));
+				double t1 = closestPoint(CPC, vecd, CamP, scrDir(P));
+				CPC += (vecd = (t1 - t0)*vecd);
+			}
+			for (int i = 0, n = CPs.size(); i < n; i++) {
+				if (CPs[i].selected) CPs[i].P += vecd;
 			}
 		}
 		else {
 			vec3 p, d; getRay(Cursor, p, d);
-			double Unit = Units(CP);
-			double sR = selRadius / Unit, sL = selLength / Unit, sA = selAxisRatio * sR;
-			double t, mt = intSphere(CP, sR, p, d);
+			double Unit = dot(CPC, Tr.p) + Tr.s;
+			double sR = selRadius * Unit, sL = selLength * Unit, sA = selAxisRatio * sR;
+			double t, mt = intSphere(CPC, sR, p, d);
 			moveDirection dir = unlimited;
 			if (0.0*mt != 0.0) mt = INFINITY, dir = none;
-			t = intCylinder(CP, CP + vec3(sL, 0, 0), sA, p, d); if (t < mt) mt = t, dir = xAxis;
-			t = intCylinder(CP, CP + vec3(0, sL, 0), sA, p, d); if (t < mt) mt = t, dir = yAxis;
-			t = intCylinder(CP, CP + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
+			t = intCylinder(CPC, CPC + vec3(sL, 0, 0), sA, p, d); if (t < mt) mt = t, dir = xAxis;
+			t = intCylinder(CPC, CPC + vec3(0, sL, 0), sA, p, d); if (t < mt) mt = t, dir = yAxis;
+			t = intCylinder(CPC, CPC + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
 			moveAlong = dir;
 		}
 	}
@@ -614,7 +662,7 @@ void MouseMove(int _X, int _Y) {
 
 void MouseWheel(int _DELTA) {
 	double s = exp(0.001*_DELTA);
-	double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.02*D;
+	double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.015*D;
 	if (Unit * s > Max) s = Max / Unit;
 	else if (Unit * s < Min) s = Min / Unit;
 	Unit *= s;
@@ -628,15 +676,20 @@ void MouseDownL(int _X, int _Y) {
 
 void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
-	bool moved = (int)length(clickCursor - Cursor) != 0;
+	bool moved = (int)length(clickCursor - Cursor) != 0;   // be careful: coincidence
 	mouse_down = false;
 
 	if (!moved) {  // click
-		vec3 p, d; getRay(Cursor, p, d);
-		double r = selRadius / Unit;
-		if (intSphere(CP, r, p, d) > 0.0) {
-			selected ^= 1;
+		double totP = 0.0; vec3 sumP(0.0);
+		for (int i = 0, n = CPs.size(); i < n; i++) {
+			vec3 P = Tr * CPs[i].P;
+			bool hower = sdBox(P.xy() - Cursor, vec2(selRadiusP)) < 0.;
+			if (Shift) CPs[i].selected ^= hower;
+			else CPs[i].selected = hower;
+			if (CPs[i].selected) totP++, sumP += CPs[i].P;
 		}
+		CPC = sumP / totP;
+		selected = totP != 0;
 	}
 }
 
@@ -655,6 +708,8 @@ void KeyDown(WPARAM _KEY) {
 }
 
 void KeyUp(WPARAM _KEY) {
-
+	if (_KEY == VK_CONTROL) Ctrl = false;
+	else if (_KEY == VK_SHIFT) Shift = false;
+	else if (_KEY == VK_MENU) Alt = false;
 }
 
