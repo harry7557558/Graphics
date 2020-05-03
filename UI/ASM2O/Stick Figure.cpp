@@ -12,7 +12,9 @@
 #include <tchar.h>
 
 // debug
-#define dbgprint(format, ...) { wchar_t buf[0x4FFF]; swprintf(buf, 0x4FFF, _T(format), ##__VA_ARGS__); OutputDebugStringW(buf); }
+#define _USE_CONSOLE 0
+wchar_t _DEBUG_OUTPUT_BUF[0x1000];
+#define dbgprint(format, ...) { if (_USE_CONSOLE) {printf(format, ##__VA_ARGS__);} else {swprintf(_DEBUG_OUTPUT_BUF, 0x1000, _T(format), ##__VA_ARGS__); OutputDebugStringW(_DEBUG_OUTPUT_BUF);} }
 
 
 // First Window (Main Window): UI Editor
@@ -42,7 +44,8 @@ void KeyUp(WPARAM _KEY);
 
 HWND _HWND; int _WIN_W, _WIN_H;
 HBITMAP _HIMG; COLORREF *_WINIMG;
-#define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
+//#define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
+inline COLORREF& Canvas(int x, int y) { return _WINIMG[(y)*_WIN_W + (x)]; }
 #define setColor(x,y,col) do{if((x)>=0&&(x)<_WIN_W&&(y)>=0&&(y)<_WIN_H)Canvas(x,y)=col;}while(0)
 
 
@@ -70,7 +73,8 @@ void KeyUpT(WPARAM _KEY);
 
 HWND _HWND_T; int _WIN_T_W, _WIN_T_H;
 HBITMAP _HIMG_T; COLORREF *_WINIMG_T;
-#define CanvasT(x,y) _WINIMG_T[(y)*_WIN_T_W+(x)]
+//#define CanvasT(x,y) _WINIMG_T[(y)*_WIN_T_W+(x)]
+inline COLORREF& CanvasT(int x, int y) { return _WINIMG_T[(y)*_WIN_T_W + (x)]; }
 
 
 // Win32 Entry
@@ -82,8 +86,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	auto hImg = _WNDSEL(&_HIMG, &_HIMG_T);
 	auto winImg = _WNDSEL(&_WINIMG, &_WINIMG_T);
 	auto winW = _WNDSEL(&_WIN_W, &_WIN_T_W), winH = _WNDSEL(&_WIN_H, &_WIN_T_H);
-#define _RDBK { HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, *hImg); _WNDSEL(render, render_t)(); BitBlt(hdc, 0, 0, *winW, *winH, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
+#define _RD_RAW { HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, *hImg); _WNDSEL(render, render_t)(); BitBlt(hdc, 0, 0, *winW, *winH, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); }
+#define _RDBK { SendMessage(_WNDSEL(_HWND_T, _HWND), WM_NULL, NULL, NULL); _RD_RAW break; }
 	switch (message) {
+	case WM_NULL: { _RD_RAW return 0; }
 	case WM_CREATE: { if (!_HWND) Init(); break; }
 	case WM_CLOSE: { if (isM) { _WNDSEL_T(WindowClose)(); DestroyWindow(hWnd); } return 0; }
 	case WM_DESTROY: { if (isM) { PostQuitMessage(0); } return 0; }
@@ -106,12 +112,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
 	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
 	if (!RegisterClassEx(&wc)) return -1;
-	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, WinW_Padding, WinH_Padding, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL);
-	ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
 	_HWND_T = CreateWindowEx(0, _T(WIN_NAME), _T(WIN_NAME_T), WS_OVERLAPPEDWINDOW ^ WS_MAXIMIZEBOX, WinW_Padding, WinH_Padding + WinH_Default, WinTW_Default, WinTH_Default, NULL, NULL, hInstance, NULL);
 	ShowWindow(_HWND_T, nCmdShow); UpdateWindow(_HWND_T);
+	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, WinW_Padding, WinH_Padding, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL);
+	ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
 	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
 }
 
@@ -329,7 +336,7 @@ double sdBox(vec2 p, vec2 b) {
 // ======================================== Data / Parameters ========================================
 
 
-vec3 Center(0, 0, 1);
+vec3 Center(0, 0, 1);  // view center in world coordinate
 double rz = 0.25*PI, rx = 0.1*PI, dist = 12.0, Unit = 100.0;  // spherical, camera distance, scale to screen
 
 #pragma region General Global Variables
@@ -343,7 +350,7 @@ auto scrDir = [](vec2 pixel) {return normalize(ScrO + (pixel.x / _WIN_W)*ScrA + 
 // user parameters
 vec2 Cursor = vec2(0, 0), clickCursor;  // current cursor and cursor position when mouse down
 bool mouse_down = false;
-bool Ctrl = false, Shift = false, Alt = false;
+bool Ctrl = false, Shift = false, Alt = false;  // these variables are shared by both windows
 
 #pragma endregion
 
@@ -430,16 +437,92 @@ typedef std::chrono::high_resolution_clock NTime;
 NTime::time_point _Global_Timer = NTime::now();
 #define iTime std::chrono::duration<double>(NTime::now()-_Global_Timer).count()
 
+// window parameters
+const int FPS = 25;  // frame rate, constant
+const double FrameDelay = 1.0 / FPS;
+
+// the animation will be based on frame instead of time
+double UnitT = 15.0;  // the width of one frame show on screen
+double LFrame = 0;  // the frame at the left of the screen
+int currentFrame = 0;  // current frame to edit
+double previewFrame = 0.0; // current time to preview
+double getFrame(double Cursor_x) {  // return type is float point
+	double f = (Cursor_x / UnitT) + LFrame;
+	return max(f, 0);
+}
+double FrameToCoord(double Frame) {
+	return (Frame - LFrame)*UnitT;
+}
+
+// the vertical axis of time axis window
+double UnitTV = 20.0;  // the height on screen of one control point
+double rdrRadiusT = 4.0;  // side length of one point on screen
+int BObject = 0;  // the object at the bottom of the screen
+int HObject = -1;  // mouse hover object
+int getHoverObject(double Cursor_y) {  // return mouse hover object
+	return int(Cursor_y / UnitTV) + BObject;
+}
+double ObjectIDToCoord(int d) {
+	return (d - BObject)*UnitTV;
+}
+
+vec2 timeAxisSquareCenter(int frame, int obj) {
+	return vec2(FrameToCoord(frame) + 0.5*UnitT, ObjectIDToCoord(obj) + 0.5*UnitTV);
+}
+
+// user parameters
+vec2 CursorT = vec2(0, 0), clickCursorT;
+bool mouse_down_T = false;
+
 
 #pragma endregion
 
 #pragma region Scene Variables
 
+#include <vector>
+#include <stack>
+
 // control points
 #define NCtrPs 16  // # of control points, constant
-struct ControlPoint {
-	vec3 P;  // position
+class ControlPoint {
+	struct Point {
+		vec3 P;  // position
+		int F; // frame, integer
+	};
+public:
+	std::vector<Point> keyFrames;  // F sorted in increasing order
 	bool selected = false;  // whether this point is being selected and ready to be edited
+private:
+	int _lower_bound(int t) const {
+		//return std::lower_bound(keyFrames.begin(), keyFrames.end() - 1, t, [](Point A, double B) { return A.F < B; }) - keyFrames.begin();
+		for (int i = 0, n = keyFrames.size(); i < n; i++) if (keyFrames[i].F > t) return max(i - 1, 0); return keyFrames.size() - 1;
+	}
+public:
+	ControlPoint() {}
+	ControlPoint(vec3 P) { keyFrames.push_back(Point{ P, 0 }); }
+	vec3 P(double t = previewFrame) const {  // write interpolation code there
+		int d = _lower_bound(t);
+		//return keyFrames[d].P;
+		int e = d + 1;
+		if (e == keyFrames.size()) return keyFrames[d].P;
+		double u = (t - keyFrames[d].F) / (keyFrames[e].F - keyFrames[d].F);
+		return (1 - u)*keyFrames[d].P + u * keyFrames[e].P;
+	}
+	bool existFrame(int t) {
+		return keyFrames[_lower_bound(t)].F == t;
+	}
+	vec3& getP(int t = currentFrame) {  // if the keyframe exists, return point; otherwise, create
+		int d = _lower_bound(t);
+		if (keyFrames[d].F == t) return keyFrames[d].P;
+		keyFrames.insert(keyFrames.begin() + d + 1, Point{ P(t), t });
+		return keyFrames[d + 1].P;
+	}
+	bool deleteFrame(int t) {
+		int d = _lower_bound(t);
+		if (keyFrames[d].F != t) return false;
+		keyFrames.erase(keyFrames.begin() + d);
+		return true;
+	}
 };
 enum ControlPoints {  // names for control points (this scene is a human character)
 	Head, Neck, Chest, Tail,
@@ -457,7 +540,7 @@ ControlPoint CPs[NCtrPs] = {  // default positions of control points
 // 3D cursor
 vec3 CPC(NAN);  // location of 3D cursor (average of all selected points)
 bool selected = false;  // true if at least one point is selected
-const double selRadiusP = 3.0;  // (square) radius for selecting a control point
+const double selRadiusP = 3.0;  // side length for selecting a control point
 const double selRadius = 6.0;  // radius for selecting the cursor
 const double selAxisRatio = 0.3;  // ratio of radius for selecting cursor and selecting cursor axis
 const double selLength = 60.0;  // (approximate) maximum length of cursor axis in screen coordinate
@@ -466,14 +549,16 @@ moveDirection moveAlong(none);  // which part of the cursor is being moved
 int updateCursorPosition() {  // return the # of selected pointss
 	double totP = 0.0; vec3 sumP(0.0);
 	for (int i = 0; i < NCtrPs; i++) {
-		if (CPs[i].selected) totP++, sumP += CPs[i].P;
+		if (CPs[i].selected) totP++, sumP += CPs[i].P();
 	}
 	CPC = sumP / totP;  // no point selected -> 0/0=NAN
 	if (totP) selected = true;
 	return totP;
 }
 
-// history
+// history - debug
+#define Enable_History false
+#if Enable_History
 struct historyElement {
 	bool P[NCtrPs];  // identify if a point is under operation
 	vec3 P_old[NCtrPs], P_new[NCtrPs];
@@ -495,9 +580,9 @@ struct historyElement {
 		return false;
 	}
 };
-#include <stack>
 std::stack<historyElement> History;
 std::stack<historyElement> redoHistory;
+#endif
 
 #pragma endregion
 
@@ -506,34 +591,34 @@ std::stack<historyElement> redoHistory;
 
 #pragma region Rasterization functions
 
-auto drawLine = [](vec2 p, vec2 q, COLORREF col) {
+auto drawLine = [](vec2 p, vec2 q, COLORREF col, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
 	vec2 d = q - p;
 	double slope = d.y / d.x;
 	if (abs(slope) <= 1.0) {
 		if (p.x > q.x) std::swap(p, q);
-		int x0 = max(0, int(p.x)), x1 = min(_WIN_W - 1, int(q.x)), y;
+		int x0 = max(0, int(p.x)), x1 = min(MAX_W - 1, int(q.x)), y;
 		double yf = slope * x0 + (p.y - slope * p.x);
 		for (int x = x0; x <= x1; x++) {
 			y = (int)yf;
-			if (y >= 0 && y < _WIN_H) Canvas(x, y) = col;
+			if (y >= 0 && y < MAX_H) canvas(x, y) = col;
 			yf += slope;
 		}
 	}
 	else {
 		slope = d.x / d.y;
 		if (p.y > q.y) std::swap(p, q);
-		int y0 = max(0, int(p.y)), y1 = min(_WIN_H - 1, int(q.y)), x;
+		int y0 = max(0, int(p.y)), y1 = min(MAX_H - 1, int(q.y)), x;
 		double xf = slope * y0 + (p.x - slope * p.y);
 		for (int y = y0; y <= y1; y++) {
 			x = (int)xf;
-			if (x >= 0 && x < _WIN_W) Canvas(x, y) = col;
+			if (x >= 0 && x < MAX_W) canvas(x, y) = col;
 			xf += slope;
 		}
 	}
 };
-auto drawCross = [&](vec2 p, double r, COLORREF Color = WHITE) {
-	drawLine(p - vec2(r, 0), p + vec2(r, 0), Color);
-	drawLine(p - vec2(0, r), p + vec2(0, r), Color);
+auto drawCross = [&](vec2 p, double r, COLORREF Color = WHITE, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
+	drawLine(p - vec2(r, 0), p + vec2(r, 0), Color, canvas, MAX_W, MAX_H);
+	drawLine(p - vec2(0, r), p + vec2(0, r), Color, canvas, MAX_W, MAX_H);
 };
 auto drawCircle = [&](vec2 c, double r, COLORREF Color) {
 	int s = int(r / sqrt(2) + 0.5);
@@ -567,22 +652,22 @@ auto drawTriangle = [](vec2 A, vec2 B, vec2 C, COLORREF col, bool stroke = false
 		drawLine(A, B, strokecol); drawLine(A, C, strokecol); drawLine(B, C, strokecol);
 	}
 };
-auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
-	drawLine(vec2(Min.x, Min.y), vec2(Max.x, Min.y), col);
-	drawLine(vec2(Max.x, Min.y), vec2(Max.x, Max.y), col);
-	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col);
-	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col);
+auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = RED, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
+	drawLine(vec2(Min.x, Min.y), vec2(Max.x, Min.y), col, canvas, MAX_W, MAX_H);
+	drawLine(vec2(Max.x, Min.y), vec2(Max.x, Max.y), col, canvas, MAX_W, MAX_H);
+	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col, canvas, MAX_W, MAX_H);
+	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col, canvas, MAX_W, MAX_H);
 };
-auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
-	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, _WIN_W - 1);
-	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, _WIN_H - 1);
-	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) Canvas(x, y) = col;
+auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = RED, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
+	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, MAX_W - 1);
+	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, MAX_H - 1);
+	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) canvas(x, y) = col;
 };
-auto drawSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
-	drawBox(C - vec2(r, r), C + vec2(r, r), col);
+auto drawSquare = [](vec2 C, double r, COLORREF col = ORANGE, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
+	drawBox(C - vec2(r, r), C + vec2(r, r), col, canvas, MAX_W, MAX_H);
 };
-auto fillSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
-	fillBox(C - vec2(r, r), C + vec2(r, r), col);
+auto fillSquare = [](vec2 C, double r, COLORREF col = ORANGE, COLORREF& (canvas)(int, int) = Canvas, int MAX_W = _WIN_W, int MAX_H = _WIN_H) {
+	fillBox(C - vec2(r, r), C + vec2(r, r), col, canvas, MAX_W, MAX_H);
 };
 
 auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = WHITE) {
@@ -648,7 +733,7 @@ void render() {
 			c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
 		}
 		vec2 p0, p1; projRange_Sphere(C, r, p0, p1); drawBox(p0, p1, YELLOW);
-	}
+}
 	//return;
 #endif
 
@@ -665,14 +750,14 @@ void render() {
 	}
 
 	// scene
-#define DW(p,q) drawLine_F(CPs[p].P,CPs[q].P)
+#define DW(p,q) drawLine_F(CPs[p].P(),CPs[q].P())
 	DW(Head, Neck); DW(Neck, Chest); DW(Chest, Tail);
 	DW(Shoulder_L, Shoulder_R); DW(Shoulder_L, Elbow_L), DW(Shoulder_R, Elbow_R); DW(Elbow_L, Hand_L), DW(Elbow_R, Hand_R);
 	DW(Butt_L, Knee_L), DW(Butt_R, Knee_R); DW(Knee_L, Foot_L), DW(Knee_R, Foot_R);
 #undef DW
 
-	// dragger
-	if (selected) {
+	// 3D cursor
+	if (selected && !mouse_down_T) {
 		double Unit = dot(CPC, Tr.p) + Tr.s;
 		double sR = selRadius * Unit, sL = selLength * Unit, sA = selAxisRatio * sR;
 		if (mouse_down) {
@@ -689,8 +774,8 @@ void render() {
 
 	// control points
 	for (int i = 0; i < NCtrPs; i++) {
-		if (CPs[i].selected) fillSquare((Tr*CPs[i].P).xy(), selRadiusP, mouse_down && moveAlong != none ? YELLOW : ORANGE);
-		else drawSquare((Tr*CPs[i].P).xy(), selRadiusP);
+		if (CPs[i].selected) fillSquare((Tr*CPs[i].P()).xy(), selRadiusP, mouse_down && moveAlong != none ? YELLOW : ORANGE);
+		drawSquare((Tr*CPs[i].P()).xy(), selRadiusP, i == HObject ? RED : ORANGE);
 	}
 
 	// timer
@@ -701,11 +786,48 @@ void render() {
 }
 
 void render_t() {
-	// debug, draw something to make sure it works
-	for (int i = 0; i < _WIN_T_W; i++) for (int j = 0; j < _WIN_T_H; j++) {
-		double r = cos(0.01*i), g = cos(0.01*j), b = sin(0.01*(i + j));
-		byte* p = (byte*)&CanvasT(i, j);
-		p[0] = 255 * b, p[1] = 255 * g, p[2] = 255 * r;
+	for (int i = 0, l = _WIN_T_W * _WIN_T_H; i < l; i++) _WINIMG_T[i] = 0;
+
+	// highlight mouse-hower frame
+	int f = (int)getFrame(CursorT.x); double f0 = FrameToCoord(f);
+	for (int x = max((int)f0, 0), x1 = min((int)(f0 + UnitT), _WIN_T_W); x < x1; x++) {
+		for (int y = 0; y < _WIN_T_H; y++) CanvasT(x, y) = 0x101418;
+	}
+
+	// highlight selected points
+	for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
+		double y0 = ObjectIDToCoord(i), y1 = y0 + UnitTV;
+		for (int y = max((int)y0, 0), ym = min((int)y1, _WIN_T_H); y < ym; y++) {
+			for (int x = 0; x < _WIN_T_W; x++) CanvasT(x, y) = INDIGO;
+		}
+	}
+
+	// draw axis and grid
+	{
+		double f0 = LFrame, f1 = f0 + _WIN_T_W / UnitT;
+		for (int i = (int)ceil(f0); i < f1; i++) {
+			int x = (int)((i - f0)*UnitT);
+			for (int j = 0; j < _WIN_T_H; j++) CanvasT(x, j) = i % FPS ? 0x404040 : 0xA0A0A0;
+		}
+	}
+
+	// highlight current frame
+	f0 = FrameToCoord(currentFrame);
+	for (int x = max((int)f0, 0), x1 = min((int)(f0 + UnitT), _WIN_T_W); x < x1; x++) {
+		for (int y = 0; y < _WIN_T_H; y++) CanvasT(x, y) = NAVY;
+	}
+	// highlight current time
+	f0 = previewFrame - LFrame, f = (int)(f0 * UnitT);
+	if (f >= 0 && f < _WIN_T_W) for (int y = 0; y < _WIN_T_H; y++) CanvasT(f, y) = LIME;
+
+	// draw control points
+	{
+		for (int i = BObject; i < NCtrPs; i++) {
+			auto *P = &CPs[i].keyFrames;
+			for (int d = 0, n = P->size(); d < n; d++) {
+				drawSquare(timeAxisSquareCenter(P->at(d).F, i), rdrRadiusT, i == HObject ? RED : ORANGE, CanvasT, _WIN_T_W, _WIN_T_H);
+			}
+		}
 	}
 }
 
@@ -747,13 +869,17 @@ void MouseMove(int _X, int _Y) {
 				CPC += (vecd = (t1 - t0)*vecd);
 			}
 			// update position of points
-			for (int i = 0; i < NCtrPs; i++) {
-				if (CPs[i].selected) CPs[i].P += vecd;
+			if (vecd != vec3(0.0)) {
+				for (int i = 0; i < NCtrPs; i++) {
+					if (CPs[i].selected) CPs[i].getP() += vecd;
+				}
 			}
 			updateCursorPosition();  // not necessary just for safe
+#if Enable_History
 			// update history
 			if (!History.empty()) History.top().translate(vecd);
-		}
+#endif
+			}
 		else {
 			// test if which part the mouse hover 3D cursor
 			vec3 p, d; getRay(Cursor, p, d);
@@ -767,9 +893,11 @@ void MouseMove(int _X, int _Y) {
 			t = intCylinder(CPC, CPC + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
 			moveAlong = dir;
 		}
-	}
+		}
 	else moveAlong = none;
-}
+
+	HObject = -1;
+	}
 
 void MouseWheel(int _DELTA) {
 	// zoom
@@ -785,12 +913,14 @@ void MouseDownL(int _X, int _Y) {
 	clickCursor = Cursor = vec2(_X, _Y);
 	mouse_down = true;
 
+#if Enable_History
 	// update history: (possibly) starting a new operation
 	// WARNING: this will clear the undo history.
 	if (selected && moveAlong != none) {
 		History.push(historyElement());
 		redoHistory = std::stack<historyElement>();
-	}
+}
+#endif
 }
 
 void MouseUpL(int _X, int _Y) {
@@ -802,7 +932,7 @@ void MouseUpL(int _X, int _Y) {
 		if (moveAlong == none) {
 			// click to select/deselect points
 			for (int i = 0; i < NCtrPs; i++) {
-				vec3 P = Tr * CPs[i].P;
+				vec3 P = Tr * CPs[i].P();
 				bool hower = sdBox(P.xy() - Cursor, vec2(selRadiusP)) < 0.;
 				if (Shift) CPs[i].selected ^= hower;
 				else CPs[i].selected = hower;
@@ -813,10 +943,12 @@ void MouseUpL(int _X, int _Y) {
 		}
 	}
 
+#if Enable_History
 	// When an operation is completed, update history
 	if (!History.empty()) {
 		if (!History.top().changed()) History.pop();
 	}
+#endif
 }
 
 void MouseDownR(int _X, int _Y) {
@@ -825,6 +957,10 @@ void MouseDownR(int _X, int _Y) {
 
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+#ifdef _DEBUG
+	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
+	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
 }
 
 void KeyDown(WPARAM _KEY) {
@@ -839,6 +975,7 @@ void KeyUp(WPARAM _KEY) {
 	else if (_KEY == VK_MENU) Alt = false;
 
 	if (Ctrl) {
+#if Enable_History
 		if (_KEY == 'Z') {  // Ctrl+Z: Undo
 			if (!History.empty()) {
 				historyElement E = History.top();
@@ -855,23 +992,72 @@ void KeyUp(WPARAM _KEY) {
 				for (int i = 0; i < NCtrPs; i++)
 					if (CPs[i].selected = E.P[i]) CPs[i].P = E.P_new[i];
 				updateCursorPosition();
-			}
+}
 		}
+#endif
 	}
 }
 
 
 void WindowResizeT(int _oldW, int _oldH, int _W, int _H) {
-	//dbgprint("WindowResizeT %d %d %d %d\n", _oldW, _oldH, _W, _H);
+	if (_H > UnitTV * NCtrPs) UnitTV = _H / (double)NCtrPs;
 }
 void WindowCloseT() { dbgprint("WindowCloseT\n"); }
 void MouseMoveT(int _X, int _Y) {
-	//dbgprint("MouseMoveT %d %d\n", _X, _Y);
+	CursorT = vec2(_X, _Y);
+	HObject = getHoverObject(CursorT.y);
+	if (mouse_down_T) {
+		previewFrame = getFrame(CursorT.x);
+	}
 }
-void MouseWheelT(int _DELTA) { dbgprint("MouseWheelT %d\n", _DELTA); }
-void MouseDownLT(int _X, int _Y) { dbgprint("MouseDownLT %d %d\n", _X, _Y); }
-void MouseUpLT(int _X, int _Y) { dbgprint("MouseUpLT %d %d\n", _X, _Y); }
-void MouseDownRT(int _X, int _Y) { dbgprint("MouseDownRT %d %d\n", _X, _Y); }
+void MouseWheelT(int _DELTA) {
+	if (Ctrl) {  // zoom object axis
+		double s = exp(0.0005*_DELTA);
+		double SCMin = max(_WIN_T_H / (double)NCtrPs, 12.0);
+		if (UnitTV*s > 30.0) s = 30.0 / UnitTV;
+		if (UnitTV*s < SCMin) s = SCMin / UnitTV;
+		UnitTV *= s;
+	}
+	else if (Shift) {  // zoom time axis
+		double s = exp(0.0005*_DELTA);
+		if (UnitT*s > 25.0) s = 25.0 / UnitT;
+		if (UnitT*s < 5.0) s = 5.0 / UnitT;
+		double CF = LFrame + (CursorT.x / UnitT);
+		UnitT *= s;
+		LFrame = CF - CursorT.x / UnitT;
+	}
+	else if (Alt) {  // scroll time axis
+		LFrame -= 0.25*_DELTA / UnitT;
+	}
+	else {
+		BObject += _DELTA / abs(_DELTA);
+		BObject = clamp(BObject, 0, NCtrPs - int(_WIN_T_H / UnitTV));
+	}
+	LFrame = max(LFrame, 0);
+}
+void MouseDownLT(int _X, int _Y) {
+	clickCursorT = CursorT = vec2(_X, _Y);
+	mouse_down_T = true;
+	previewFrame = getFrame(CursorT.x);
+}
+void MouseUpLT(int _X, int _Y) {
+	CursorT = vec2(_X, _Y);
+	bool moved = (int)length(clickCursorT - CursorT) != 0;   // be careful: coincidence
+	mouse_down_T = false;
+
+	if (!moved) {
+		// click to select edit frame
+		currentFrame = (int)getFrame(CursorT.x);
+
+		// select point from time axis
+		if (CPs[HObject].existFrame(currentFrame) && sdBox(CursorT - timeAxisSquareCenter(currentFrame, HObject), vec2(rdrRadiusT)) < 0.) {
+			CPs[HObject].selected ^= 1;
+		}
+	}
+	previewFrame = currentFrame;
+	updateCursorPosition();
+}
+void MouseDownRT(int _X, int _Y) {}
 void MouseUpRT(int _X, int _Y) {
 	// right click to pin/unpin window
 	bool topmost = GetWindowLong(_HWND_T, GWL_EXSTYLE) & WS_EX_TOPMOST;
@@ -879,6 +1065,27 @@ void MouseUpRT(int _X, int _Y) {
 	sprintf(text, "%s - %s", WIN_NAME_T, topmost ? "unpinned" : "pinned");
 	SetWindowTextA(_HWND_T, text);
 }
-void KeyDownT(WPARAM _KEY) { dbgprint("KeyDownT %u\n", _KEY); }
-void KeyUpT(WPARAM _KEY) { dbgprint("KeyUpT %u\n", _KEY); }
+void KeyDownT(WPARAM _KEY) {
+	if (_KEY == VK_CONTROL) Ctrl = true;
+	else if (_KEY == VK_SHIFT) Shift = true;
+	else if (_KEY == VK_MENU) Alt = true;
+}
+void KeyUpT(WPARAM _KEY) {
+	if (_KEY == VK_CONTROL) Ctrl = false;
+	else if (_KEY == VK_SHIFT) Shift = false;
+	else if (_KEY == VK_MENU) Alt = false;
+
+	// Home: go to the beginning
+	if (_KEY == VK_HOME) LFrame = 0;
+
+	// Delete: delete a keyframe
+	if (_KEY == VK_DELETE || _KEY == VK_BACK) {
+		if (currentFrame != 0) {
+			for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
+				CPs[i].deleteFrame(currentFrame);
+			}
+			updateCursorPosition();
+		}
+	}
+}
 
