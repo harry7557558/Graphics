@@ -1,3 +1,60 @@
+/*
+
+	3D GUI editor - Created for a school project
+
+	Viewport:
+		Drag to rotate viewpoint;
+		Scroll to zoom; (there is a zooming limit)
+		Shift + drag vertically to roll camera;
+		Shift + scroll to adjust perspective (move camera without scaling the screen)
+		Press . to move view center to the 3D cursor;
+
+	Selection:
+		Click to select a point;
+		Shift + Click to select multiple points;
+		You can also click points on time axis window to select/unselect points (no Shift key required);
+		Ctrl + A to select all points;
+		Ctrl + I is for inverse selection;
+		Click empty space on preview window to unselect all points;
+
+	3D Cursor:
+		The position of 3D cursor is the average of all selected points;
+		Drag axis to translate points (default)
+		[not implemented] Press T to enter translation mode;
+		[not implemented] Press R to enter rotation mode;
+		[not implemented] Press S to enter scaling mode;
+
+	Time Axis (separated window):
+		Vertical lines indicate frame, the lighter one indicates integer second;
+		Right click to pin/unpin window (set/unset window to topmost);
+		Simple mouse scroll is vertical;
+		Ctrl + Scroll to zoom the height of control points;
+		Shift + Scroll to zoom the scale of time axis;
+		Alt + Scroll to move view along time axis;
+		Select a time and move a point to add a keyframe;
+		Press Delete/Backspace to delete all selected keyframes;
+		Drag selected points along time axis to switch key frame;
+		Press tab to insert keyframes identical to the previous keyframe;
+
+	Animation Preview:
+		Press space key on any window to preview/pause animation.
+		The animation will start from current frame, or from the first if current frame is the last frame.
+		When starting preview, all points are unselected.
+		[not implemented] Select start and end frame from time axis as preview range.
+
+	Edit History:
+		[not implemented]
+		History should include point position change, keyframe change, and selection/unselection
+
+	Save File:
+		Ctrl + S to save file, Ctrl + O to open file.
+		Viewport and control point data are saved as text, start with character '#'
+		When saving file, file is opened in append mode.
+		Opening file will replace the current scene with new scene.
+		Due to the lack of error handling, if program crashes due to file format error, restart the program.
+
+*/
+
 #include <cmath>
 #include <stdio.h>
 #include <algorithm>
@@ -7,9 +64,14 @@
 
 #pragma region Windows
 
+#ifndef UNICODE
+#define UNICODE
+#endif
+
 #include <Windows.h>
 #include <windowsx.h>
 #include <tchar.h>
+
 
 // debug
 #define _USE_CONSOLE 0
@@ -77,6 +139,10 @@ HBITMAP _HIMG_T; COLORREF *_WINIMG_T;
 inline COLORREF& CanvasT(int x, int y) { return _WINIMG_T[(y)*_WIN_T_W + (x)]; }
 
 
+// a forward declaration
+void WriteImage();
+
+
 // Win32 Entry
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -112,6 +178,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+	//WriteImage(); return 0;
 	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
 	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
 	if (!RegisterClassEx(&wc)) return -1;
@@ -160,6 +227,7 @@ enum WebSafeColors {
 #define PI 3.1415926535897932384626
 #define mix(x,y,a) ((x)*(1.0-(a))+(y)*(a))
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
+double mod(double x, double m) { return x - m * floor(x / m); }
 
 class vec2 {
 public:
@@ -242,6 +310,7 @@ public:
 	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
 	friend vec3 floor(const vec3 &a) { return vec3(floor(a.x), floor(a.y), floor(a.z)); }
 	friend vec3 ceil(const vec3 &a) { return vec3(ceil(a.x), ceil(a.y), ceil(a.z)); }
+	friend vec3 mod(const vec3 &a, double m) { return vec3(mod(a.x, m), mod(a.y, m), mod(a.z, m)); }
 #endif
 };
 
@@ -335,52 +404,63 @@ double sdBox(vec2 p, vec2 b) {
 
 // ======================================== Data / Parameters ========================================
 
-
+// viewport
 vec3 Center(0, 0, 1);  // view center in world coordinate
-double rz = 0.25*PI, rx = 0.1*PI, dist = 12.0, Unit = 100.0;  // spherical, camera distance, scale to screen
+double rz = 0.25*PI, rx = 0.1*PI, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
 
 #pragma region General Global Variables
+
+#define NCtrPs 16  // # of control points, constant
 
 // window parameters
 char text[64];	// window title
 Affine Tr;  // matrix
 vec3 CamP, ScrO, ScrA, ScrB;  // camera and screen
-auto scrDir = [](vec2 pixel) {return normalize(ScrO + (pixel.x / _WIN_W)*ScrA + (pixel.y / _WIN_H)*ScrB - CamP); };
+auto scrDir = [](vec2 pixel) { return normalize(ScrO + (pixel.x / _WIN_W)*ScrA + (pixel.y / _WIN_H)*ScrB - CamP); };
 
 // user parameters
 vec2 Cursor = vec2(0, 0), clickCursor;  // current cursor and cursor position when mouse down
 bool mouse_down = false;
 bool Ctrl = false, Shift = false, Alt = false;  // these variables are shared by both windows
 
+// file forward declaration
+bool saveFile(const WCHAR filename[]);
+bool saveFileUserEntry();
+bool readFile(const WCHAR filename[]);
+bool readFileUserEntry();
+
 #pragma endregion
 
 #pragma region Global Variable Related Functions
 
 // projection
+Affine axis_angle(vec3 axis, double a) {
+	axis = normalize(axis); double ct = cos(a), st = sin(a);
+	return Affine{
+		vec3(ct + axis.x*axis.x*(1 - ct), axis.x*axis.y*(1 - ct) - axis.z*st, axis.x*axis.z*(1 - ct) + axis.y*st),
+		vec3(axis.y*axis.x*(1 - ct) + axis.z*st, ct + axis.y*axis.y*(1 - ct), axis.y*axis.z*(1 - ct) - axis.x*st),
+		vec3(axis.z*axis.x*(1 - ct) - axis.y*st, axis.z*axis.y*(1 - ct) + axis.x*st, ct + axis.z*axis.z*(1 - ct)),
+		vec3(0), vec3(0), 1.0
+	};
+}
 void calcMat() {
-	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
+	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz), cy = cos(ry), sy = sin(ry);
 	Affine D{ veci, vecj, veck, -Center, vec3(0), 1.0 };  // world translation
 	Affine R{ vec3(-sz, cz, 0), vec3(-cz * sx, -sz * sx, cx), vec3(-cz * cx, -sz * cx, -sx), vec3(0), vec3(0), 1.0 };  // rotation
+	R = Affine{ vec3(cy, -sy, 0), vec3(sy, cy, 0), vec3(0, 0, 1), vec3(0), vec3(0), 1.0 } *R;  // camera roll (ry)
 	Affine P{ veci, vecj, veck, vec3(0), vec3(0, 0, 1.0 / dist), 1.0 };  // perspective
 	Affine S{ veci, vecj, veck, vec3(0), vec3(0), 1.0 / Unit };  // scale
 	Affine T{ veci, vecj, veck, vec3(SCRCTR, 0.0), vec3(0), 1.0 };  // screen translation
 	Tr = T * S * P * R * D;
 }
 void getRay(vec2 Cursor, vec3 &p, vec3 &d) {
-#if 1
 	p = CamP;
 	d = normalize(ScrO + (Cursor.x / _WIN_W)*ScrA + (Cursor.y / _WIN_H)*ScrB - CamP);
-#else
-	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
-	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
-	p = Center + w * dist;
-	vec2 uv = (Cursor - SCRCTR) / Unit;
-	d = normalize((uv.x*u + uv.y*v) - w * dist);
-#endif
 }
 void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
 	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
+	Affine Y = axis_angle(w, -ry); u = Y * u, v = Y * v;
 	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= dist;
 	P = Center + w;
 	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
@@ -430,12 +510,13 @@ void projRange_Sphere(vec3 P, double r, vec2 &p0, vec2 &p1) {  // available when
 
 #pragma endregion
 
-#pragma region Timer and Animation
+#pragma region Timer Axis
 
 #include <chrono>
 typedef std::chrono::high_resolution_clock NTime;
+typedef std::chrono::duration<double> fsec;
 NTime::time_point _Global_Timer = NTime::now();
-#define iTime std::chrono::duration<double>(NTime::now()-_Global_Timer).count()
+#define iTime fsec(NTime::now()-_Global_Timer).count()
 
 // window parameters
 const int FPS = 25;  // frame rate, constant
@@ -455,7 +536,7 @@ double FrameToCoord(double Frame) {
 }
 
 // the vertical axis of time axis window
-double UnitTV = 20.0;  // the height on screen of one control point
+double UnitTV = 18.0;  // the height on screen of one control point
 double rdrRadiusT = 4.0;  // side length of one point on screen
 int BObject = 0;  // the object at the bottom of the screen
 int HObject = -1;  // mouse hover object
@@ -466,14 +547,14 @@ double ObjectIDToCoord(int d) {
 	return (d - BObject)*UnitTV;
 }
 
-vec2 timeAxisSquareCenter(int frame, int obj) {
+vec2 timeAxisSquareCenter(double frame, int obj) {  // note that frame is floatpoint
 	return vec2(FrameToCoord(frame) + 0.5*UnitT, ObjectIDToCoord(obj) + 0.5*UnitTV);
 }
 
 // user parameters
 vec2 CursorT = vec2(0, 0), clickCursorT;
 bool mouse_down_T = false;
-
+int pointOnMove[NCtrPs];  // points under on time change, the value is its original frame
 
 #pragma endregion
 
@@ -483,12 +564,12 @@ bool mouse_down_T = false;
 #include <stack>
 
 // control points
-#define NCtrPs 16  // # of control points, constant
 class ControlPoint {
 	struct Point {
 		vec3 P;  // position
 		int F; // frame, integer
 	};
+	friend bool readFile(const WCHAR filename[]);
 public:
 	std::vector<Point> keyFrames;  // F sorted in increasing order
 	bool selected = false;  // whether this point is being selected and ready to be edited
@@ -498,8 +579,20 @@ private:
 		for (int i = 0, n = keyFrames.size(); i < n; i++) if (keyFrames[i].F > t) return max(i - 1, 0); return keyFrames.size() - 1;
 	}
 public:
+	// just too lazy to do optimization for this part ;)
 	ControlPoint() {}
 	ControlPoint(vec3 P) { keyFrames.push_back(Point{ P, 0 }); }
+	bool existFrame(int t) {
+		return keyFrames[_lower_bound(t)].F == t;
+	}
+	bool isOver(int t) {
+		return t > keyFrames.back().F;
+	}
+	void sortFrames() {
+		std::sort(keyFrames.begin(), keyFrames.end(), [](Point A, Point B)->bool {return A.F < B.F; });
+	}
+	//void detectFrameCollision() {}
+
 	vec3 P(double t = previewFrame) const {  // write interpolation code there
 		int d = _lower_bound(t);
 		//return keyFrames[d].P;
@@ -508,19 +601,24 @@ public:
 		double u = (t - keyFrames[d].F) / (keyFrames[e].F - keyFrames[d].F);
 		return (1 - u)*keyFrames[d].P + u * keyFrames[e].P;
 	}
-	bool existFrame(int t) {
-		return keyFrames[_lower_bound(t)].F == t;
-	}
-	vec3& getP(int t = currentFrame) {  // if the keyframe exists, return point; otherwise, create
+	vec3& getP(int t = currentFrame, bool interp = true) {  // if the keyframe exists, return point; otherwise, create
 		int d = _lower_bound(t);
 		if (keyFrames[d].F == t) return keyFrames[d].P;
-		keyFrames.insert(keyFrames.begin() + d + 1, Point{ P(t), t });
+		keyFrames.insert(keyFrames.begin() + d + 1, Point{ interp ? P(t) : keyFrames[d].P, t });
 		return keyFrames[d + 1].P;
 	}
+
 	bool deleteFrame(int t) {
 		int d = _lower_bound(t);
 		if (keyFrames[d].F != t) return false;
 		keyFrames.erase(keyFrames.begin() + d);
+		return true;
+	}
+	bool setFrame(int old, int _new) {
+		if (!existFrame(old) || existFrame(_new)) return false;
+		int d = _lower_bound(old);
+		keyFrames[d].F = _new;
+		sortFrames();
 		return true;
 	}
 };
@@ -536,6 +634,19 @@ ControlPoint CPs[NCtrPs] = {  // default positions of control points
 	CP(-0.16,0,1.06), CP(0.16,0,1.06), CP(-0.18,0.1,0.5), CP(0.18,0.1,0.5), CP(-0.18,0,0), CP(0.18,0,0)
 };
 #undef CP
+
+int NSelectedPoints() {  // # of selected control points
+	int N = 0;
+	for (int i = 0; i < NCtrPs; i++) N += CPs[i].selected;
+	return N;
+}
+int lastFrame() {  // return the last frame of the animation
+	int endFrame = 0;
+	for (int i = 0; i < NCtrPs; i++) {
+		endFrame = max(endFrame, CPs[i].keyFrames.back().F);
+	}
+	return endFrame;
+}
 
 // 3D cursor
 vec3 CPC(NAN);  // location of 3D cursor (average of all selected points)
@@ -553,8 +664,33 @@ int updateCursorPosition() {  // return the # of selected pointss
 	}
 	CPC = sumP / totP;  // no point selected -> 0/0=NAN
 	if (totP) selected = true;
+	else selected = false;
 	return totP;
 }
+void centerViewport() { // Move viewport center to the location of the cursor
+	if (selected) Center = CPC;
+	else {
+		Center = vec3(0.0);
+		for (int i = 0; i < NCtrPs; i++) Center += CPs[i].P();
+		Center /= NCtrPs;
+	}
+}
+
+// Selection
+void selectAll() {
+	for (int i = 0; i < NCtrPs; i++) CPs[i].selected = true;
+	updateCursorPosition();
+}
+void inverseSelection() {
+	for (int i = 0; i < NCtrPs; i++) CPs[i].selected ^= 1;
+	updateCursorPosition();
+}
+
+
+
+#pragma endregion
+
+#pragma region Edit History
 
 // history - debug
 #define Enable_History false
@@ -583,6 +719,50 @@ struct historyElement {
 std::stack<historyElement> History;
 std::stack<historyElement> redoHistory;
 #endif
+
+#pragma endregion
+
+#pragma region Preview Animation
+
+#include <thread>
+
+int startFrame = 0, endFrame = 0;  // preview start and end frames
+auto startTime = NTime::now();  // the time when animation started
+auto animateTime = []()->double { return fsec(NTime::now() - startTime).count(); };  // elapsed time after animation started
+bool isAnimating = false;  // is previewing?
+HANDLE animationThread;  // the thread running this animation
+
+DWORD WINAPI animationProcessFunction(HANDLE H) {
+	startTime = NTime::now();
+	for (int i = startFrame; i <= endFrame; i++) {
+		previewFrame = currentFrame = i;
+		SendMessage(_HWND, WM_NULL, NULL, NULL);
+		SendMessage(_HWND_T, WM_NULL, NULL, NULL);
+		double t = (i - startFrame)*FrameDelay - animateTime();
+		std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * t)));
+		// handle the case when rendering too slow
+		if (i >= endFrame) break;
+		i = min(int(animateTime() / FrameDelay + 0.01) + startFrame, endFrame - 1);  // -1 because i++
+	}
+	dbgprint("Elapsed Time: %lfsecs, %lfframes\n", animateTime(), animateTime() / FrameDelay);
+	isAnimating = false;
+	return 0;
+}
+void startAnimation(int frame = currentFrame) {
+	startFrame = frame;
+	endFrame = lastFrame();
+	// unselect elements so the animation can be run smoothly
+	for (int i = 0; i < NCtrPs; i++) CPs[i].selected = false;
+	selected = false;
+	// start animation
+	isAnimating = true;
+	animationThread = CreateThread(NULL, NULL, &animationProcessFunction, NULL, NULL, NULL);
+}
+void endAnimation() {
+	TerminateThread(animationThread, 0);
+	previewFrame = currentFrame = (int)(startFrame + animateTime() / FrameDelay);
+	isAnimating = false;
+}
 
 #pragma endregion
 
@@ -719,21 +899,28 @@ void render() {
 		vec3 cP, cD; getRay(Cursor, cP, cD);
 		const double r = 0.8; const vec3 C(0, 3.0, r);
 		int cU = floor(cP.x + intXOY(cP, cD)*cD.x), cV = floor(cP.y + intXOY(cP, cD)*cD.y);
-		for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) {
+		vec2 p0, p1; projRange_Sphere(C, r, p0, p1);
+		//int x0 = max((int)p0.x, 0), x1 = min((int)p1.x, _WIN_W);
+		//int y0 = max((int)p0.y, 0), y1 = min((int)p1.y, _WIN_H);
+		int x0 = 0, x1 = _WIN_W, y0 = 0, y1 = _WIN_H;
+		for (int i = x0; i < x1; i++) for (int j = y0; j < y1; j++) {
 			vec3 p, d; getRay(vec2(i, j), p, d);
-			double t = intSphere(C, r, p, d);
+			//double t = intSphere(C, r, p, d);
+			double t = intXOY(p, d);
 			vec3 col(0.0);
 			if (t > 0.0) {
-				vec3 n = (p + t * d - C) / r;
-				col = vec3(1.0, 0.9, 0.8);
+				//vec3 n = (p + t * d - C) / r;
+				vec3 n(0, 0, 1);
 				p = p + t * d, d = d - n * (2.0*dot(d, n));
+				//col = vec3(1.0, 0.9, 0.8);
+				col = ((int)floor(p.x) + (int)floor(p.y)) & 1 ? vec3(0.4, 0.6, 0.8) : vec3(0.7, 0.6, 0.7);
 				col *= abs(d.z);
 			}
 			byte* c = (byte*)&Canvas(i, j);
 			c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
 		}
-		vec2 p0, p1; projRange_Sphere(C, r, p0, p1); drawBox(p0, p1, YELLOW);
-}
+		//drawBox(p0, p1, YELLOW);
+	}
 	//return;
 #endif
 
@@ -757,7 +944,7 @@ void render() {
 #undef DW
 
 	// 3D cursor
-	if (selected && !mouse_down_T) {
+	if (selected && !mouse_down_T && !isAnimating) {
 		double Unit = dot(CPC, Tr.p) + Tr.s;
 		double sR = selRadius * Unit, sL = selLength * Unit, sA = selAxisRatio * sR;
 		if (mouse_down) {
@@ -822,39 +1009,179 @@ void render_t() {
 
 	// draw control points
 	{
+		int last = lastFrame(), last_x = (last - LFrame)*UnitT;
+		if (last_x >= 0 && last_x < _WIN_T_W) for (int j = 0; j < _WIN_T_H; j++) CanvasT(last_x, j) = MAGENTA;  // highlight the last frame
 		for (int i = BObject; i < NCtrPs; i++) {
 			auto *P = &CPs[i].keyFrames;
+			int back = P->back().F;
+			drawLine(timeAxisSquareCenter(0, i), timeAxisSquareCenter(back, i), DARKGREEN, CanvasT, _WIN_T_W, _WIN_T_H);
+			if (pointOnMove[i] != -1) {
+				fillSquare(timeAxisSquareCenter(pointOnMove[i], i), rdrRadiusT, MAGENTA, CanvasT, _WIN_T_W, _WIN_T_H);
+			}
 			for (int d = 0, n = P->size(); d < n; d++) {
-				drawSquare(timeAxisSquareCenter(P->at(d).F, i), rdrRadiusT, i == HObject ? RED : ORANGE, CanvasT, _WIN_T_W, _WIN_T_H);
+				drawSquare(timeAxisSquareCenter(P->at(d).F, i), rdrRadiusT, i == HObject ? RED : d + 1 == n ? YELLOW : ORANGE, CanvasT, _WIN_T_W, _WIN_T_H);
 			}
 		}
 	}
 }
 
 
+#pragma region Write File
+
+#define GIF_FLIP_VERT
+#include "libraries\gif.h"	// animated gif writer, https://github.com/charlietangora/gif-h
+
+void WriteImage() {
+	_WIN_W = 600, _WIN_H = 400;
+	_WINIMG = new COLORREF[_WIN_W*_WIN_H];
+	GifWriter gif;
+	GifBegin(&gif, "D:\\stick figure.gif", _WIN_W, _WIN_H, 4);
+	readFile(L"D:\\stick figure.txt");
+	for (currentFrame = 0, endFrame = lastFrame(); currentFrame < endFrame; currentFrame++) {
+		previewFrame = currentFrame;
+		render();
+		for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) std::swap(((byte*)&_WINIMG[i])[0], ((byte*)&_WINIMG[i])[2]);
+		GifWriteFrame(&gif, (uint8_t*)_WINIMG, _WIN_W, _WIN_H, 4);
+	}
+	GifEnd(&gif);
+}
+
+#pragma endregion This part is to be manually called on compiler
+
+
 // ============================================== User ==============================================
 
 
+// This function is called once before the windows are created
+// It will also be called after a file is opened
+// Only use to initialize variables
 void Init() {
+	for (int i = 0; i < NCtrPs; i++) pointOnMove[i] = -1;
+	for (int i = 0; i < NCtrPs; i++) CPs[i].sortFrames();
+	previewFrame = currentFrame;
 	dbgprint("Init\n");
 }
+
+
+// Key events shared by both windows
+void keyDownShared(WPARAM _KEY) {
+	if (_KEY == VK_CONTROL) Ctrl = true;
+	else if (_KEY == VK_SHIFT) Shift = true;
+	else if (_KEY == VK_MENU) Alt = true;
+}
+void keyUpShared(WPARAM _KEY) {
+	if (_KEY == VK_CONTROL) Ctrl = false;
+	else if (_KEY == VK_SHIFT) Shift = false;
+	else if (_KEY == VK_MENU) Alt = false;
+
+	// Space: preview animation
+	if (_KEY == VK_SPACE) {
+		if (isAnimating) endAnimation();
+		else startAnimation(currentFrame >= lastFrame() ? 0 : currentFrame);
+	}
+
+	// Period/Decimal: move viewport center to the location of 3D cursor
+	if (_KEY == VK_OEM_PERIOD || _KEY == VK_DECIMAL) {
+		centerViewport();
+	}
+
+	// Tab: insert keyframes
+	if (_KEY == VK_TAB) {
+		for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
+			if (!CPs[i].existFrame(currentFrame)) CPs[i].getP(currentFrame, false);
+		}
+		updateCursorPosition();
+	}
+
+	// Ctrl combination keys
+	if (Ctrl) {
+		if (_KEY == 'A') selectAll();
+		else if (_KEY == 'I') inverseSelection();
+#if Enable_History
+		if (_KEY == 'Z') {  // Ctrl+Z: Undo
+			if (!History.empty()) {
+				historyElement E = History.top();
+				redoHistory.push(E), History.pop();
+				for (int i = 0; i < NCtrPs; i++)
+					if (CPs[i].selected = E.P[i]) CPs[i].P = E.P_old[i];
+				updateCursorPosition();
+			}
+		}
+		else if (_KEY == 'Y') {  // Ctrl+Y: Redo
+			if (!redoHistory.empty()) {
+				historyElement E = redoHistory.top();
+				History.push(E), redoHistory.pop();
+				for (int i = 0; i < NCtrPs; i++)
+					if (CPs[i].selected = E.P[i]) CPs[i].P = E.P_new[i];
+				updateCursorPosition();
+			}
+		}
+#endif
+		if (_KEY == 'S') {  // Ctrl+S save file
+			if (!saveFileUserEntry()) MessageBeep(MB_ICONSTOP);
+			Ctrl = false;
+		}
+		else if (_KEY == 'O') {  // Ctrl+O open file
+			if (!readFileUserEntry()) MessageBeep(MB_ICONSTOP);
+			Ctrl = false;
+		}
+	}
+}
+
+
+// Viewport window
 
 void WindowResize(int _oldW, int _oldH, int _W, int _H) {
 	if (_W*_H == 0 || _oldW * _oldH == 0) return;  // window is minimized
 	double pw = _oldW, ph = _oldH, w = _W, h = _H;
 	double s = sqrt((w * h) / (pw * ph));
-	Unit *= s;
+	Unit *= s, dist /= s;
 }
-void WindowClose() {}
+void WindowClose() {
+	if (isAnimating) endAnimation();
+}
 
+void MouseWheel(int _DELTA) {
+	if (Shift) {
+		double s = exp(-0.001*_DELTA);
+		dist *= s;
+	}
+	else {
+		// zoom
+		double s = exp(0.001*_DELTA);
+		double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.015*D;
+		if (Unit * s > Max) s = Max / Unit;
+		else if (Unit * s < Min) s = Min / Unit;  // clamp zooming depth
+		Unit *= s, dist /= s;
+	}
+}
+void MouseDownL(int _X, int _Y) {
+	clickCursor = Cursor = vec2(_X, _Y);
+	mouse_down = true;
+
+#if Enable_History
+	// update history: (possibly) starting a new operation
+	// WARNING: this will clear the undo history.
+	if (selected && moveAlong != none) {
+		History.push(historyElement());
+		redoHistory = std::stack<historyElement>();
+	}
+#endif
+}
 void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y), D = P - P0;
 	Cursor = P;
 
 	// drag to rotate scene
 	if (mouse_down && moveAlong == none) {
-		rz -= 0.01*D.x;
-		rx -= 0.01*D.y;
+		if (Shift) {
+			ry += 0.002*D.y;
+		}
+		else {
+			vec2 d = 0.01*D;
+			rz -= cos(ry)*d.x + sin(ry)*d.y, rx -= -sin(ry)*d.x + cos(ry)*d.y;
+			//rz -= d.x, rx -= d.y;
+		}
 	}
 
 	if (selected) {  // mouse hover 3D cursor
@@ -879,7 +1206,7 @@ void MouseMove(int _X, int _Y) {
 			// update history
 			if (!History.empty()) History.top().translate(vecd);
 #endif
-			}
+		}
 		else {
 			// test if which part the mouse hover 3D cursor
 			vec3 p, d; getRay(Cursor, p, d);
@@ -893,36 +1220,11 @@ void MouseMove(int _X, int _Y) {
 			t = intCylinder(CPC, CPC + vec3(0, 0, sL), sA, p, d); if (t < mt) mt = t, dir = zAxis;
 			moveAlong = dir;
 		}
-		}
+	}
 	else moveAlong = none;
 
 	HObject = -1;
-	}
-
-void MouseWheel(int _DELTA) {
-	// zoom
-	double s = exp(0.001*_DELTA);
-	double D = length(vec2(_WIN_W, _WIN_H)), Max = D, Min = 0.015*D;
-	if (Unit * s > Max) s = Max / Unit;
-	else if (Unit * s < Min) s = Min / Unit;  // clamp zooming depth
-	Unit *= s;
-	dist /= s;
 }
-
-void MouseDownL(int _X, int _Y) {
-	clickCursor = Cursor = vec2(_X, _Y);
-	mouse_down = true;
-
-#if Enable_History
-	// update history: (possibly) starting a new operation
-	// WARNING: this will clear the undo history.
-	if (selected && moveAlong != none) {
-		History.push(historyElement());
-		redoHistory = std::stack<historyElement>();
-}
-#endif
-}
-
 void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	bool moved = (int)length(clickCursor - Cursor) != 0;   // be careful: coincidence
@@ -931,15 +1233,17 @@ void MouseUpL(int _X, int _Y) {
 	if (!moved) {  // click
 		if (moveAlong == none) {
 			// click to select/deselect points
+			int N = NSelectedPoints(), NHover = 0;
+			bool hover[NCtrPs];
 			for (int i = 0; i < NCtrPs; i++) {
 				vec3 P = Tr * CPs[i].P();
-				bool hower = sdBox(P.xy() - Cursor, vec2(selRadiusP)) < 0.;
-				if (Shift) CPs[i].selected ^= hower;
-				else CPs[i].selected = hower;
+				NHover += hover[i] = sdBox(P.xy() - Cursor, vec2(selRadiusP)) < 0.;
 			}
-			selected = updateCursorPosition() != 0;
-			// If there's more than one control points under the cursor, all are selected
-			// Keep this bug as a feature ;)
+			for (int i = 0; i < NCtrPs; i++) {
+				if (Shift) CPs[i].selected ^= hover[i];
+				else CPs[i].selected = hover[i];
+			}
+			updateCursorPosition();
 		}
 	}
 
@@ -950,11 +1254,9 @@ void MouseUpL(int _X, int _Y) {
 	}
 #endif
 }
-
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 }
-
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 #ifdef _DEBUG
@@ -962,54 +1264,23 @@ void MouseUpR(int _X, int _Y) {
 	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 #endif
 }
-
 void KeyDown(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = true;
-	else if (_KEY == VK_SHIFT) Shift = true;
-	else if (_KEY == VK_MENU) Alt = true;
+	keyDownShared(_KEY);
 }
-
 void KeyUp(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = false;
-	else if (_KEY == VK_SHIFT) Shift = false;
-	else if (_KEY == VK_MENU) Alt = false;
-
-	if (Ctrl) {
-#if Enable_History
-		if (_KEY == 'Z') {  // Ctrl+Z: Undo
-			if (!History.empty()) {
-				historyElement E = History.top();
-				redoHistory.push(E), History.pop();
-				for (int i = 0; i < NCtrPs; i++)
-					if (CPs[i].selected = E.P[i]) CPs[i].P = E.P_old[i];
-				updateCursorPosition();
-			}
-		}
-		else if (_KEY == 'Y') {  // Ctrl+Y: Redo
-			if (!redoHistory.empty()) {
-				historyElement E = redoHistory.top();
-				History.push(E), redoHistory.pop();
-				for (int i = 0; i < NCtrPs; i++)
-					if (CPs[i].selected = E.P[i]) CPs[i].P = E.P_new[i];
-				updateCursorPosition();
-}
-		}
-#endif
-	}
+	keyUpShared(_KEY);
 }
 
+
+// Time axis window
 
 void WindowResizeT(int _oldW, int _oldH, int _W, int _H) {
 	if (_H > UnitTV * NCtrPs) UnitTV = _H / (double)NCtrPs;
 }
-void WindowCloseT() { dbgprint("WindowCloseT\n"); }
-void MouseMoveT(int _X, int _Y) {
-	CursorT = vec2(_X, _Y);
-	HObject = getHoverObject(CursorT.y);
-	if (mouse_down_T) {
-		previewFrame = getFrame(CursorT.x);
-	}
+void WindowCloseT() {
+	if (isAnimating) endAnimation();
 }
+
 void MouseWheelT(int _DELTA) {
 	if (Ctrl) {  // zoom object axis
 		double s = exp(0.0005*_DELTA);
@@ -1038,7 +1309,29 @@ void MouseWheelT(int _DELTA) {
 void MouseDownLT(int _X, int _Y) {
 	clickCursorT = CursorT = vec2(_X, _Y);
 	mouse_down_T = true;
-	previewFrame = getFrame(CursorT.x);
+	previewFrame = getFrame(CursorT.x), currentFrame = (int)previewFrame;
+
+	// ready to drag key frames
+	if (currentFrame != 0 && (int)getFrame(CursorT.x) == currentFrame) {
+		for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
+			if (CPs[i].existFrame(currentFrame)) pointOnMove[i] = currentFrame;
+			else pointOnMove[i] = -1;
+		}
+	}
+}
+void MouseMoveT(int _X, int _Y) {
+	CursorT = vec2(_X, _Y);
+	HObject = clamp(getHoverObject(CursorT.y), 0, NCtrPs - 1);
+	if (mouse_down_T) {
+		previewFrame = getFrame(CursorT.x), currentFrame = (int)previewFrame;
+
+		// drag keyframes
+		if (currentFrame > 0) {
+			for (int i = 0; i < NCtrPs; i++) if (pointOnMove[i] != -1) {
+				if (CPs[i].setFrame(pointOnMove[i], currentFrame)) pointOnMove[i] = currentFrame;
+			}
+		}
+	}
 }
 void MouseUpLT(int _X, int _Y) {
 	CursorT = vec2(_X, _Y);
@@ -1054,6 +1347,10 @@ void MouseUpLT(int _X, int _Y) {
 			CPs[HObject].selected ^= 1;
 		}
 	}
+
+	// stop point dragging
+	for (int i = 0; i < NCtrPs; i++) pointOnMove[i] = -1;
+
 	previewFrame = currentFrame;
 	updateCursorPosition();
 }
@@ -1066,26 +1363,122 @@ void MouseUpRT(int _X, int _Y) {
 	SetWindowTextA(_HWND_T, text);
 }
 void KeyDownT(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = true;
-	else if (_KEY == VK_SHIFT) Shift = true;
-	else if (_KEY == VK_MENU) Alt = true;
+	keyDownShared(_KEY);
 }
 void KeyUpT(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = false;
-	else if (_KEY == VK_SHIFT) Shift = false;
-	else if (_KEY == VK_MENU) Alt = false;
+	keyUpShared(_KEY);
 
-	// Home: go to the beginning
-	if (_KEY == VK_HOME) LFrame = 0;
+	// Home/End: go to the beginning/end
+	if (_KEY == VK_HOME) LFrame = 0, currentFrame = previewFrame = 0;
+	if (_KEY == VK_END) currentFrame = previewFrame = lastFrame(), LFrame = max(lastFrame() - _WIN_T_W / UnitT, 0);
 
-	// Delete: delete a keyframe
+	// Delete: delete keyframes
 	if (_KEY == VK_DELETE || _KEY == VK_BACK) {
 		if (currentFrame != 0) {
 			for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
 				CPs[i].deleteFrame(currentFrame);
+				CPs[i].selected = false;
 			}
 			updateCursorPosition();
 		}
 	}
+
+}
+
+
+
+// ============================================== File ==============================================
+
+/*
+	// Text File
+
+	# _WIN_W _WIN_H
+	Center.x Center.y Center.z rz rx ry dist Unit
+	NCtrPs FPS currentFrame
+	keyFrames.size() F P.x P.y P.z ......
+	[new line]
+
+	File starts with character '#'
+	The program searches for that character after opening the file.
+
+	There will be a basic error handling for file open error, but no further handling on file format error.
+	Opening file will clear the current scene. If errors occur or program crashes due to file format error, restart this program.
+
+*/
+
+#include <iostream>
+#include <fstream>
+
+bool saveFile(const WCHAR filename[]) {
+	FILE *fp = _wfopen(filename, L"ab");
+	if (fp == 0) return false;
+
+	fprintf(fp, "# %d %d\n", _WIN_W, _WIN_H);
+	fprintf(fp, "%.8lg %.8lg %.8lg ", Center.x, Center.y, Center.z);
+	rz = mod(rz, 2.0*PI), rx = mod(rx, 2.0*PI), ry = mod(ry, 2.0*PI);
+	fprintf(fp, "%.8lg %.8lg %.8lg %.8lg %.8lg\n", rz, rx, ry, dist, Unit);
+	fprintf(fp, "%d %d %d\n", NCtrPs, FPS, currentFrame);
+	for (int i = 0; i < NCtrPs; i++) {
+		const auto *P = &CPs[i].keyFrames;
+		int n = P->size();
+		fprintf(fp, "%d ", n);
+		for (int i = 0; i < n; i++) {
+			fprintf(fp, "%d ", P->at(i).F);
+			fprintf(fp, "%.8lg %.8lg %.8lg", P->at(i).P.x, P->at(i).P.y, P->at(i).P.z);
+			if (i + 1 != n) fprintf(fp, " ");
+		}
+		fprintf(fp, "\n");
+	}
+	fprintf(fp, "\n");
+	fclose(fp);
+	return true;
+}
+
+bool readFile(const WCHAR filename[]) {
+	FILE *fp = _wfopen(filename, L"rb");
+	if (fp == 0) return false;
+	int c; while ((c = fgetc(fp)) != '#') if (c == EOF) return false;
+
+	int WinW, WinH; fscanf(fp, "%d %d", &WinW, &WinH);
+	fscanf(fp, "%lf %lf %lf ", &Center.x, &Center.y, &Center.z);
+	fscanf(fp, "%lf %lf %lf %lf %lf\n", &rz, &rx, &ry, &dist, &Unit);
+	WindowResize(WinW, WinH, _WIN_W, _WIN_H);
+	int N, fps; fscanf(fp, "%d %d %d\n", &N, &fps, &currentFrame);
+	if (N != NCtrPs) throw "OPEN FILE ERROR: NCtrPs\n";
+	if (fps != FPS) throw "OPEN FILE ERROR: FPS\n";
+	for (int i = 0; i < NCtrPs; i++) {
+		auto *P = &CPs[i].keyFrames;
+		P->clear();
+		int n; fscanf(fp, "%d ", &n);
+		for (int i = 0; i < n; i++) {
+			int F; vec3 C;
+			fscanf(fp, "%d ", &F);
+			fscanf(fp, "%lf %lf %lf", &C.x, &C.y, &C.z);
+			P->push_back(ControlPoint::Point{ C, F });
+		}
+	}
+	fclose(fp);
+	Init();
+	return true;
+}
+
+bool saveFileUserEntry() {
+	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
+	WCHAR filename[MAX_PATH] = L"";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+	if (!GetSaveFileName(&ofn)) return false;
+	return saveFile(filename);
+}
+
+bool readFileUserEntry() {
+	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
+	WCHAR filename[MAX_PATH] = L"";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+	if (!GetOpenFileName(&ofn)) return false;
+	return readFile(filename);
 }
 
