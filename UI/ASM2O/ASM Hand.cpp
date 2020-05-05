@@ -31,6 +31,7 @@
 		Ctrl + Scroll to zoom the height of control points;
 		Shift + Scroll to zoom the scale of time axis;
 		Alt + Scroll to move view along time axis;
+		Use left/right key to navigate to the previous/next frame;
 		Select a time and move a point to add a keyframe;
 		Press Delete/Backspace to delete all selected keyframes;
 		Drag selected points along time axis to switch key frame;
@@ -357,7 +358,6 @@ Affine operator * (const Affine &A, const Affine &B) {
 // Marked as /**/ means I just copy-paste it without understanding how it works.
 // All direction vectors should be normalized
 
-
 // Intersection functions
 double intXOY(vec3 p, vec3 d) {
 	return -p.z / d.z;
@@ -429,6 +429,42 @@ double sdBox(vec2 p, vec2 b) {
 	vec2 d = abs(p) - b;
 	return length(pMax(d, vec2(0))) + min(max(d.x, d.y), 0.0);
 }
+double sdBox(vec3 p, vec3 b) {
+	vec3 q = abs(p) - b;
+	return length(pMax(q, vec3(0.))) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+double sdCapsule(vec3 p, vec3 a, vec3 b, double r) {
+	vec3 pa = p - a, ba = b - a;
+	double h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+	return length(pa - ba * h) - r;
+}
+double sdEllipsoid(vec3 p, vec3 r) {
+	double k0 = length(p / r);
+	double k1 = length(p / (r*r));
+	return k0 * (k0 - 1.0) / k1;
+}
+double sdCylinder(vec3 p, vec3 a, vec3 b, double r) {
+	vec3  ba = b - a;
+	vec3  pa = p - a;
+	double baba = dot(ba, ba);
+	double paba = dot(pa, ba);
+	double x = length(pa*baba - ba * paba) - r * baba;
+	double y = abs(paba - baba * 0.5) - baba * 0.5;
+	double x2 = x * x;
+	double y2 = y * y*baba;
+	double d = (max(x, y) < 0.0) ? -min(x2, y2) : (((x > 0.0) ? x2 : 0.0) + ((y > 0.0) ? y2 : 0.0));
+	return (d > 0 ? 1. : -1.)*sqrt(abs(d)) / baba;
+}
+
+double smin(double d1, double d2, double k) {
+	double h = 0.5 + 0.5*(d2 - d1) / k; h = clamp(h, 0.0, 1.0);
+	return mix(d2, d1, h) - k * h*(1.0 - h);
+}
+double smax(double d1, double d2, double k) {
+	double h = 0.5 - 0.5*(d2 - d1) / k; h = clamp(h, 0.0, 1.0);
+	return mix(d2, d1, h) + k * h*(1.0 - h);
+}
+
 
 // Bounding box calculation
 void rangeSphere(vec3 c, double r, vec3 &Min, vec3 &Max) {
@@ -447,6 +483,61 @@ double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
 
 #pragma endregion return the distance, NAN means no intersection
 
+
+#pragma region Archer
+
+// Modeled on Shadertoy: https://www.shadertoy.com/view/Wdsfzj
+
+double mapArch(vec3 p) {
+	vec3 q = p - vec3(0, 0, 0.97); q = vec3(dot(q, vec3(0.988771, -0.0296888, 0.146459)), dot(q, vec3(0, 0.980067, 0.198669)), dot(q, vec3(-0.149438, -0.196438, 0.969061)));
+	double c = sdEllipsoid(q, vec3(0.3, 1.0, 1.0 - 0.1*p.z));
+	q = p - vec3(0, -16, -0.4);
+	double pz2 = (p.z - 1.)*(p.z - 1.);
+	c = smax(c, sdEllipsoid(q, vec3(2.0, 15.8, 16.0)), smax(0.05*(1.0 - pz2), 0.0, 0.01));
+	double h = sdCapsule(p, vec3(0.05, -0.3, 0.97), vec3(0.2 + exp(0.15*p.y) - 1.0, 0.35, 0.9), 0.25 + 0.08*p.y - pz2);
+	double s = length(p - vec3(0.27, 0.35, 1.0)) - 0.25;
+	double v = sdCylinder(p, vec3(0.35, 0.3, 0.9), vec3(0.55, 0.3, 0.9), 0.55*(p.y - 0.1) + 0.2*(p.x - 0.3));
+	h = smin(h, v, 0.1);
+	return smin(c, h, 0.1);
+}
+double mapArm(vec3 p) {
+	vec3 q = p - vec3(0.43, -0.37, 1.0); q = vec3(dot(q, vec3(0.950564, -0.303565, 0.0653952)), dot(q, vec3(0.294044, 0.947618, 0.12473)), dot(q, vec3(-0.0998334, -0.0993347, 0.990033)));
+	return sdEllipsoid(q, vec3(0.05, 0.11, 0.25));
+}
+double mapBody(vec3 p) {
+	double b = length(p.xy() - vec2(-0.1, 0.4 - 0.1*p.z)) - 0.21 + 0.01*p.z;
+	b = smax(b, abs(p.z - 0.5) - 0.5, 0.05);
+	double c = sdEllipsoid(p - vec3(-0.1, 0.35, 0.9), vec3(0.35, 0.4, 0.35));
+	c = smin(b, c, 0.2);
+	double u = length(p.xy() - vec2(-0.1, 0.47)) - max(0.23 - p.x*p.x, 0.);
+	u = smax(u, abs(p.z - 0.1*p.y - 1.35) - 0.35, max(0.1*(2.0 - p.z), 0.));
+	c = smin(u, c, 0.2);
+	return c;
+}
+double map(vec3 p) {
+	double a = mapArch(p);
+	double b = mapBody(p);
+	double sd = smin(a, b, 0.2);
+	double am = mapArm(p);
+	//return min(sd, am) * 0.5;
+	return min(sd, am);
+}
+
+// bounding box of this object
+const vec3 MapMin(-0.46, -1.00, -0.01), MapMax(0.57, 0.76, 1.77), MapC = 0.5*(MapMin + MapMax), MapR = 0.5*(MapMax - MapMin);
+
+// numerical gradient
+vec3 mapNormal(vec3 p) {
+	const double e = 1e-6;
+	double a = map(p + vec3(e, e, e));
+	double b = map(p + vec3(e, -e, -e));
+	double c = map(p + vec3(-e, e, -e));
+	double d = map(p + vec3(-e, -e, e));
+	return normalize(vec3(a + b - c - d, a - b + c - d, a - b - c + d));
+}
+
+
+#pragma endregion
 
 
 // ======================================== Data / Parameters ========================================
@@ -480,7 +571,7 @@ bool readFileUserEntry();
 #pragma region Global Variable Related Functions
 
 // projection
-Affine axis_angle(vec3 axis, double a) {
+Affine axisAngle(vec3 axis, double a) {
 	axis = normalize(axis); double ct = cos(a), st = sin(a);
 	return Affine{
 		vec3(ct + axis.x*axis.x*(1 - ct), axis.x*axis.y*(1 - ct) - axis.z*st, axis.x*axis.z*(1 - ct) + axis.y*st),
@@ -506,7 +597,7 @@ void getRay(vec2 Cursor, vec3 &p, vec3 &d) {
 void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
 	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
-	Affine Y = axis_angle(w, -ry); u = Y * u, v = Y * v;
+	Affine Y = axisAngle(w, -ry); u = Y * u, v = Y * v;
 	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= dist;
 	P = Center + w;
 	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
@@ -933,7 +1024,7 @@ const vec3 light = normalize(vec3(-0.5, 0.5, 1));
 
 #define NFinger 16
 
-void render_raycasting() {
+void render_raymarching() {
 	// initialization for ray intersection
 	struct Capsule {
 		vec3 A, B; double r;
@@ -953,20 +1044,59 @@ void render_raycasting() {
 	}
 	vec3 BoxC = 0.5*(RMin + RMax), BoxR = 0.5*(RMax - RMin);
 
-	int x0 = 0, x1 = _WIN_W - 1, y0 = 0, y1 = _WIN_H - 1;
-	for (int i = x0; i <= x1; i++) for (int j = y0; j <= y1; j++) {
-		vec3 p = CamP, d = scrDir(vec2(i, j)), n;
-		double t, mt = intBoxC(BoxR, CamP - BoxC, d);
-		if (!isnan(mt)) {
-			mt = NAN;
-			// intersection
-			for (int i = 0; i < NFinger; i++) {
-				if ((t = intCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p, d)) > 0 && !(t > mt))
-					mt = t, n = nCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p + t * d);
+	// rendering process
+	auto calcCol = [&](int beg, int end, bool* sig) {
+		for (int u = beg; u < end; u++) {
+			int i = u % _WIN_W, j = u / _WIN_W;
+			vec3 p = CamP, d = scrDir(vec2(i, j)), n(NAN);
+			double t, mt, t0, dt, prev_dt;
+
+			// test intersection for fingers
+			mt = intBoxC(BoxR, CamP - BoxC, d);
+			if (!isnan(mt)) {
+				mt = INFINITY;
+				// intersection
+				for (int i = 0; i < NFinger; i++) {
+					if ((t = intCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p, d)) > 0 && !(t > mt))
+						mt = t, n = nCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p + t * d);
+				}
 			}
-			// lighting
+			else mt = INFINITY;
+
+			// test intersection for the archer - EXTREMLY SLOW!!!
+			t = t0 = max(intBoxC(MapR, p - MapC, d) + 1e-4, 0.);
+			if (t0 < mt) {
+				prev_dt = NAN;
+				if (!isnan(t)) {
+					vec3 q;
+					bool hit = false;  // identify if an error have occured (reduce step length after an error occur)
+					for (int u = 0; u < 256; u++) {
+						q = p + t * d;
+						if (sdBox(q - MapC, MapR) > 0.0) { t = NAN; break; }
+						dt = map(q);
+						if (hit) dt *= 0.5;
+						else if (dt < 0.) {
+							if (isnan(prev_dt)) t = t0;  // this line might be unneccessary
+							else t -= 0.5 * prev_dt;
+							q = p + t * d;
+							hit = true;
+							dt = 0.5*map(q), t -= dt;
+						}
+						prev_dt = dt;
+						if (dt < 1e-4) break;
+						t += dt;
+					}
+					if (t < mt) {
+						n = mapNormal(q);
+						if (dt < 0.0) n = vec3(0.0);
+						mt = t;
+					}
+				}
+			}
+
+			// shading
 			vec3 col(0.0);
-			if ((t = mt) > 0.0) {
+			if (0.0*mt == 0.0 && (t = mt) > 0.0) {
 				p = p + t * d;
 				d = d - n * (2.0*dot(d, n));
 				// lighting
@@ -974,14 +1104,45 @@ void render_raycasting() {
 				vec3 dif = vec3(0.7, 0.65, 0.6) * max(dot(n, light), 0.0);
 				vec3 spc = vec3(0.2) * pow(max(dot(d, light), 0.0), 5.0);
 				col = bkg + dif + spc;
+				if (n == vec3(0.0)) col = vec3(1, 0, 0);
 				// put the color on the screen
 				byte* c = (byte*)&Canvas(i, j);
 				c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
 			}
 		}
-	}
-	//drawBox(p0, p1 + vec2(1), YELLOW);
+		if (sig) *sig = true;
+	};
 
+#if 0
+	// single thread
+	calcCol(0, _WIN_W*_WIN_H, NULL);
+#else
+	// multithread - I may not have to create threads so many times
+	int _WIN_S = _WIN_W * _WIN_H;
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	const int ppt = 0x4000;
+	const int N = _WIN_S / ppt;
+	bool* fn = new bool[MAX_THREADS]; for (int i = 0; i < MAX_THREADS; i++) fn[i] = false;
+	std::thread** T = new std::thread*[MAX_THREADS]; for (int i = 0; i < MAX_THREADS; i++) T[i] = NULL;
+	int released = 0, finished = 0;
+	while (finished < N) {
+		for (int i = 0; i < MAX_THREADS; i++) {
+			if (fn[i]) {
+				fn[i] = false;
+				delete T[i]; T[i] = 0;
+				if (++finished >= N) break;
+			}
+			if (!fn[i] && !T[i] && released < N) {
+				T[i] = new std::thread(calcCol, ppt * released, ppt * (released + 1), fn + i);
+				T[i]->detach();
+				released++;
+			}
+		}
+	}
+	calcCol(N * ppt, _WIN_S, NULL);
+#endif
+
+	drawCross3D(MapC, 6, RED);
 }
 
 void render() {
@@ -1005,7 +1166,7 @@ void render() {
 		//drawLine_F(vec3(0.0), vec3(0, 0, R), ROYALBLUE);
 	}
 
-	render_raycasting();
+	render_raymarching();
 
 #if 1
 	// scene
@@ -1402,6 +1563,16 @@ void MouseUpRT(int _X, int _Y) {
 }
 void KeyDownT(WPARAM _KEY) {
 	keyDownShared(_KEY);
+
+	// Left/Right: previous/next frame
+	if (_KEY == VK_LEFT) {
+		if (currentFrame != 0) previewFrame = --currentFrame;
+		updateCursorPosition();
+	}
+	else if (_KEY == VK_RIGHT) {
+		previewFrame = ++currentFrame;
+		updateCursorPosition();
+	}
 }
 void KeyUpT(WPARAM _KEY) {
 	keyUpShared(_KEY);
