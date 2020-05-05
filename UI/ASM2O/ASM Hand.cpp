@@ -354,13 +354,18 @@ Affine operator * (const Affine &A, const Affine &B) {
 
 #pragma region Ray Tracing Functions
 
+double seed = 0.12345678987654321;
+double random() {
+	return seed = fmod(17823.8762*seed + 5583.928727736782819234876327, 1.0);
+}
+
 // Many from https://www.iquilezles.org/www/articles/intersectors/intersectors.htm
 // Marked as /**/ means I just copy-paste it without understanding how it works.
 // All direction vectors should be normalized
 
-// Intersection functions
-double intXOY(vec3 p, vec3 d) {
-	return -p.z / d.z;
+// Intersection functions - return the distance, NAN means no intersection
+double intHorizon(double z, vec3 p, vec3 d) {
+	return (z - p.z) / d.z;
 }
 double intSphere(vec3 O, double r, vec3 p, vec3 d) {
 	p = p - O;
@@ -465,7 +470,6 @@ double smax(double d1, double d2, double k) {
 	return mix(d2, d1, h) + k * h*(1.0 - h);
 }
 
-
 // Bounding box calculation
 void rangeSphere(vec3 c, double r, vec3 &Min, vec3 &Max) {
 	Min = c - vec3(r), Max = c + vec3(r);
@@ -474,19 +478,23 @@ void rangeCapsule(vec3 pa, vec3 pb, double r, vec3 &Min, vec3 &Max) {
 	Min = pMin(pa, pb) - vec3(r), Max = pMax(pa, pb) + vec3(r);
 }
 
-
 // closest point to a straight line
 double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
 	vec3 n = cross(rd, cross(rd, d));
 	return dot(ro - P, n) / dot(d, n);
 }
 
-#pragma endregion return the distance, NAN means no intersection
+#pragma endregion Intersector, Normal, SDF, Bounding Box
 
 
 #pragma region Archer
 
 // Modeled on Shadertoy: https://www.shadertoy.com/view/Wdsfzj
+
+// bounding box of this object
+//const vec3 MapMin(-0.46, -1.00, -0.01), MapMax(0.57, 0.76, 1.77), MapC = 0.5*(MapMin + MapMax), MapR = 0.5*(MapMax - MapMin);
+const vec3 MapMin(-1.005, -1.005, -0.205), MapMax(1.005, 1.005, 1.805), MapC = 0.5*(MapMin + MapMax), MapR = 0.5*(MapMax - MapMin);  // original range of the archer
+const double Archer_S = 0.6;  // scaling of the archer
 
 double mapArch(vec3 p) {
 	vec3 q = p - vec3(0, 0, 0.97); q = vec3(dot(q, vec3(0.988771, -0.0296888, 0.146459)), dot(q, vec3(0, 0.980067, 0.198669)), dot(q, vec3(-0.149438, -0.196438, 0.969061)));
@@ -514,40 +522,39 @@ double mapBody(vec3 p) {
 	c = smin(u, c, 0.2);
 	return c;
 }
-double map(vec3 p) {
+double map(vec3 p, double t = 0.0) {
 	double a = mapArch(p);
 	double b = mapBody(p);
 	double sd = smin(a, b, 0.2);
 	double am = mapArm(p);
-	//return min(sd, am) * 0.5;
-	return min(sd, am);
+	sd = smin(sd, am, 0.05);
+	return mix(sd, length(p - vec3(0.0, 0.0, 0.8)) - 0.8, t);
 }
 
-// bounding box of this object
-const vec3 MapMin(-0.46, -1.00, -0.01), MapMax(0.57, 0.76, 1.77), MapC = 0.5*(MapMin + MapMax), MapR = 0.5*(MapMax - MapMin);
-
 // numerical gradient
-vec3 mapNormal(vec3 p) {
+vec3 mapNormal(vec3 p, double t = 0.0) {
 	const double e = 1e-6;
-	double a = map(p + vec3(e, e, e));
-	double b = map(p + vec3(e, -e, -e));
-	double c = map(p + vec3(-e, e, -e));
-	double d = map(p + vec3(-e, -e, e));
+	double a = map(p + vec3(e, e, e), t);
+	double b = map(p + vec3(e, -e, -e), t);
+	double c = map(p + vec3(-e, e, -e), t);
+	double d = map(p + vec3(-e, -e, e), t);
 	return normalize(vec3(a + b - c - d, a - b + c - d, a - b - c + d));
 }
 
 
-#pragma endregion
+const double Ground_Z = -2.0;
+
+
+#pragma endregion Archer, Ground
 
 
 // ======================================== Data / Parameters ========================================
 
 // viewport
-vec3 Center(0.0, 0.5, 0.0);  // view center in world coordinate
-double rz = 0.25*PI, rx = 0.1*PI, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
+vec3 Center(0.0, 0.5, 0.5);  // view center in world coordinate
+double rz = -0.4*PI, rx = 0.15*PI, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
 
 #pragma region General Global Variables
-
 
 // window parameters
 char text[64];	// window title
@@ -563,10 +570,10 @@ bool Ctrl = false, Shift = false, Alt = false;  // these variables are shared by
 // file forward declaration
 bool saveFile(const WCHAR filename[]);
 bool saveFileUserEntry();
-bool readFile(const WCHAR filename[]);
+bool readFile(const WCHAR filename[], bool resize);
 bool readFileUserEntry();
 
-#pragma endregion
+#pragma endregion Window, Camera/Screen, Mouse/Key
 
 #pragma region Global Variable Related Functions
 
@@ -658,7 +665,7 @@ void projRange_Sphere(vec3 P, double r, vec2 &p0, vec2 &p1) {
 	}
 }
 
-#pragma endregion
+#pragma endregion Get Ray/Screen, projection
 
 #pragma region Timer Axis
 
@@ -707,7 +714,7 @@ bool mouse_down_T = false;
 //int pointOnMove[NCtrPs];  // points under on time change, the value is its original frame
 // the above variable is moved to the next region
 
-#pragma endregion
+#pragma endregion Time, Frame, Hover/Dragging object on time axis window
 
 #pragma region Scene Variables
 
@@ -715,13 +722,13 @@ bool mouse_down_T = false;
 #include <stack>
 
 // control points
-#define NCtrPs 21  // # of control points, constant
+#define NCtrPs 25  // # of control points, constant
 class ControlPoint {
 	struct Point {
 		vec3 P;  // position
 		int F; // frame, integer
 	};
-	friend bool readFile(const WCHAR filename[]);
+	friend bool readFile(const WCHAR filename[], bool resize);
 public:
 	std::vector<Point> keyFrames;  // F sorted in increasing order
 	bool selected = false;  // whether this point is being selected and ready to be edited
@@ -734,7 +741,7 @@ public:
 	// just too lazy to do optimization for this part ;)
 	ControlPoint() {}
 	ControlPoint(vec3 P) { keyFrames.push_back(Point{ P, 0 }); }
-	bool existFrame(int t) {
+	bool existFrame(int t = currentFrame) {
 		return keyFrames[_lower_bound(t)].F == t;
 	}
 	bool isOver(int t) {
@@ -777,6 +784,8 @@ public:
 namespace Hand {
 	// names for control points - this scene is a human hand (left)
 	enum ControlPoints {
+		Light,
+		AO, Ai, Aj,  // Archer: center, absolute i, absolute j
 		A0, A1, A2, A3,
 		B1, B2, B3, B4,
 		C1, C2, C3, C4,
@@ -786,21 +795,31 @@ namespace Hand {
 }
 #define CP(...) ControlPoint{vec3(##__VA_ARGS__)}
 ControlPoint CPs[NCtrPs] = {  // default positions of control points
-#if 0
-	CP(-0.20,-0.50,0.20), CP(-0.50,-0.15,0.02), CP(-0.70,0.15,0.15), CP(-1.00, 0.30,0.15),
-	CP(-0.22,0.31,-0.05), CP(-0.36,0.65,-0.1), CP(-0.42,0.85,-0.15), CP(-0.48,1.09,-0.08),
-	CP(0.00,0.28,-0.08), CP(0.00,0.74,-0.23), CP(0.00,1.00,-0.16), CP(0.00,1.25,-0.08),
-	CP(0.17,0.20,-0.08), CP(0.30,0.65,-0.08), CP(0.34,0.84,-0.12), CP(0.41,1.09,0.00),
-	CP(0.23,-0.50,0.10), CP(0.39,0.16,-0.06), CP(0.58,0.36,-0.14), CP(0.62,0.51,-0.04), CP(0.68,0.75,0.09)
-#else
+	CP(0.7,-2.0,1.8),
+	CP(0.0,0.6,0.7), CP(0.0,-0.4,0.9), CP(1.0,0.6,0.7),
 	CP(-0.2,-0.5,0.08), CP(-0.5,-0.18,-0.01), CP(-0.68,0.15,0.03), CP(-0.98,0.3,0.03),
 	CP(-0.22,0.31,-0.05), CP(-0.36,0.65,-0.14), CP(-0.42,0.86,-0.15), CP(-0.50,1.12,-0.08),
 	CP(0,0.28,-0.08), CP(0,0.74,-0.23), CP(0,1,-0.16), CP(0,1.25,-0.08),
 	CP(0.17,0.2,-0.08), CP(0.3,0.65,-0.17), CP(0.34,0.84,-0.12), CP(0.41,1.09,0),
 	CP(0.23,-0.5,0.1), CP(0.39,0.10,-0.06), CP(0.53,0.36,-0.09), CP(0.62,0.51,-0.04), CP(0.68,0.75,0.09),
-#endif
 };
 #undef CP
+
+void fixPointLocation() {
+	if (CPs[Hand::Ai].existFrame() || CPs[Hand::Aj].existFrame() || CPs[Hand::AO].existFrame()) {
+		vec3 O = CPs[Hand::AO].P(currentFrame);
+		vec3 i = normalize(CPs[Hand::Ai].P(currentFrame) - O);
+		vec3 j = CPs[Hand::Aj].P(currentFrame) - O; j = normalize(j - dot(i, j)*i);
+		CPs[Hand::Ai].getP() = O + Archer_S * i;
+		CPs[Hand::Aj].getP() = O + Archer_S * j;
+	}
+}
+void getArcherOrientation(vec3 &i, vec3 &j, vec3 &k) {
+	i = normalize(CPs[Hand::Ai].P() - CPs[Hand::AO].P());  // slerp would be better but I'm lazy
+	j = CPs[Hand::Aj].P() - CPs[Hand::AO].P(); j = normalize(j - dot(i, j)*i);
+	k = cross(i, j);
+	i *= Archer_S, j *= Archer_S, k *= Archer_S;
+}
 
 int NSelectedPoints() {  // # of selected control points
 	int N = 0;
@@ -824,7 +843,9 @@ const double selAxisRatio = 0.3;  // ratio of radius for selecting cursor and se
 const double selLength = 60.0;  // (approximate) maximum length of cursor axis in screen coordinate
 enum moveDirection { none = -1, unlimited, xAxis, yAxis, zAxis, xOy, xOz, yOz };  // not all implemented
 moveDirection moveAlong(none);  // which part of the cursor is being moved
-int updateCursorPosition() {  // return the # of selected pointss
+int updateCursorPosition() {  // return the # of selected points
+	fixPointLocation();
+	if (CPs[Hand::AO].selected) CPs[Hand::Ai].selected = CPs[Hand::Aj].selected = true;
 	double totP = 0.0; vec3 sumP(0.0);
 	for (int i = 0; i < NCtrPs; i++) {
 		if (CPs[i].selected) totP++, sumP += CPs[i].P();
@@ -856,7 +877,7 @@ void inverseSelection() {
 
 int pointOnMove[NCtrPs];
 
-#pragma endregion
+#pragma endregion Control points, Cursor, Selection
 
 #pragma region Preview Animation
 
@@ -900,7 +921,7 @@ void endAnimation() {
 	isAnimating = false;
 }
 
-#pragma endregion
+#pragma endregion Animation
 
 
 // ============================================ Rendering ============================================
@@ -1019,12 +1040,29 @@ auto drawRod = [](vec3 A, vec3 B, double r, COLORREF col) {
 
 
 auto t0 = NTime::now();
-const vec3 light = normalize(vec3(-0.5, 0.5, 1));
+
+#pragma region Illumation
+
+vec3 light_pos = CPs[Hand::Light].P();
+
+// http://people.csail.mit.edu/wojciech/BRDFDatabase/
+#include "D:\BRDFDatabase\code\BRDFRead.cpp"
+double* _archer_brdf = NULL;
+
+// rotate the vectors and make n (0,0,1)
+void convertAngle(vec3 n, vec3 &wi, vec3 &wo) {
+	vec3 i = normalize(cross(n, vec3(1.23e-7, 4.56e-6, 1.0))), j = cross(n, i);
+	wi = vec3(dot(wi, i), dot(wi, j), dot(wi, n)), wo = vec3(dot(wo, i), dot(wo, j), dot(wo, n));
+}
+
+#pragma endregion
 
 
 #define NFinger 16
 
+
 void render_raymarching() {
+	light_pos = CPs[Hand::Light].P();
 	// initialization for ray intersection
 	struct Capsule {
 		vec3 A, B; double r;
@@ -1044,67 +1082,108 @@ void render_raymarching() {
 	}
 	vec3 BoxC = 0.5*(RMin + RMax), BoxR = 0.5*(RMax - RMin);
 
+	// Archer orientation
+	vec3 AO = CPs[Hand::AO].P(), Ai, Aj, Ak; getArcherOrientation(Ai, Aj, Ak);
+	double sI = 1.0 / Archer_S; Ai *= sI, Aj *= sI, Ak *= sI;
+	vec3 Mi(Ai.x, Aj.x, Ak.x), Mj(Ai.y, Aj.y, Ak.y), Mk(Ai.z, Aj.z, Ak.z);
+	Ai *= sI, Aj *= sI, Ak *= sI;
+
 	// rendering process
 	auto calcCol = [&](int beg, int end, bool* sig) {
 		for (int u = beg; u < end; u++) {
 			int i = u % _WIN_W, j = u / _WIN_W;
-			vec3 p = CamP, d = scrDir(vec2(i, j)), n(NAN);
-			double t, mt, t0, dt, prev_dt;
+			vec3 p = CamP, d = scrDir(vec2(i, j)), n(NAN), q;
+			double t, mt = INFINITY, t0, dt, prev_dt;
 
-			// test intersection for fingers
-			mt = intBoxC(BoxR, CamP - BoxC, d);
-			if (!isnan(mt)) {
-				mt = INFINITY;
+			enum rayHit { None, Ground, Hand, Archer, } Hit;
+			Hit = None;
+
+#pragma region Ground
+			t0 = intHorizon(Ground_Z, p, d);
+			if (!(t0 < 0.)) {
+				mt = t0;
+				n = vec3(0, 0, 1);
+				Hit = Ground;
+			}
+#pragma endregion
+
+#pragma region Hand
+			t0 = intBoxC(BoxR, CamP - BoxC, d);
+			if (!isnan(t0)) {
 				// intersection
 				for (int i = 0; i < NFinger; i++) {
 					if ((t = intCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p, d)) > 0 && !(t > mt))
-						mt = t, n = nCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p + t * d);
+						mt = t, n = nCapsule(Fingers[i].A, Fingers[i].B, Fingers[i].r, p + t * d), Hit = Hand;
 				}
 			}
-			else mt = INFINITY;
+#pragma endregion test intersection for fingers
 
+#pragma region Archer
+			double Time = previewFrame * FrameDelay;
+			Time = sin(Time)*sin(Time);
+			// transform ray to archer coordinate
+			q = p - (AO - Archer_S * MapC);
+			q = vec3(dot(q, Ai), dot(q, Aj), dot(q, Ak));
+			vec3 d1 = vec3(dot(d, Ai), dot(d, Aj), dot(d, Ak));
+			t = t0 = max(intBoxC(MapR, q - MapC, d1) + 1e-4, 0.);
 			// test intersection for the archer - EXTREMLY SLOW!!!
-			t = t0 = max(intBoxC(MapR, p - MapC, d) + 1e-4, 0.);
 			if (t0 < mt) {
 				prev_dt = NAN;
 				if (!isnan(t)) {
-					vec3 q;
+					q += t * d1;
 					bool hit = false;  // identify if an error have occured (reduce step length after an error occur)
 					for (int u = 0; u < 256; u++) {
-						q = p + t * d;
 						if (sdBox(q - MapC, MapR) > 0.0) { t = NAN; break; }
-						dt = map(q);
+						dt = Archer_S * map(q, Time);
 						if (hit) dt *= 0.5;
 						else if (dt < 0.) {
-							if (isnan(prev_dt)) t = t0;  // this line might be unneccessary
-							else t -= 0.5 * prev_dt;
-							q = p + t * d;
+							if (isnan(prev_dt)) q -= (t - t0)*d1, t = t0;  // this line might be unneccessary
+							else t -= 0.5 * prev_dt, q -= (0.5*prev_dt)*d1;
 							hit = true;
-							dt = 0.5*map(q), t -= dt;
+							dt = 0.5*Archer_S*map(q, Time), t -= dt, q -= dt * d1;
 						}
 						prev_dt = dt;
 						if (dt < 1e-4) break;
-						t += dt;
+						t += dt, q += dt * d1;
 					}
 					if (t < mt) {
-						n = mapNormal(q);
+						n = mapNormal(q, Time);
 						if (dt < 0.0) n = vec3(0.0);
-						mt = t;
+						n = vec3(dot(n, Mi), dot(n, Mj), dot(n, Mk));
+						mt = t, Hit = Archer;
 					}
 				}
 			}
+#pragma endregion test intersection for the archer
 
 			// shading
 			vec3 col(0.0);
-			if (0.0*mt == 0.0 && (t = mt) > 0.0) {
+			t = mt;
+			p = p + t * d;
+			if (Hit == Ground) {
+				vec3 wi = normalize(light_pos - p);
+				vec3 wo = -d;
+				col = vec3(1.0) * dot(wi, wo) * wi.z;
+			}
+			else if (Hit == Archer) {
+				vec3 wi = normalize(light_pos - p);
+				vec3 wo = -d;
+				convertAngle(n, wi, wo);
+				vec3 fr; lookup_brdf_val(_archer_brdf, acos(wi.z), atan2(wi.y, wi.x), acos(wo.z), atan2(wo.y, wo.x), fr.x, fr.y, fr.z);
+				col = 10.0 * fr * wi.z + 0.0*vec3(0.05, 0.07, 0.06);
+				if (dt < 0.0) col = vec3(1, 0, 0);
+			}
+			else if (Hit == Hand) {
 				p = p + t * d;
 				d = d - n * (2.0*dot(d, n));
 				// lighting
+				vec3 light = normalize(light_pos - p);
 				vec3 bkg = vec3(0.2, 0.15, 0.1);
 				vec3 dif = vec3(0.7, 0.65, 0.6) * max(dot(n, light), 0.0);
 				vec3 spc = vec3(0.2) * pow(max(dot(d, light), 0.0), 5.0);
 				col = bkg + dif + spc;
-				if (n == vec3(0.0)) col = vec3(1, 0, 0);
+			}
+			if (Hit != None) {
 				// put the color on the screen
 				byte* c = (byte*)&Canvas(i, j);
 				c[0] = 255 * clamp(col.z, 0, 1), c[1] = 255 * clamp(col.y, 0, 1), c[2] = 255 * clamp(col.x, 0, 1);
@@ -1142,7 +1221,6 @@ void render_raymarching() {
 	calcCol(N * ppt, _WIN_S, NULL);
 #endif
 
-	drawCross3D(MapC, 6, RED);
 }
 
 void render() {
@@ -1167,6 +1245,7 @@ void render() {
 	}
 
 	render_raymarching();
+	drawCross3D(light_pos, 10, YELLOW);
 
 #if 1
 	// scene
@@ -1177,6 +1256,10 @@ void render() {
 	DW(D1, D2), DW(D2, D3), DW(D3, D4);
 	DW(E0, E1), DW(E1, E2), DW(E2, E3), DW(E3, E4);
 #undef DW
+	vec3 AO = CPs[Hand::AO].P(), Ai, Aj, Ak; getArcherOrientation(Ai, Aj, Ak);
+	drawLine_F(AO, AO + Ai, RED);
+	drawLine_F(AO, AO + Aj, GREEN);
+	drawLine_F(AO, AO + Ak, BLUE);
 
 	// 3D cursor
 	if (selected && !mouse_down_T && !isAnimating) {
@@ -1269,11 +1352,10 @@ void render_t() {
 #include "libraries\gif.h"	// animated gif writer, https://github.com/charlietangora/gif-h
 
 void WriteImage() {
-	_WIN_W = 600, _WIN_H = 400;
+	readFile(L"D:\\ASM Hand.txt", false);
 	_WINIMG = new COLORREF[_WIN_W*_WIN_H];
 	GifWriter gif;
 	GifBegin(&gif, "D:\\ASM Hand.gif", _WIN_W, _WIN_H, 4);
-	readFile(L"D:\\ASM Hand.txt");
 	for (currentFrame = 0, endFrame = lastFrame(); currentFrame < endFrame; currentFrame++) {
 		previewFrame = currentFrame;
 		render();
@@ -1293,8 +1375,10 @@ void WriteImage() {
 // It will also be called after a file is opened
 // Only use to initialize variables
 void Init() {
+	if (!_archer_brdf) read_brdf("D:\\BRDFDatabase\\brdfs\\alum-bronze.binary", _archer_brdf);
 	for (int i = 0; i < NCtrPs; i++) pointOnMove[i] = -1;
 	for (int i = 0; i < NCtrPs; i++) CPs[i].sortFrames();
+	fixPointLocation();
 	previewFrame = currentFrame;
 	dbgprint("Init\n");
 }
@@ -1643,7 +1727,7 @@ bool saveFile(const WCHAR filename[]) {
 	return true;
 }
 
-bool readFile(const WCHAR filename[]) {
+bool readFile(const WCHAR filename[], bool resize = true) {
 	FILE *fp = _wfopen(filename, L"rb");
 	if (fp == 0) return false;
 	int c; while ((c = fgetc(fp)) != '#') if (c == EOF) return false;
@@ -1651,7 +1735,8 @@ bool readFile(const WCHAR filename[]) {
 	int WinW, WinH; fscanf(fp, "%d %d", &WinW, &WinH);
 	fscanf(fp, "%lf %lf %lf ", &Center.x, &Center.y, &Center.z);
 	fscanf(fp, "%lf %lf %lf %lf %lf\n", &rz, &rx, &ry, &dist, &Unit);
-	WindowResize(WinW, WinH, _WIN_W, _WIN_H);
+	if (resize) WindowResize(WinW, WinH, _WIN_W, _WIN_H);
+	else _WIN_W = WinW, _WIN_H = WinH;
 	int N, fps; fscanf(fp, "%d %d %d\n", &N, &fps, &currentFrame);
 	if (N != NCtrPs) throw "OPEN FILE ERROR: NCtrPs\n";
 	if (fps != FPS) throw "OPEN FILE ERROR: FPS\n";
