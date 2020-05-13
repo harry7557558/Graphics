@@ -1,4 +1,11 @@
-// (simple??) 3D template
+// Rasteriation vs. Ray-Casting
+// Rasterization: mostly depends on the number of triangles
+// Ray-casting: mostly depends on the screen dimension (requires a O(nlogn) initialization)
+// In a 640x360 window, Ray-Casting wins when the # of triangles exceeds about 500,000
+// Ray-casting is much more memory-consuming than rasterization
+
+// It seems there is a bug in ray intersection
+
 
 #include <cmath>
 #include <stdio.h>
@@ -107,34 +114,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma endregion
 
-// COLORREF
-enum WebSafeColors {
-	ALICEBLUE = 0xF0F8FF, ANTIQUEWHITE = 0xFAEBD7, AQUA = 0x00FFFF, AQUAMARINE = 0x7FFFD4, AZURE = 0xF0FFFF, BEIGE = 0xF5F5DC,
-	BISQUE = 0xFFE4C4, BLACK = 0x000000, BLANCHEDALMOND = 0xFFEBCD, BLUE = 0x0000FF, BLUEVIOLET = 0x8A2BE2, BROWN = 0xA52A2A,
-	BURLYWOOD = 0xDEB887, CADETBLUE = 0x5F9EA0, CHARTREUSE = 0x7FFF00, CHOCOLATE = 0xD2691E, CORAL = 0xFF7F50, CORNFLOWERBLUE = 0x6495ED,
-	CORNSILK = 0xFFF8DC, CRIMSON = 0xDC143C, CYAN = 0x00FFFF, DARKBLUE = 0x00008B, DARKCYAN = 0x008B8B, DARKGOLDENROD = 0xB8860B,
-	DARKGRAY = 0xA9A9A9, DARKGREY = 0xA9A9A9, DARKGREEN = 0x006400, DARKKHAKI = 0xBDB76B, DARKMAGENTA = 0x8B008B, DARKOLIVEGREEN = 0x556B2F,
-	DARKORANGE = 0xFF8C00, DARKORCHID = 0x9932CC, DARKRED = 0x8B0000, DARKSALMON = 0xE9967A, DARKSEAGREEN = 0x8FBC8F, DARKSLATEBLUE = 0x483D8B,
-	DARKSLATEGRAY = 0x2F4F4F, DARKSLATEGREY = 0x2F4F4F, DARKTURQUOISE = 0x00CED1, DARKVIOLET = 0x9400D3, DEEPPINK = 0xFF1493, DEEPSKYBLUE = 0x00BFFF,
-	DIMGRAY = 0x696969, DIMGREY = 0x696969, DODGERBLUE = 0x1E90FF, FIREBRICK = 0xB22222, FLORALWHITE = 0xFFFAF0, FORESTGREEN = 0x228B22,
-	FUCHSIA = 0xFF00FF, GAINSBORO = 0xDCDCDC, GHOSTWHITE = 0xF8F8FF, GOLD = 0xFFD700, GOLDENROD = 0xDAA520, GRAY = 0x808080,
-	GREY = 0x808080, GREEN = 0x008000, GREENYELLOW = 0xADFF2F, HONEYDEW = 0xF0FFF0, HOTPINK = 0xFF69B4, INDIANRED = 0xCD5C5C,
-	INDIGO = 0x4B0082, IVORY = 0xFFFFF0, KHAKI = 0xF0E68C, LAVENDER = 0xE6E6FA, LAVENDERBLUSH = 0xFFF0F5, LAWNGREEN = 0x7CFC00,
-	LEMONCHIFFON = 0xFFFACD, LIGHTBLUE = 0xADD8E6, LIGHTCORAL = 0xF08080, LIGHTCYAN = 0xE0FFFF, LIGHTGOLDENRODYELLOW = 0xFAFAD2, LIGHTGRAY = 0xD3D3D3,
-	LIGHTGREY = 0xD3D3D3, LIGHTGREEN = 0x90EE90, LIGHTPINK = 0xFFB6C1, LIGHTSALMON = 0xFFA07A, LIGHTSEAGREEN = 0x20B2AA, LIGHTSKYBLUE = 0x87CEFA,
-	LIGHTSLATEGRAY = 0x778899, LIGHTSLATEGREY = 0x778899, LIGHTSTEELBLUE = 0xB0C4DE, LIGHTYELLOW = 0xFFFFE0, LIME = 0x00FF00, LIMEGREEN = 0x32CD32,
-	LINEN = 0xFAF0E6, MAGENTA = 0xFF00FF, MAROON = 0x800000, MEDIUMAQUAMARINE = 0x66CDAA, MEDIUMBLUE = 0x0000CD, MEDIUMORCHID = 0xBA55D3,
-	MEDIUMPURPLE = 0x9370DB, MEDIUMSEAGREEN = 0x3CB371, MEDIUMSLATEBLUE = 0x7B68EE, MEDIUMSPRINGGREEN = 0x00FA9A, MEDIUMTURQUOISE = 0x48D1CC, MEDIUMVIOLETRED = 0xC71585,
-	MIDNIGHTBLUE = 0x191970, MINTCREAM = 0xF5FFFA, MISTYROSE = 0xFFE4E1, MOCCASIN = 0xFFE4B5, NAVAJOWHITE = 0xFFDEAD, NAVY = 0x000080,
-	OLDLACE = 0xFDF5E6, OLIVE = 0x808000, OLIVEDRAB = 0x6B8E23, ORANGE = 0xFFA500, ORANGERED = 0xFF4500, ORCHID = 0xDA70D6,
-	PALEGOLDENROD = 0xEEE8AA, PALEGREEN = 0x98FB98, PALETURQUOISE = 0xAFEEEE, PALEVIOLETRED = 0xDB7093, PAPAYAWHIP = 0xFFEFD5, PEACHPUFF = 0xFFDAB9,
-	PERU = 0xCD853F, PINK = 0xFFC0CB, PLUM = 0xDDA0DD, POWDERBLUE = 0xB0E0E6, PURPLE = 0x800080, REBECCAPURPLE = 0x663399,
-	RED = 0xFF0000, ROSYBROWN = 0xBC8F8F, ROYALBLUE = 0x4169E1, SADDLEBROWN = 0x8B4513, SALMON = 0xFA8072, SANDYBROWN = 0xF4A460,
-	SEAGREEN = 0x2E8B57, SEASHELL = 0xFFF5EE, SIENNA = 0xA0522D, SILVER = 0xC0C0C0, SKYBLUE = 0x87CEEB, SLATEBLUE = 0x6A5ACD,
-	SLATEGRAY = 0x708090, SLATEGREY = 0x708090, SNOW = 0xFFFAFA, SPRINGGREEN = 0x00FF7F, STEELBLUE = 0x4682B4, TAN = 0xD2B48C,
-	TEAL = 0x008080, THISTLE = 0xD8BFD8, TOMATO = 0xFF6347, TURQUOISE = 0x40E0D0, VIOLET = 0xEE82EE, WHEAT = 0xF5DEB3,
-	WHITE = 0xFFFFFF, WHITESMOKE = 0xF5F5F5, YELLOW = 0xFFFF00, YELLOWGREEN = 0x9ACD32,
-};
 
 // ================================== Vector Classes/Functions ==================================
 
@@ -143,6 +122,7 @@ enum WebSafeColors {
 //#define Inline inline
 #define Inline __inline
 //#define Inline __forceinline
+#define noInline __declspec(noinline)
 
 #define PI 3.1415926535897932384626
 #define mix(x,y,a) ((x)*(1.0-(a))+(y)*(a))
@@ -274,6 +254,8 @@ Affine operator * (const Affine &A, const Affine &B) {
 // All direction vectors should be normalized
 
 // Intersection functions - return the distance, NAN means no intersection
+// Warning: return value can be negative
+#define invec3 const vec3&
 double intHorizon(double z, vec3 p, vec3 d) {
 	return (z - p.z) / d.z;
 }
@@ -284,8 +266,8 @@ double intSphere(vec3 O, double r, vec3 p, vec3 d) {
 	vec3 k = cross(p, d); double rd2 = dot(k, k); if (rd2 > r*r) return NAN;
 	return sqrt(dot(p, p) - rd2) - sqrt(r*r - rd2);
 #else
-	// works when p is inside the sphere (and its slightly faster)
-	double b = -dot(p, d), c = dot(p, p) - r * r;  // require d to be normalized
+	// works when p is inside the sphere (and slightly faster)
+	double b = -dot(p, d), c = dot(p, p) - r * r;  // requires d to be normalized
 	double delta = b * b - c;
 	if (delta < 0.0) return NAN;
 	delta = sqrt(delta);
@@ -298,9 +280,17 @@ double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 	vec3 n = cross(v1v0, v2v0);
 	vec3 q = cross(rov0, rd);
 	double d = 1.0 / dot(rd, n);
-	double u = d * dot(-q, v2v0); if (u<0. || u>1.) return NAN;
+	double u = -d * dot(q, v2v0); if (u<0. || u>1.) return NAN;
 	double v = d * dot(q, v1v0); if (v<0. || (u + v)>1.) return NAN;
-	return d * dot(-n, rov0);
+	return -d * dot(n, rov0);
+}
+double intTriangle_r(invec3 P, invec3 a, invec3 b, invec3 n, invec3 ro, invec3 rd) {  // relative with precomputer normal cross(a,b)
+	vec3 rp = ro - P;
+	vec3 q = cross(rp, rd);
+	double d = 1.0 / dot(rd, n);
+	double u = -d * dot(q, b); if (u<0. || u>1.) return NAN;
+	double v = d * dot(q, a); if (v<0. || (u + v)>1.) return NAN;
+	return -d * dot(n, rp);
 }
 /**/double intCapsule(vec3 pa, vec3 pb, double r, vec3 ro, vec3 rd) {
 	vec3 ba = pb - pa, oa = ro - pa;
@@ -331,14 +321,38 @@ double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 	if (abs(b + a * t) < h) return t;
 	return NAN;
 }
-/**/double intBoxC(vec3 R, vec3 ro, vec3 rd) {
-	vec3 m = vec3(1.0) / rd, n = m * ro;
-	vec3 k = abs(m)*R;
-	vec3 t1 = -n - k, t2 = -n + k;
+double intBoxC(vec3 R, vec3 ro, vec3 inv_rd) {  // inv_rd = vec3(1.0)/rd
+#if 1
+	vec3 p = -inv_rd * ro;
+	vec3 k = abs(inv_rd)*R;
+	vec3 t1 = p - k, t2 = p + k;
 	double tN = max(max(t1.x, t1.y), t1.z);
 	double tF = min(min(t2.x, t2.y), t2.z);
 	if (tN > tF || tF < 0.0) return NAN;
-	return tN;
+	return tN > 0. ? tN : tF;
+#else
+	// naive method that is less likely to have bug
+	// (but indeed it seems to have more bug)
+	auto IntP = [](invec3 P, invec3 a, invec3 b, invec3 ro, invec3 rd)->double {
+		vec3 rp = ro - P;
+		vec3 n = cross(a, b);
+		vec3 q = cross(rp, rd);
+		double d = 1.0 / dot(rd, n);
+		double u = -d * dot(q, b); if (u<0. || u>1.) return NAN;
+		double v = d * dot(q, a); if (v<0. || v>1.) return NAN;
+		return -d * dot(n, rp);
+	};
+	vec3 rd = vec3(1.0) / inv_rd;
+	double mt = INFINITY, t;
+	t = IntP(-R, vec3(2.*R.x, 0, 0), vec3(0, 2.*R.y, 0), ro, rd); if (t < mt) mt = t;
+	t = IntP(-R, vec3(2.*R.x, 0, 0), vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
+	t = IntP(-R, vec3(0, 2.*R.y, 0), vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
+	t = IntP(R, -vec3(2.*R.x, 0, 0), -vec3(0, 2.*R.y, 0), ro, rd); if (t < mt) mt = t;
+	t = IntP(R, -vec3(2.*R.x, 0, 0), -vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
+	t = IntP(R, -vec3(0, 2.*R.y, 0), -vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
+	if (0.0*mt == 0.0) return mt;
+	return NAN;
+#endif
 }
 /**/double intCone(vec3 pa, vec3 pb, double r, vec3 ro, vec3 rd) {
 	vec3 ba = pb - pa, oa = ro - pa, ob = ro - pb;
@@ -554,9 +568,9 @@ void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 
 
 
-
 struct Triangle {
-	vec3 n, A, B, C;
+	vec3 n;  // cross(A,B)
+	vec3 P, A, B;  // P+uA+vB
 } *STL;
 int STL_N;
 vec3 COM;
@@ -572,15 +586,11 @@ void readBinarySTL(const char* filename) {
 	};
 	auto readTrig = [&](Triangle &T) {
 		readf(T.n.x); readf(T.n.y); readf(T.n.z);
-		readf(T.A.x); readf(T.A.y); readf(T.A.z);
-		readf(T.B.x); readf(T.B.y); readf(T.B.z);
-		readf(T.C.x); readf(T.C.y); readf(T.C.z);
+		readf(T.P.x); readf(T.P.y); readf(T.P.z);
+		readf(T.A.x); readf(T.A.y); readf(T.A.z); T.A -= T.P;
+		readf(T.B.x); readf(T.B.y); readf(T.B.z); T.B -= T.P;
 		short c; fread(&c, 2, 1, fp);
-		vec3 n = normalize(cross(T.B - T.A, T.C - T.A));
-		if (abs(dot(n, T.n) - 1.0) > 0.001) {
-			dbgprint("Error!\n");
-		}
-		T.n = n;
+		T.n = cross(T.A, T.B);
 	};
 	for (int i = 0; i < STL_N; i++) {
 		readTrig(STL[i]);
@@ -597,10 +607,12 @@ void writeSTL(const char* filename) {
 	};
 	for (int i = 0; i < STL_N; i++) {
 		Triangle T = STL[i];
-		writef(T.n.x); writef(T.n.y); writef(T.n.z);
-		writef(T.A.x); writef(T.A.y); writef(T.A.z);
-		writef(T.B.x); writef(T.B.y); writef(T.B.z);
-		writef(T.C.x); writef(T.C.y); writef(T.C.z);
+		vec3 n = normalize(T.n);
+		writef(n.x); writef(n.y); writef(n.z);
+		vec3 A = T.P, B = T.P + T.A, C = T.P + T.B;
+		writef(A.x); writef(A.y); writef(A.z);
+		writef(B.x); writef(B.y); writef(B.z);
+		writef(C.x); writef(C.y); writef(C.z);
 		fputc(0, fp); fputc(0, fp);
 	}
 	fclose(fp);
@@ -608,8 +620,8 @@ void writeSTL(const char* filename) {
 void BoundingBox(Triangle *P, int N, vec3 &p0, vec3 &p1) {
 	p0 = vec3(INFINITY), p1 = vec3(-INFINITY);
 	for (int i = 0; i < N; i++) {
-		p0 = pMin(pMin(p0, P[i].A), pMin(P[i].B, P[i].C));
-		p1 = pMax(pMax(p1, P[i].A), pMax(P[i].B, P[i].C));
+		p0 = pMin(pMin(p0, P[i].P), P[i].P + pMin(P[i].A, P[i].B));
+		p1 = pMax(pMax(p1, P[i].P), P[i].P + pMax(P[i].A, P[i].B));
 	}
 }
 void CenterOfMass(Triangle *P, int N, vec3 &C, double &V) {  // center of mass and volume
@@ -617,11 +629,29 @@ void CenterOfMass(Triangle *P, int N, vec3 &C, double &V) {  // center of mass a
 	V = 0.0; C = vec3(0.0);
 	const double _3 = 1. / 3, _6 = 1. / 6, _12 = 1. / 12;
 	for (int i = 0; i < N; i++) {
-		vec3 a = P[i].A, b = P[i].B, c = P[i].C;
+		vec3 a = P[i].P, b = a + P[i].A, c = a + P[i].B;
 		double dV = _6 * dot(a, cross(b, c));
 		V += dV, C += 0.25*dV*(a + b + c);
 	}
 	C /= V;
+}
+
+void Parametric1(int Nu, int Nv) {
+	auto map = [](double u, double v)->vec3 {
+		double k = 1. - v / (2.*PI);
+		double c = cos(u) + 1.1;
+		return vec3(0, 0, .5*(1. - k)) - .4*k*vec3(c*cos(3.*v), c*sin(3.*v), sin(u));
+	};
+	const double du = 2.*PI / Nu, dv = 2.*PI / Nv;
+	STL = new Triangle[STL_N = 2 * Nu * Nv];
+	dbgprint("%d\n", STL_N);
+	int d = 0;
+	for (int i = 0; i < Nu; i++) for (int j = 0; j < Nv; j++) {
+		double u = i * du, v = j * dv, u1 = u + du, v1 = v + dv;
+		vec3 p = map(u, v), pu = map(u1, v), pv = map(u, v1), puv = map(u1, v1);
+		STL[d++] = Triangle{ cross(pu - p, pv - p), p, pu - p, pv - p };
+		STL[d++] = Triangle{ cross(pv - puv, pu - puv), puv, pv - puv, pu - puv };
+	}
 }
 
 
@@ -655,7 +685,7 @@ auto drawLine = [](vec2 p, vec2 q, COLORREF col) {
 		}
 	}
 };
-auto drawCross = [&](vec2 p, double r, COLORREF Color = WHITE) {
+auto drawCross = [&](vec2 p, double r, COLORREF Color = 0xFFFFFF) {
 	drawLine(p - vec2(r, 0), p + vec2(r, 0), Color);
 	drawLine(p - vec2(0, r), p + vec2(0, r), Color);
 };
@@ -678,7 +708,7 @@ auto fillCircle = [&](vec2 c, double r, COLORREF Color) {
 		}
 	}
 };
-auto drawTriangle = [](vec2 A, vec2 B, vec2 C, COLORREF col, bool stroke = false, COLORREF strokecol = WHITE) {
+auto drawTriangle = [](vec2 A, vec2 B, vec2 C, COLORREF col, bool stroke = false, COLORREF strokecol = 0xFFFFFF) {
 	int x0 = max((int)min(min(A.x, B.x), C.x), 0), x1 = min((int)max(max(A.x, B.x), C.x), _WIN_W - 1);
 	int y0 = max((int)min(min(A.y, B.y), C.y), 0), y1 = min((int)max(max(A.y, B.y), C.y), _WIN_H - 1);
 	for (int i = y0; i <= y1; i++) for (int j = x0; j <= x1; j++) {
@@ -691,25 +721,25 @@ auto drawTriangle = [](vec2 A, vec2 B, vec2 C, COLORREF col, bool stroke = false
 		drawLine(A, B, strokecol); drawLine(A, C, strokecol); drawLine(B, C, strokecol);
 	}
 };
-auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
+auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
 	drawLine(vec2(Min.x, Min.y), vec2(Max.x, Min.y), col);
 	drawLine(vec2(Max.x, Min.y), vec2(Max.x, Max.y), col);
 	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col);
 	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col);
 };
-auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = RED) {
+auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
 	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, _WIN_W - 1);
 	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, _WIN_H - 1);
 	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) Canvas(x, y) = col;
 };
-auto drawSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
+auto drawSquare = [](vec2 C, double r, COLORREF col = 0xFFA500) {
 	drawBox(C - vec2(r, r), C + vec2(r, r), col);
 };
-auto fillSquare = [](vec2 C, double r, COLORREF col = ORANGE) {
+auto fillSquare = [](vec2 C, double r, COLORREF col = 0xFFA500) {
 	fillBox(C - vec2(r, r), C + vec2(r, r), col);
 };
 
-auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = WHITE) {
+auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
 	if (u > 0 && v > 0) { drawLine((Tr*A).xy(), (Tr*B).xy(), col); return; }
 	if (u < 0 && v < 0) return;
@@ -724,7 +754,7 @@ auto drawTriangle_F = [](vec3 A, vec3 B, vec3 C, COLORREF col) {
 	if (u < 0 && v < 0 && w < 0) return;
 	// debug
 };
-auto drawCross3D = [&](vec3 P, double r, COLORREF col = WHITE) {
+auto drawCross3D = [&](vec3 P, double r, COLORREF col = 0xFFFFFF) {
 	r /= Unit;
 	drawLine_F(P - vec3(r, 0, 0), P + vec3(r, 0, 0), col);
 	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
@@ -766,12 +796,12 @@ auto drawSphere_RT = [](vec3 P, double r, COLORREF col) {
 	double t; for (int i = x0; i <= x1; i++) for (int j = y0; j <= y1; j++)
 		if ((t = intSphere(P, r, CamP, scrDir(vec2(i, j)))) > 0 && t < _DEPTHBUF[i][j]) Canvas(i, j) = col, _DEPTHBUF[i][j] = t;
 };
-auto drawTriangle_RT = [](vec3 A, vec3 B, vec3 C, COLORREF col) {
-	vec2 p0, p1; projRange_Triangle(A, B, C, p0, p1);
+auto drawTriangle_RT = [](vec3 P, vec3 a, vec3 b, COLORREF col) {
+	vec2 p0, p1; projRange_Triangle(P, P + a, P + b, p0, p1);
 	int x0 = max((int)p0.x, 0), x1 = min((int)p1.x, _WIN_W - 1), y0 = max((int)p0.y, 0), y1 = min((int)p1.y, _WIN_H - 1);
+	vec3 n = cross(a, b);
 	double t; for (int i = x0; i <= x1; i++) for (int j = y0; j <= y1; j++)
-		if ((t = intTriangle(A, B, C, CamP, scrDir(vec2(i, j)))) > 0 && t < _DEPTHBUF[i][j]) Canvas(i, j) = col, _DEPTHBUF[i][j] = t;
-	// can be accelerated by precomputing the triangle edges but hope the compiler already helps me doing that
+		if ((t = intTriangle_r(P, a, b, n, CamP, scrDir(vec2(i, j)))) > 0 && t < _DEPTHBUF[i][j]) Canvas(i, j) = col, _DEPTHBUF[i][j] = t;
 };
 auto drawArrow_RT = [](vec3 A, vec3 B, double r, COLORREF col) {
 	vec2 p0, p1; projRange_Cone(A, B, r, p0, p1);
@@ -801,9 +831,12 @@ auto drawVector_RT = [](vec3 P, vec3 d, double r, COLORREF col, bool relative = 
 typedef std::chrono::high_resolution_clock NTime;
 typedef std::chrono::duration<double> fsec;
 
+#define MultiThread 1
+#include <thread>
+
 
 COLORREF color(vec3 p, vec3 n) {
-	//return n;
+	n = normalize(n);
 	const vec3 light = normalize(vec3(0.5, 0.5, 1));
 	vec3 d = normalize(p - CamP); d -= 2.0*dot(d, n)*n;
 	vec3 bkg = vec3(0.2) + 0.2*n;
@@ -819,84 +852,207 @@ COLORREF color(vec3 p, vec3 n) {
 
 // brute-force rasterization
 void render_Raster_BF() {
-	for (int i = 0; i < STL_N; i++) {
-		drawTriangle_ZB(STL[i].A, STL[i].B, STL[i].C, color(STL[i].A, STL[i].n));
+	auto task = [](int beg, int end, int step, bool *sig) {
+		for (int i = beg; i < end; i += step) {
+			drawTriangle_ZB(STL[i].P, STL[i].P + STL[i].A, STL[i].P + STL[i].B, color(STL[i].P, STL[i].n));
+		}
+		if (sig) *sig = true;
+	};
+#if MultiThread
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	bool* fn = new bool[MAX_THREADS];
+	std::thread** T = new std::thread*[MAX_THREADS];
+	for (int i = 0; i < MAX_THREADS; i++) {
+		fn[i] = false;
+		T[i] = new std::thread(task, i, STL_N, MAX_THREADS, &fn[i]);
 	}
+	int count;
+	do {
+		count = 0;
+		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
+	} while (count < MAX_THREADS);
+	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
+	delete fn; delete T;
+#else
+	task(0, STL_N, 1, NULL);
+#endif
 }
 
 // brute-force ray tracing
 void render_RT_BF() {
-	for (int i = 0; i < STL_N; i++) {
-		drawTriangle_RT(STL[i].A, STL[i].B, STL[i].C, color(STL[i].A, STL[i].n));
+	auto task = [](int beg, int end, int step, bool *sig) {
+		for (int i = beg; i < end; i += step) {
+			drawTriangle_RT(STL[i].P, STL[i].A, STL[i].B, color(STL[i].P, STL[i].n));
+		}
+		if (sig) *sig = true;
+	};
+	// exactly the same as the previous function (copy-pasted)
+#if MultiThread
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	bool* fn = new bool[MAX_THREADS];
+	std::thread** T = new std::thread*[MAX_THREADS];
+	for (int i = 0; i < MAX_THREADS; i++) {
+		fn[i] = false;
+		T[i] = new std::thread(task, i, STL_N, MAX_THREADS, &fn[i]);
 	}
+	int count;
+	do {
+		count = 0;
+		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
+	} while (count < MAX_THREADS);
+	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
+	delete fn; delete T;
+#else
+	task(0, STL_N, 1, NULL);
+#endif
 }
 
-// BVH ray tracing
+// BVH ray tracing - I believe there is a bug
 #include <vector>
+#define POLYTRIANGLE 1
+#if POLYTRIANGLE
+// sliightly faster
+#define MAX_TRIG 2
+struct BVH {
+	Triangle *Obj[MAX_TRIG];
+	vec3 C, R;  // bounding box
+	BVH *b1 = 0, *b2 = 0;  // children
+} *BVH_R = 0;
+#else
 struct BVH {
 	Triangle *Obj = 0;
-	BVH *b1 = 0, *b2 = 0;  // children
 	vec3 C, R;  // bounding box
+	BVH *b1 = 0, *b2 = 0;  // children
 } *BVH_R = 0;
-void constructBVH(BVH* &R, const std::vector<Triangle*> &T) {  // R should not be null and T should not be empty
+#endif
+void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null and T should not be empty
 	vec3 Min(INFINITY), Max(-INFINITY);
-	for (int i = 0, n = T.size(); i < n; i++) {
-		Min = pMin(pMin(Min, T[i]->A), pMin(T[i]->B, T[i]->C));
-		Max = pMax(pMax(Max, T[i]->A), pMax(T[i]->B, T[i]->C));
+	int N = (int)T.size();
+	for (int i = 0; i < N; i++) {
+		// Analysis shows this is the slowest part of this function
+		vec3 A = T[i]->P, B = T[i]->P + T[i]->A, C = T[i]->P + T[i]->B;
+		Min = pMin(pMin(Min, A), pMin(B, C));
+		Max = pMax(pMax(Max, A), pMax(B, C));
 	}
 	R->C = 0.5*(Max + Min), R->R = 0.5*(Max - Min);
-	if (T.size() == 1) {
+#if POLYTRIANGLE
+	if (N <= MAX_TRIG) {
+		for (int i = 0; i < N; i++) R->Obj[i] = T[i];
+		if (N < MAX_TRIG) R->Obj[N] = 0;
+		return;
+	}
+	else R->Obj[0] = NULL;
+#else
+	if (N == 1) {
 		R->Obj = T[0];
 		return;
 	}
+#endif
 	Min = vec3(INFINITY), Max = vec3(-INFINITY);
-	for (int i = 0, n = T.size(); i < n; i++) {
-		vec3 C = T[i]->A + T[i]->B + T[i]->C;
+	const double _3 = 1. / 3;
+	for (int i = 0; i < N; i++) {
+		vec3 C = T[i]->P + _3 * (T[i]->A + T[i]->B);
 		Min = pMin(Min, C), Max = pMax(Max, C);
 	}
-	Max /= 3., Min /= 3.;
 	vec3 dP = Max - Min;
 	std::vector<Triangle*> c1, c2;
 	if (dP.x >= dP.y && dP.x >= dP.z) {
 		double x = 0.5*(Min.x + Max.x);
-		for (int i = 0, n = T.size(); i < n; i++) {
-			if (T[i]->A.x + T[i]->B.x + T[i]->C.x < 3.*x) c1.push_back(T[i]);
+		for (int i = 0; i < N; i++) {
+			if (T[i]->P.x + _3 * (T[i]->A.x + T[i]->B.x) < x) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
 	else if (dP.y >= dP.x && dP.y >= dP.z) {
 		double y = 0.5*(Min.y + Max.y);
-		for (int i = 0, n = T.size(); i < n; i++) {
-			if (T[i]->A.y + T[i]->B.y + T[i]->C.y < 3.*y) c1.push_back(T[i]);
+		for (int i = 0; i < N; i++) {
+			if (T[i]->P.y + _3 * (T[i]->A.y + T[i]->B.y) < y) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
 	else if (dP.z >= dP.x && dP.z >= dP.y) {
 		double z = 0.5*(Min.z + Max.z);
-		for (int i = 0, n = T.size(); i < n; i++) {
-			if (T[i]->A.z + T[i]->B.z + T[i]->C.z < 3.*z) c1.push_back(T[i]);
+		for (int i = 0; i < N; i++) {
+			if (T[i]->P.z + _3 * (T[i]->A.z + T[i]->B.z) < z) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
 	if (c1.empty() || c2.empty()) {
-		throw("ERROR: Empty BVH.\n");
+		// theoretically faster but actually faster in neither construction nor intersection
+		// I keep it because...
+		if (dP.x >= dP.y && dP.x >= dP.z) {
+			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.x + a->A.x + a->B.x < 3.*b->P.x + b->A.x + b->B.x; });
+		}
+		else if (dP.y >= dP.x && dP.y >= dP.z) {
+			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.y + a->A.y + a->B.y < 3.*b->P.y + b->A.y + b->B.y; });
+		}
+		else if (dP.z >= dP.x && dP.z >= dP.y) {
+			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.z + a->A.z + a->B.z < 3.*b->P.z + b->A.z + b->B.z; });
+		}
+		int d = N / 2;
+		c1 = std::vector<Triangle*>(T.begin(), T.begin() + d);
+		c1 = std::vector<Triangle*>(T.begin() + d, T.end());
 	}
 	R->b1 = new BVH, constructBVH(R->b1, c1);
 	R->b2 = new BVH, constructBVH(R->b2, c2);
 }
-void rayIntersectBVH(const BVH* R, const vec3 &ro, const vec3 &rd, double &mt, Triangle* &obj) {  // assume ray already intersects current BVH
+void rayIntersectBVH(const BVH* R, invec3 ro, invec3 rd, invec3 inv_rd, double &mt, Triangle* &obj) {  // assume ray already intersects current BVH
 	const double eps = 1e-6;
+#if POLYTRIANGLE
+	if (R->Obj[0]) {
+		for (int i = 0; i < MAX_TRIG; i++) {
+			Triangle *T = R->Obj[i];
+			if (!T) break;
+			double t = intTriangle_r(T->P, T->A, T->B, T->n, ro, rd);
+			if (t > eps && t < mt) mt = t, obj = T;
+		}
+	}
+#else
 	if (R->Obj) {
 		Triangle *T = R->Obj;
-		double t = intTriangle(T->A, T->B, T->C, ro, rd);
+		double t = intTriangle_r(T->P, T->A, T->B, T->n, ro, rd);
 		if (t > eps && t < mt) mt = t, obj = T;
 	}
+#endif
 	else {
-		double t = intBoxC(R->b1->R, ro - R->b1->C, rd);
-		if (t > eps && t < mt) rayIntersectBVH(R->b1, ro, rd, mt, obj);
-		t = intBoxC(R->b2->R, ro - R->b2->C, rd);
-		if (t > eps && t < mt) rayIntersectBVH(R->b2, ro, rd, mt, obj);
+		// test intersection for the closer box first
+		// there is a significant performance increase
+		double t1 = intBoxC(R->b1->R, ro - R->b1->C, inv_rd);
+		double t2 = intBoxC(R->b2->R, ro - R->b2->C, inv_rd);
+		if (t1 > eps && t2 > eps && t1 < mt && t2 < mt) {
+			if (t1 < t2) {
+				rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+				if (t2 > eps && t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+			}
+			else {
+				rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+				if (t1 > eps && t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+			}
+		}
+		else {
+			if (t1 > eps && t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+			if (t2 > eps && t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+		}
 	}
+}
+void visualizeBVH(const BVH *R, int dps = 0) {  // debug
+	auto drawBox_3D = [](vec3 Min, vec3 Max, COLORREF col) {
+		drawLine_F(vec3(Min.x, Min.y, Min.z), vec3(Max.x, Min.y, Min.z), col);
+		drawLine_F(vec3(Max.x, Min.y, Min.z), vec3(Max.x, Max.y, Min.z), col);
+		drawLine_F(vec3(Max.x, Max.y, Min.z), vec3(Min.x, Max.y, Min.z), col);
+		drawLine_F(vec3(Min.x, Max.y, Min.z), vec3(Min.x, Min.y, Min.z), col);
+		drawLine_F(vec3(Min.x, Min.y, Min.z), vec3(Min.x, Min.y, Max.z), col);
+		drawLine_F(vec3(Max.x, Min.y, Min.z), vec3(Max.x, Min.y, Max.z), col);
+		drawLine_F(vec3(Max.x, Max.y, Min.z), vec3(Max.x, Max.y, Max.z), col);
+		drawLine_F(vec3(Min.x, Max.y, Min.z), vec3(Min.x, Max.y, Max.z), col);
+		drawLine_F(vec3(Min.x, Min.y, Max.z), vec3(Max.x, Min.y, Max.z), col);
+		drawLine_F(vec3(Max.x, Min.y, Max.z), vec3(Max.x, Max.y, Max.z), col);
+		drawLine_F(vec3(Max.x, Max.y, Max.z), vec3(Min.x, Max.y, Max.z), col);
+		drawLine_F(vec3(Min.x, Max.y, Max.z), vec3(Min.x, Min.y, Max.z), col);
+	};
+	if (dps == 12) drawBox_3D(R->C - R->R, R->C + R->R, 0xFF0000);
+	if (R->b1) visualizeBVH(R->b1, dps + 1);
+	if (R->b2) visualizeBVH(R->b2, dps + 1);
 }
 void render_RT_BVH() {
 	if (!BVH_R) {
@@ -906,17 +1062,41 @@ void render_RT_BVH() {
 		BVH_R = new BVH;
 		constructBVH(BVH_R, T);
 		dbgprint("BVH constructed in %lfs\n", fsec(NTime::now() - t0).count());
+		//exit(0);
 	}
-	for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) {
-		vec3 d = scrDir(vec2(i, j));
-		double mt = intBoxC(BVH_R->R, CamP - BVH_R->C, d);
-		if (mt > 0.) {
-			Triangle* obj = 0;
-			mt = INFINITY;
-			rayIntersectBVH(BVH_R, CamP, d, mt, obj);
-			if (obj) Canvas(i, j) = color(CamP + mt*d, obj->n);
+	auto task = [](int beg, int end, int step, bool* sig) {
+		for (int k = beg; k < end; k += step) {
+			int i = k % _WIN_W, j = k / _WIN_W;
+			vec3 d = scrDir(vec2(i, j));
+			double mt = intBoxC(BVH_R->R, CamP - BVH_R->C, vec3(1.0) / d);
+			if (mt > 0.) {
+				Triangle* obj = 0;
+				mt = INFINITY;
+				rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, mt, obj);
+				if (obj) Canvas(i, j) = color(CamP + mt * d, obj->n);
+			}
 		}
+		if (sig) *sig = true;
+	};
+#if MultiThread
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	bool* fn = new bool[MAX_THREADS];
+	std::thread** T = new std::thread*[MAX_THREADS];
+	for (int i = 0; i < MAX_THREADS; i++) {
+		fn[i] = false;
+		T[i] = new std::thread(task, i, _WIN_W*_WIN_H, MAX_THREADS, &fn[i]);
 	}
+	int count;
+	do {
+		count = 0;
+		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
+	} while (count < MAX_THREADS);
+	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
+	delete fn; delete T;
+#else
+	task(0, _WIN_W*_WIN_H, 1, NULL);
+#endif
+	//visualizeBVH(BVH_R); return;
 }
 
 
@@ -942,7 +1122,7 @@ void render() {
 	render_RT_BVH();
 	//render_Raster_BF();
 
-	drawCross3D(COM, 6, RED);
+	drawCross3D(COM, 6, 0xFF0000);
 
 	double t = fsec(NTime::now() - t0).count();
 	sprintf(text, "[%d×%d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*t, 1. / t);
@@ -953,23 +1133,31 @@ void render() {
 // ============================================== User ==============================================
 
 
+bool inited = false;
 void Init() {
+	if (inited) return; inited = true;
 	//readBinarySTL("D:\\3D Models\\Blender_Cube.stl");  // 12
+	//readBinarySTL("D:\\3D Models\\Blender_Isosphere.stl");  // 80
+	//readBinarySTL("D:\\3D Models\\Blender_Suzanne.stl");  // 968
 	//readBinarySTL("D:\\3D Models\\Utah_Teapot.stl");  // 9438
-	//readBinarySTL("D:\\3D Models\\Blender_Suzanne.stl");  // 62976
+	//readBinarySTL("D:\\3D Models\\Blender_Suzanne3.stl");  // 62976
 	//readBinarySTL("D:\\3D Models\\Stanford_Bunny.stl");  // 112402
-	readBinarySTL("D:\\3D Models\\The_Thinker.stl");  // 837482
-	//readBinarySTL("D:\\3D Models\\Stanford_Dragon.stl");  // 871414
-	//readBinarySTL("D:\\3D Models\\Blender_Pipe.stl");  // 3145728, 8 subdivs
-	//readBinarySTL("D:\\3D Models\\Stanford_Lucy.stl");  // 28055742, std::bad_alloc
+	//readBinarySTL("D:\\3D Models\\The_Thinker.stl");  // 837482
+	readBinarySTL("D:\\3D Models\\Stanford_Dragon.stl");  // 871414
+	//readBinarySTL("D:\\3D Models\\Blender_Pipe.stl");  // 3145728
+	//readBinarySTL("D:\\3D Models\\Stanford_Lucy.stl");  // 28055742
+	//Parametric1(100, 500);  // let the raytracing bug show up
 	vec3 p0, p1; BoundingBox(STL, STL_N, p0, p1);
 	vec3 c = 0.5*(p1 + p0), b = 0.5*(p1 - p0);
-	double r = cbrt(b.x*b.y*b.z);
-	Center = vec3(vec2(0.0), b.z / r);
+	double ir = 1.0 / cbrt(b.x*b.y*b.z);
+	Center = vec3(vec2(0.0), b.z * ir);
 	vec3 t = vec3(-c.x, -c.y, -p0.z);
-	auto T = [&](vec3 &p) { p = (p + t) / r; };
-	for (int i = 0; i < STL_N; i++) T(STL[i].A), T(STL[i].B), T(STL[i].C);
-	CenterOfMass(STL, STL_N, COM, r);
+	for (int i = 0; i < STL_N; i++) {
+		STL[i].P = (STL[i].P + t) * ir;
+		STL[i].A *= ir, STL[i].B *= ir;
+		STL[i].n = cross(STL[i].A, STL[i].B);
+	}
+	CenterOfMass(STL, STL_N, COM, ir);
 }
 
 
