@@ -4,8 +4,9 @@
 // In a 640x360 window, Ray-Casting wins when the # of triangles exceeds about 500,000
 // Ray-casting is much more memory-consuming than rasterization
 
-// It seems there is a bug in ray intersection
 
+// debug
+#define _USE_CONSOLE 0
 
 #include <cmath>
 #include <stdio.h>
@@ -24,9 +25,7 @@
 #include <windowsx.h>
 #include <tchar.h>
 
-
 // debug
-#define _USE_CONSOLE 0
 wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 #define dbgprint(format, ...) { if (_USE_CONSOLE) {printf(format, ##__VA_ARGS__);} else {swprintf(_DEBUG_OUTPUT_BUF, 0x1000, _T(format), ##__VA_ARGS__); OutputDebugStringW(_DEBUG_OUTPUT_BUF);} }
 
@@ -247,7 +246,7 @@ Affine operator * (const Affine &A, const Affine &B) {
 #pragma endregion Add __inline so compiler will expand them in debug mode
 
 
-#pragma region Ray Tracing Functions
+#pragma region Intersection Functions
 
 // Many from https://www.iquilezles.org/www/articles/intersectors/intersectors.htm
 // /**/: check later
@@ -255,7 +254,6 @@ Affine operator * (const Affine &A, const Affine &B) {
 
 // Intersection functions - return the distance, NAN means no intersection
 // Warning: return value can be negative
-#define invec3 const vec3&
 double intHorizon(double z, vec3 p, vec3 d) {
 	return (z - p.z) / d.z;
 }
@@ -283,14 +281,6 @@ double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 	double u = -d * dot(q, v2v0); if (u<0. || u>1.) return NAN;
 	double v = d * dot(q, v1v0); if (v<0. || (u + v)>1.) return NAN;
 	return -d * dot(n, rov0);
-}
-double intTriangle_r(invec3 P, invec3 a, invec3 b, invec3 n, invec3 ro, invec3 rd) {  // relative with precomputer normal cross(a,b)
-	vec3 rp = ro - P;
-	vec3 q = cross(rp, rd);
-	double d = 1.0 / dot(rd, n);
-	double u = -d * dot(q, b); if (u<0. || u>1.) return NAN;
-	double v = d * dot(q, a); if (v<0. || (u + v)>1.) return NAN;
-	return -d * dot(n, rp);
 }
 /**/double intCapsule(vec3 pa, vec3 pb, double r, vec3 ro, vec3 rd) {
 	vec3 ba = pb - pa, oa = ro - pa;
@@ -321,39 +311,6 @@ double intTriangle_r(invec3 P, invec3 a, invec3 b, invec3 n, invec3 ro, invec3 r
 	if (abs(b + a * t) < h) return t;
 	return NAN;
 }
-double intBoxC(vec3 R, vec3 ro, vec3 inv_rd) {  // inv_rd = vec3(1.0)/rd
-#if 1
-	vec3 p = -inv_rd * ro;
-	vec3 k = abs(inv_rd)*R;
-	vec3 t1 = p - k, t2 = p + k;
-	double tN = max(max(t1.x, t1.y), t1.z);
-	double tF = min(min(t2.x, t2.y), t2.z);
-	if (tN > tF || tF < 0.0) return NAN;
-	return tN > 0. ? tN : tF;
-#else
-	// naive method that is less likely to have bug
-	// (but indeed it seems to have more bug)
-	auto IntP = [](invec3 P, invec3 a, invec3 b, invec3 ro, invec3 rd)->double {
-		vec3 rp = ro - P;
-		vec3 n = cross(a, b);
-		vec3 q = cross(rp, rd);
-		double d = 1.0 / dot(rd, n);
-		double u = -d * dot(q, b); if (u<0. || u>1.) return NAN;
-		double v = d * dot(q, a); if (v<0. || v>1.) return NAN;
-		return -d * dot(n, rp);
-	};
-	vec3 rd = vec3(1.0) / inv_rd;
-	double mt = INFINITY, t;
-	t = IntP(-R, vec3(2.*R.x, 0, 0), vec3(0, 2.*R.y, 0), ro, rd); if (t < mt) mt = t;
-	t = IntP(-R, vec3(2.*R.x, 0, 0), vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
-	t = IntP(-R, vec3(0, 2.*R.y, 0), vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
-	t = IntP(R, -vec3(2.*R.x, 0, 0), -vec3(0, 2.*R.y, 0), ro, rd); if (t < mt) mt = t;
-	t = IntP(R, -vec3(2.*R.x, 0, 0), -vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
-	t = IntP(R, -vec3(0, 2.*R.y, 0), -vec3(0, 0, 2.*R.z), ro, rd); if (t < mt) mt = t;
-	if (0.0*mt == 0.0) return mt;
-	return NAN;
-#endif
-}
 /**/double intCone(vec3 pa, vec3 pb, double r, vec3 ro, vec3 rd) {
 	vec3 ba = pb - pa, oa = ro - pa, ob = ro - pb;
 	double m0 = dot(ba, ba), m1 = dot(oa, ba), m2 = dot(ob, ba), m3 = dot(rd, ba);
@@ -374,7 +331,6 @@ double intCircle(vec3 n, vec3 c, double r, vec3 ro, vec3 rd) {
 	q = q + rd * t;
 	return dot(q, q) < r*r ? t : NAN;
 }
-
 
 // Normal calculation
 vec3 nCapsule(vec3 a, vec3 b, double r, vec3 p) {
@@ -437,6 +393,39 @@ double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
 	vec3 n = cross(rd, cross(rd, d));
 	return dot(ro - P, n) / dot(d, n);
 }
+
+
+// raytracing special
+#define _RAY_HIT_STATISTICS 0
+#if _RAY_HIT_STATISTICS
+uint64_t Triangle_Hit_Count;
+uint64_t Box_Hit_Count;
+#define _RPP(x) x++  // WARNIING: perfermance
+#else
+#define _RPP(x)
+#endif
+#define invec3 const vec3&
+double intTriangle_r(invec3 P, invec3 a, invec3 b, invec3 n, invec3 ro, invec3 rd) {  // relative with precomputer normal cross(a,b)
+	_RPP(Triangle_Hit_Count);
+	vec3 rp = ro - P;
+	vec3 q = cross(rp, rd);
+	double d = 1.0 / dot(rd, n);
+	double u = -d * dot(q, b); if (u<0. || u>1.) return NAN;
+	double v = d * dot(q, a); if (v<0. || (u + v)>1.) return NAN;
+	return -d * dot(n, rp);
+}
+double intBoxC(invec3 R, invec3 ro, invec3 inv_rd) {  // inv_rd = vec3(1.0)/rd
+	_RPP(Box_Hit_Count);
+	vec3 p = -inv_rd * ro;
+	vec3 k = abs(inv_rd)*R;
+	vec3 t1 = p - k, t2 = p + k;
+	double tN = max(max(t1.x, t1.y), t1.z);
+	double tF = min(min(t2.x, t2.y), t2.z);
+	if (tN > tF || tF < 0.0) return NAN;
+	return tN;
+	//return tN > 0. ? tN : tF;
+}
+
 
 #pragma endregion Intersector, Normal, SDF, Bounding Box
 
@@ -654,6 +643,20 @@ void Parametric1(int Nu, int Nv) {
 	}
 }
 
+// debug output, available when enable console
+auto e20p = [](vec3 &p) {
+	if (abs(p.x) < 1e-6) p.x = 0;
+	if (abs(p.y) < 1e-6) p.y = 0;
+	if (abs(p.z) < 1e-6) p.z = 0;
+};
+void printAllTriangles() {
+	if (_USE_CONSOLE) for (int i = 0; i < STL_N; i++) {
+		Triangle T = STL[i];
+		e20p(T.P), e20p(T.A), e20p(T.B);
+		printf("T_{%d}=Surface(If(u+v<1,(%lg,%lg,%lg)+u*(%lg,%lg,%lg)+v*(%lg,%lg,%lg)),u,0,1,v,0,1)\n", i, T.P.x, T.P.y, T.P.z, T.A.x, T.A.y, T.A.z, T.B.x, T.B.y, T.B.z);
+	}
+}
+
 
 
 // ============================================ Rendering ============================================
@@ -801,7 +804,7 @@ auto drawTriangle_RT = [](vec3 P, vec3 a, vec3 b, COLORREF col) {
 	int x0 = max((int)p0.x, 0), x1 = min((int)p1.x, _WIN_W - 1), y0 = max((int)p0.y, 0), y1 = min((int)p1.y, _WIN_H - 1);
 	vec3 n = cross(a, b);
 	double t; for (int i = x0; i <= x1; i++) for (int j = y0; j <= y1; j++)
-		if ((t = intTriangle_r(P, a, b, n, CamP, scrDir(vec2(i, j)))) > 0 && t < _DEPTHBUF[i][j]) Canvas(i, j) = col, _DEPTHBUF[i][j] = t;
+		if ((t = intTriangle_r(P, a, b, n, CamP, scrDir(vec2(i, j)))) > 0 && t <= _DEPTHBUF[i][j]) Canvas(i, j) = col, _DEPTHBUF[i][j] = t;
 };
 auto drawArrow_RT = [](vec3 A, vec3 B, double r, COLORREF col) {
 	vec2 p0, p1; projRange_Cone(A, B, r, p0, p1);
@@ -831,10 +834,13 @@ auto drawVector_RT = [](vec3 P, vec3 d, double r, COLORREF col, bool relative = 
 typedef std::chrono::high_resolution_clock NTime;
 typedef std::chrono::duration<double> fsec;
 
-#define MultiThread 1
-#include <thread>
-
-
+COLORREF toCOLORREF(const vec3 &col) {
+	COLORREF C; byte* c = (byte*)&C;
+	c[2] = (byte)(255 * clamp(col.x, 0., 1.));
+	c[1] = (byte)(255 * clamp(col.y, 0., 1.));
+	c[0] = (byte)(255 * clamp(col.z, 0., 1.));
+	return C;
+}
 COLORREF color(vec3 p, vec3 n) {
 	n = normalize(n);
 	const vec3 light = normalize(vec3(0.5, 0.5, 1));
@@ -843,88 +849,69 @@ COLORREF color(vec3 p, vec3 n) {
 	vec3 dif = vec3(0.5) * max(dot(n, light), 0.0);
 	vec3 spc = vec3(0.1) * pow(max(dot(d, light), 0.0), 5.0);
 	vec3 col = bkg + dif + spc;
-	COLORREF C; byte* c = (byte*)&C;
-	c[2] = (byte)(255 * clamp(col.x, 0., 1.));
-	c[1] = (byte)(255 * clamp(col.y, 0., 1.));
-	c[0] = (byte)(255 * clamp(col.z, 0., 1.));
-	return C;
+	return toCOLORREF(col);
 }
+
+
+#if _RAY_HIT_STATISTICS
+#define MultiThread 0
+#else
+#define MultiThread 1
+#endif
+#include <thread>
+
+#if MultiThread
+void Render_Exec(void(*task)(int, int, int, bool*), int Max) {
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	bool* fn = new bool[MAX_THREADS];
+	std::thread** T = new std::thread*[MAX_THREADS];
+	for (int i = 0; i < MAX_THREADS; i++) {
+		fn[i] = false;
+		T[i] = new std::thread(task, i, Max, MAX_THREADS, &fn[i]);
+	}
+	int count; do {
+		count = 0;
+		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
+	} while (count < MAX_THREADS);
+	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
+	delete fn; delete T;
+}
+#else
+void Render_Exec(void(*task)(int, int, int, bool*), int Max) {
+	task(0, Max, 1, NULL);
+}
+#endif
+
 
 // brute-force rasterization
 void render_Raster_BF() {
-	auto task = [](int beg, int end, int step, bool *sig) {
+	Render_Exec([](int beg, int end, int step, bool *sig) {
 		for (int i = beg; i < end; i += step) {
 			drawTriangle_ZB(STL[i].P, STL[i].P + STL[i].A, STL[i].P + STL[i].B, color(STL[i].P, STL[i].n));
 		}
 		if (sig) *sig = true;
-	};
-#if MultiThread
-	const int MAX_THREADS = std::thread::hardware_concurrency();
-	bool* fn = new bool[MAX_THREADS];
-	std::thread** T = new std::thread*[MAX_THREADS];
-	for (int i = 0; i < MAX_THREADS; i++) {
-		fn[i] = false;
-		T[i] = new std::thread(task, i, STL_N, MAX_THREADS, &fn[i]);
-	}
-	int count;
-	do {
-		count = 0;
-		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
-	} while (count < MAX_THREADS);
-	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
-	delete fn; delete T;
-#else
-	task(0, STL_N, 1, NULL);
-#endif
+	}, STL_N);
 }
 
 // brute-force ray tracing
 void render_RT_BF() {
-	auto task = [](int beg, int end, int step, bool *sig) {
+	Render_Exec([](int beg, int end, int step, bool *sig) {
 		for (int i = beg; i < end; i += step) {
 			drawTriangle_RT(STL[i].P, STL[i].A, STL[i].B, color(STL[i].P, STL[i].n));
 		}
 		if (sig) *sig = true;
-	};
-	// exactly the same as the previous function (copy-pasted)
-#if MultiThread
-	const int MAX_THREADS = std::thread::hardware_concurrency();
-	bool* fn = new bool[MAX_THREADS];
-	std::thread** T = new std::thread*[MAX_THREADS];
-	for (int i = 0; i < MAX_THREADS; i++) {
-		fn[i] = false;
-		T[i] = new std::thread(task, i, STL_N, MAX_THREADS, &fn[i]);
-	}
-	int count;
-	do {
-		count = 0;
-		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
-	} while (count < MAX_THREADS);
-	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
-	delete fn; delete T;
-#else
-	task(0, STL_N, 1, NULL);
-#endif
+	}, STL_N);
 }
 
-// BVH ray tracing - I believe there is a bug
+
+// BVH ray tracing
 #include <vector>
-#define POLYTRIANGLE 1
-#if POLYTRIANGLE
-// sliightly faster
-#define MAX_TRIG 2
+#define MAX_TRIG 16  // set to 2: [stanford dragon] rendering speed 1.1x but memory 1.6x and init time 1.5x [stanford lucy] out of memory (extremely slow in Win10)
 struct BVH {
 	Triangle *Obj[MAX_TRIG];
 	vec3 C, R;  // bounding box
 	BVH *b1 = 0, *b2 = 0;  // children
 } *BVH_R = 0;
-#else
-struct BVH {
-	Triangle *Obj = 0;
-	vec3 C, R;  // bounding box
-	BVH *b1 = 0, *b2 = 0;  // children
-} *BVH_R = 0;
-#endif
 void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null and T should not be empty
 	vec3 Min(INFINITY), Max(-INFINITY);
 	int N = (int)T.size();
@@ -935,19 +922,14 @@ void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null
 		Max = pMax(pMax(Max, A), pMax(B, C));
 	}
 	R->C = 0.5*(Max + Min), R->R = 0.5*(Max - Min);
-#if POLYTRIANGLE
+
 	if (N <= MAX_TRIG) {
 		for (int i = 0; i < N; i++) R->Obj[i] = T[i];
 		if (N < MAX_TRIG) R->Obj[N] = 0;
 		return;
 	}
 	else R->Obj[0] = NULL;
-#else
-	if (N == 1) {
-		R->Obj = T[0];
-		return;
-	}
-#endif
+
 	Min = vec3(INFINITY), Max = vec3(-INFINITY);
 	const double _3 = 1. / 3;
 	for (int i = 0; i < N; i++) {
@@ -955,6 +937,7 @@ void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null
 		Min = pMin(Min, C), Max = pMax(Max, C);
 	}
 	vec3 dP = Max - Min;
+
 	std::vector<Triangle*> c1, c2;
 	if (dP.x >= dP.y && dP.x >= dP.z) {
 		double x = 0.5*(Min.x + Max.x);
@@ -977,6 +960,7 @@ void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null
 			else c2.push_back(T[i]);
 		}
 	}
+
 	if (c1.empty() || c2.empty()) {
 		// theoretically faster but actually faster in neither construction nor intersection
 		// I keep it because...
@@ -998,7 +982,6 @@ void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null
 }
 void rayIntersectBVH(const BVH* R, invec3 ro, invec3 rd, invec3 inv_rd, double &mt, Triangle* &obj) {  // assume ray already intersects current BVH
 	const double eps = 1e-6;
-#if POLYTRIANGLE
 	if (R->Obj[0]) {
 		for (int i = 0; i < MAX_TRIG; i++) {
 			Triangle *T = R->Obj[i];
@@ -1007,35 +990,34 @@ void rayIntersectBVH(const BVH* R, invec3 ro, invec3 rd, invec3 inv_rd, double &
 			if (t > eps && t < mt) mt = t, obj = T;
 		}
 	}
-#else
-	if (R->Obj) {
-		Triangle *T = R->Obj;
-		double t = intTriangle_r(T->P, T->A, T->B, T->n, ro, rd);
-		if (t > eps && t < mt) mt = t, obj = T;
-	}
-#endif
 	else {
-		// test intersection for the closer box first
-		// there is a significant performance increase
 		double t1 = intBoxC(R->b1->R, ro - R->b1->C, inv_rd);
 		double t2 = intBoxC(R->b2->R, ro - R->b2->C, inv_rd);
-		if (t1 > eps && t2 > eps && t1 < mt && t2 < mt) {
+#if 0
+		if (t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+		if (t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+#else
+		// test intersection for the closer box first
+		// there is a significant performance increase
+		if (t1 < mt && t2 < mt) {
 			if (t1 < t2) {
 				rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
-				if (t2 > eps && t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+				if (t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
 			}
 			else {
 				rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
-				if (t1 > eps && t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+				if (t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
 			}
 		}
 		else {
-			if (t1 > eps && t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
-			if (t2 > eps && t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
+			if (t1 < mt) rayIntersectBVH(R->b1, ro, rd, inv_rd, mt, obj);
+			if (t2 < mt) rayIntersectBVH(R->b2, ro, rd, inv_rd, mt, obj);
 		}
+#endif
 	}
 }
 void visualizeBVH(const BVH *R, int dps = 0) {  // debug
+	return;
 	auto drawBox_3D = [](vec3 Min, vec3 Max, COLORREF col) {
 		drawLine_F(vec3(Min.x, Min.y, Min.z), vec3(Max.x, Min.y, Min.z), col);
 		drawLine_F(vec3(Max.x, Min.y, Min.z), vec3(Max.x, Max.y, Min.z), col);
@@ -1050,9 +1032,22 @@ void visualizeBVH(const BVH *R, int dps = 0) {  // debug
 		drawLine_F(vec3(Max.x, Max.y, Max.z), vec3(Min.x, Max.y, Max.z), col);
 		drawLine_F(vec3(Min.x, Max.y, Max.z), vec3(Min.x, Min.y, Max.z), col);
 	};
-	if (dps == 12) drawBox_3D(R->C - R->R, R->C + R->R, 0xFF0000);
+	COLORREF col; byte *b = (byte*)&col;
+	b[3] = dps + 1, b[0] = 10 * b[3], b[1] = 20 * b[3], b[2] = 30 * b[3];
+	if (dps == 1) drawBox_3D(R->C - R->R, R->C + R->R, col);
 	if (R->b1) visualizeBVH(R->b1, dps + 1);
 	if (R->b2) visualizeBVH(R->b2, dps + 1);
+}
+void highlightBVHObjects(const BVH *R, vec3 col) {
+	if (R->Obj[0]) {
+		for (int i = 0; i < MAX_TRIG; i++) {
+			Triangle *T = R->Obj[i];
+			if (!T) break;
+			drawTriangle_RT(T->P, T->A, T->B, toCOLORREF(mix(col, vec3(0.5) + 0.5*normalize(T->n), 0.2)));
+		}
+	}
+	if (R->b1) highlightBVHObjects(R->b1, col);
+	if (R->b2) highlightBVHObjects(R->b2, col);
 }
 void render_RT_BVH() {
 	if (!BVH_R) {
@@ -1064,40 +1059,25 @@ void render_RT_BVH() {
 		dbgprint("BVH constructed in %lfs\n", fsec(NTime::now() - t0).count());
 		//exit(0);
 	}
-	auto task = [](int beg, int end, int step, bool* sig) {
+	Render_Exec([](int beg, int end, int step, bool* sig) {
 		for (int k = beg; k < end; k += step) {
 			int i = k % _WIN_W, j = k / _WIN_W;
 			vec3 d = scrDir(vec2(i, j));
 			double mt = intBoxC(BVH_R->R, CamP - BVH_R->C, vec3(1.0) / d);
-			if (mt > 0.) {
+			if (!isnan(mt)) {
 				Triangle* obj = 0;
 				mt = INFINITY;
 				rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, mt, obj);
-				if (obj) Canvas(i, j) = color(CamP + mt * d, obj->n);
+				//if (obj) Canvas(i, j) = color(CamP + mt * d, obj->n);
+				if (obj) Canvas(i, j) = color(obj->P, obj->n);
+				//_DEPTHBUF[i][j] = mt;
 			}
 		}
 		if (sig) *sig = true;
-	};
-#if MultiThread
-	const int MAX_THREADS = std::thread::hardware_concurrency();
-	bool* fn = new bool[MAX_THREADS];
-	std::thread** T = new std::thread*[MAX_THREADS];
-	for (int i = 0; i < MAX_THREADS; i++) {
-		fn[i] = false;
-		T[i] = new std::thread(task, i, _WIN_W*_WIN_H, MAX_THREADS, &fn[i]);
-	}
-	int count;
-	do {
-		count = 0;
-		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
-	} while (count < MAX_THREADS);
-	//for (int i = 0; i < MAX_THREADS; i++) delete T[i];
-	delete fn; delete T;
-#else
-	task(0, _WIN_W*_WIN_H, 1, NULL);
-#endif
-	//visualizeBVH(BVH_R); return;
+	}, _WIN_W*_WIN_H);
+	//visualizeBVH(BVH_R);
 }
+
 
 
 void render() {
@@ -1119,13 +1099,42 @@ void render() {
 		drawLine_F(vec3(-R, 0, 0), vec3(R, 0, 0), 0xC04040);
 	}
 
+
+#if _RAY_HIT_STATISTICS
+	Triangle_Hit_Count = 0;
+	Box_Hit_Count = 0;
+#endif
+
 	render_RT_BVH();
-	//render_Raster_BF();
 
 	drawCross3D(COM, 6, 0xFF0000);
 
+#if 0
+	// debugging a single ray intersection
+	{
+		//rx = 0.29123889803846897, ry = 0.00000000000000000, rz = -0.38168146928204161, dist = 1.2274104805864483, Unit = 977.66804095289160;
+		//getScreen(CamP, ScrO, ScrA, ScrB);
+		vec3 CamP = vec3(1.0911173949776587, -0.43793496776358048, 1.2304567394638757);
+		vec3 ScrO = vec3(-0.069671095356116958, -0.31590841948434500, 0.70117079949834338);
+		drawSphere_RT(CamP, 0.05, 0xFFFF00);
+		vec3 d = normalize(ScrO - CamP);
+		Triangle* obj = 0;
+		double t = INFINITY;
+		rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, t, obj);
+		d *= t;
+		drawVector_RT(CamP, d, 0.03, 0xFFFF00);
+		//highlightBVHObjects(BVH_R->b1, vec3(1, 0, 0));
+		//highlightBVHObjects(BVH_R->b2, vec3(0, 0, 1));
+	}
+#endif
+
 	double t = fsec(NTime::now() - t0).count();
+#if _RAY_HIT_STATISTICS
+	double S = _WIN_W * _WIN_H;
+	sprintf(text, "[%d×%d]  %.1fms (%.1ffps)  T%.1lf B%.1lf\n", _WIN_W, _WIN_H, 1000.0*t, 1. / t, Triangle_Hit_Count / S, Box_Hit_Count / S);
+#else
 	sprintf(text, "[%d×%d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*t, 1. / t);
+#endif
 	SetWindowTextA(_HWND, text);
 }
 
@@ -1143,10 +1152,10 @@ void Init() {
 	//readBinarySTL("D:\\3D Models\\Blender_Suzanne3.stl");  // 62976
 	//readBinarySTL("D:\\3D Models\\Stanford_Bunny.stl");  // 112402
 	//readBinarySTL("D:\\3D Models\\The_Thinker.stl");  // 837482
-	readBinarySTL("D:\\3D Models\\Stanford_Dragon.stl");  // 871414
+	//readBinarySTL("D:\\3D Models\\Stanford_Dragon.stl");  // 871414
 	//readBinarySTL("D:\\3D Models\\Blender_Pipe.stl");  // 3145728
 	//readBinarySTL("D:\\3D Models\\Stanford_Lucy.stl");  // 28055742
-	//Parametric1(100, 500);  // let the raytracing bug show up
+	Parametric1(500, 2500);
 	vec3 p0, p1; BoundingBox(STL, STL_N, p0, p1);
 	vec3 c = 0.5*(p1 + p0), b = 0.5*(p1 - p0);
 	double ir = 1.0 / cbrt(b.x*b.y*b.z);
@@ -1158,6 +1167,7 @@ void Init() {
 		STL[i].n = cross(STL[i].A, STL[i].B);
 	}
 	CenterOfMass(STL, STL_N, COM, ir);
+	printAllTriangles();
 }
 
 
@@ -1196,7 +1206,6 @@ void MouseWheel(int _DELTA) {
 void MouseDownL(int _X, int _Y) {
 	clickCursor = Cursor = vec2(_X, _Y);
 	mouse_down = true;
-
 }
 void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y), D = P - P0;
@@ -1219,12 +1228,26 @@ void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	bool moved = (int)length(clickCursor - Cursor) != 0;   // be careful: coincidence
 	mouse_down = false;
+
+#if _USE_CONSOLE
+	vec3 d = scrDir(Cursor);
+	Triangle* obj = 0; double t = INFINITY;
+	rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, t, obj);
+	if (obj) printf("%d\n", obj - STL);
+	else printf("-1\n");
+	//if (obj) *obj = Triangle{ vec3(0),vec3(0),vec3(0),vec3(0) };
+#endif
 }
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 }
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+
+#ifdef _DEBUG
+	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
+	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
 }
 void KeyDown(WPARAM _KEY) {
 	keyDownShared(_KEY);
