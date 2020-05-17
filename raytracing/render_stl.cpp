@@ -4,6 +4,8 @@
 // In a 640x360 window, Ray-Casting wins when the # of triangles exceeds about 500,000
 // Ray-casting is much more memory-consuming than rasterization
 
+// To-do: Add kd-tree acceleration
+
 
 // debug
 #define _USE_CONSOLE 0
@@ -70,39 +72,31 @@ double _DEPTHBUF[WinW_Max][WinH_Max];  // how you use this depends on you
 // Win32 Entry
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-#define _WNDSEL(vm,vt) vm  // no longer useful
-#define _WNDSEL_T(vn) vn
-	auto hImg = _WNDSEL(&_HIMG, &_HIMG_T);
-	auto winImg = _WNDSEL(&_WINIMG, &_WINIMG_T);
-	auto winW = _WNDSEL(&_WIN_W, &_WIN_T_W), winH = _WNDSEL(&_WIN_H, &_WIN_T_H);
-#define _RD_RAW { HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, *hImg); _WNDSEL(render, render_t)(); BitBlt(hdc, 0, 0, *winW, *winH, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); }
-#define _RDBK { _RD_RAW break; }
+#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
 	switch (message) {
-	case WM_NULL: { _RD_RAW return 0; }
 	case WM_CREATE: { if (!_HWND) Init(); break; }
-	case WM_CLOSE: { _WNDSEL_T(WindowClose)(); DestroyWindow(hWnd); return 0; }
+	case WM_CLOSE: { WindowClose(); DestroyWindow(hWnd); return 0; }
 	case WM_DESTROY: { PostQuitMessage(0); return 0; }
 	case WM_MOVE:; case WM_SIZE: {
-		RECT Client; GetClientRect(hWnd, &Client); _WNDSEL_T(WindowResize)(*winW, *winH, Client.right, Client.bottom); *winW = Client.right, *winH = Client.bottom;
+		RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom;
 		BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
-		if (*hImg != NULL) DeleteObject(*hImg); HDC hdc = GetDC(hWnd); *hImg = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)winImg, NULL, 0); DeleteDC(hdc); _RDBK
+		if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK
 	}
-	case WM_GETMINMAXINFO: { LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam; lpMMI->ptMinTrackSize.x = _WNDSEL(WinW_Min, WinTW_Min), lpMMI->ptMinTrackSize.y = _WNDSEL(WinH_Min, WinTH_Min), lpMMI->ptMaxTrackSize.x = _WNDSEL(WinW_Max, WinTW_Max), lpMMI->ptMaxTrackSize.y = _WNDSEL(WinH_Max, WinTH_Max); break; }
-	case WM_PAINT: { PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, *hImg); BitBlt(hdc, 0, 0, *winW, *winH, HMem, 0, 0, SRCCOPY); SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps); DeleteDC(HMem), DeleteDC(hdc); break; }
-#define _USER_FUNC_PARAMS GET_X_LPARAM(lParam), *winH - 1 - GET_Y_LPARAM(lParam)
-	case WM_MOUSEMOVE: { _WNDSEL_T(MouseMove)(_USER_FUNC_PARAMS); _RDBK }
-	case WM_MOUSEWHEEL: { _WNDSEL_T(MouseWheel)(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
-	case WM_LBUTTONDOWN: { SetCapture(hWnd); _WNDSEL_T(MouseDownL)(_USER_FUNC_PARAMS); _RDBK }
-	case WM_LBUTTONUP: { ReleaseCapture(); _WNDSEL_T(MouseUpL)(_USER_FUNC_PARAMS); _RDBK }
-	case WM_RBUTTONDOWN: { _WNDSEL_T(MouseDownR)(_USER_FUNC_PARAMS); _RDBK }
-	case WM_RBUTTONUP: { _WNDSEL_T(MouseUpR)(_USER_FUNC_PARAMS); _RDBK }
-	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) _WNDSEL_T(KeyDown)(wParam); _RDBK }
-	case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) _WNDSEL_T(KeyUp)(wParam); _RDBK }
+	case WM_GETMINMAXINFO: { LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam; lpMMI->ptMinTrackSize.x = WinW_Min, lpMMI->ptMinTrackSize.y = WinH_Min, lpMMI->ptMaxTrackSize.x = WinW_Max, lpMMI->ptMaxTrackSize.y = WinH_Max; break; }
+	case WM_PAINT: { PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY); SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps); DeleteDC(HMem), DeleteDC(hdc); break; }
+#define _USER_FUNC_PARAMS GET_X_LPARAM(lParam), _WIN_H - 1 - GET_Y_LPARAM(lParam)
+	case WM_MOUSEMOVE: { MouseMove(_USER_FUNC_PARAMS); _RDBK }
+	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
+	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK }
+	case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
+	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK }
+	case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
+	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) KeyDown(wParam); _RDBK }
+	case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) KeyUp(wParam); _RDBK }
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	//WriteImage(); return 0;
 	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
 	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
 	if (!RegisterClassEx(&wc)) return -1;
@@ -259,19 +253,12 @@ double intHorizon(double z, vec3 p, vec3 d) {
 }
 double intSphere(vec3 O, double r, vec3 p, vec3 d) {
 	p = p - O;
-#if 0
-	if (dot(p, d) >= 0.0) return NAN;
-	vec3 k = cross(p, d); double rd2 = dot(k, k); if (rd2 > r*r) return NAN;
-	return sqrt(dot(p, p) - rd2) - sqrt(r*r - rd2);
-#else
-	// works when p is inside the sphere (and slightly faster)
 	double b = -dot(p, d), c = dot(p, p) - r * r;  // requires d to be normalized
 	double delta = b * b - c;
 	if (delta < 0.0) return NAN;
 	delta = sqrt(delta);
 	c = b - delta;
 	return c > 0. ? c : b + delta;  // usually we want it to be positive
-#endif
 }
 double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 	vec3 v1v0 = v1 - v0, v2v0 = v2 - v0, rov0 = ro - v0;
@@ -281,21 +268,6 @@ double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 	double u = -d * dot(q, v2v0); if (u<0. || u>1.) return NAN;
 	double v = d * dot(q, v1v0); if (v<0. || (u + v)>1.) return NAN;
 	return -d * dot(n, rov0);
-}
-/**/double intCapsule(vec3 pa, vec3 pb, double r, vec3 ro, vec3 rd) {
-	vec3 ba = pb - pa, oa = ro - pa;
-	double baba = dot(ba, ba), bard = dot(ba, rd), baoa = dot(ba, oa), rdoa = dot(rd, oa), oaoa = dot(oa, oa);
-	double a = baba - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - r * r*baba;
-	double h = b * b - a * c;
-	if (h >= 0.0) {
-		double t = (-b - sqrt(h)) / a;
-		double y = baoa + t * bard;
-		if (y > 0.0 && y < baba) return t;
-		vec3 oc = (y <= 0.0) ? oa : ro - pb;
-		b = dot(rd, oc), c = dot(oc, oc) - r * r, h = b * b - c;
-		if (h > 0.0) return -b - sqrt(h);
-	}
-	return NAN;
 }
 /**/double intCylinder(vec3 pa, vec3 pb, double ra, vec3 ro, vec3 rd) {
 	vec3 ca = pb - pa, oc = ro - pa;
@@ -331,69 +303,6 @@ double intCircle(vec3 n, vec3 c, double r, vec3 ro, vec3 rd) {
 	q = q + rd * t;
 	return dot(q, q) < r*r ? t : NAN;
 }
-
-// Normal calculation
-vec3 nCapsule(vec3 a, vec3 b, double r, vec3 p) {
-	vec3 ba = b - a, pa = p - a;
-	double h = dot(pa, ba) / dot(ba, ba);
-	return (pa - clamp(h, 0., 1.) * ba) / r;
-}
-
-// SDF functions
-double sdBox(vec2 p, vec2 b) {
-	vec2 d = abs(p) - b;
-	return length(pMax(d, vec2(0))) + min(max(d.x, d.y), 0.0);
-}
-double sdBox(vec3 p, vec3 b) {
-	vec3 q = abs(p) - b;
-	return length(pMax(q, vec0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-double sdCapsule(vec3 p, vec3 a, vec3 b, double r) {
-	vec3 pa = p - a, ba = b - a;
-	double h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-	return length(pa - ba * h) - r;
-}
-double sdEllipsoid(vec3 p, vec3 r) {
-	double k0 = length(p / r);
-	double k1 = length(p / (r*r));
-	return k0 * (k0 - 1.0) / k1;
-}
-double sdCylinder(vec3 p, vec3 a, vec3 b, double r) {
-	vec3  ba = b - a;
-	vec3  pa = p - a;
-	double baba = dot(ba, ba);
-	double paba = dot(pa, ba);
-	double x = length(pa*baba - ba * paba) - r * baba;
-	double y = abs(paba - baba * 0.5) - baba * 0.5;
-	double x2 = x * x;
-	double y2 = y * y*baba;
-	double d = (max(x, y) < 0.0) ? -min(x2, y2) : (((x > 0.0) ? x2 : 0.0) + ((y > 0.0) ? y2 : 0.0));
-	return (d > 0 ? 1. : -1.)*sqrt(abs(d)) / baba;
-}
-
-double smin(double d1, double d2, double k) {
-	double h = 0.5 + 0.5*(d2 - d1) / k; h = clamp(h, 0.0, 1.0);
-	return mix(d2, d1, h) - k * h*(1.0 - h);
-}
-double smax(double d1, double d2, double k) {
-	double h = 0.5 - 0.5*(d2 - d1) / k; h = clamp(h, 0.0, 1.0);
-	return mix(d2, d1, h) + k * h*(1.0 - h);
-}
-
-// Bounding box calculation
-void rangeSphere(vec3 c, double r, vec3 &Min, vec3 &Max) {
-	Min = c - vec3(r), Max = c + vec3(r);
-}
-void rangeCapsule(vec3 pa, vec3 pb, double r, vec3 &Min, vec3 &Max) {
-	Min = pMin(pa, pb) - vec3(r), Max = pMax(pa, pb) + vec3(r);
-}
-
-// closest point to a straight line
-double closestPoint(vec3 P, vec3 d, vec3 ro, vec3 rd) {  // P+t*d, return t
-	vec3 n = cross(rd, cross(rd, d));
-	return dot(ro - P, n) / dot(d, n);
-}
-
 
 // raytracing special
 #define _RAY_HIT_STATISTICS 0
@@ -434,7 +343,7 @@ double intBoxC(invec3 R, invec3 ro, invec3 inv_rd) {  // inv_rd = vec3(1.0)/rd
 
 // viewport
 vec3 Center(0.0, 0.0, 0.0);  // view center in world coordinate
-double rz = 0.2*PI, rx = 0.15*PI, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
+double rz = -0.8, rx = 0.3, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
 
 #pragma region General Global Variables
 
@@ -904,6 +813,8 @@ void render_RT_BF() {
 }
 
 
+// https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-837-computer-graphics-fall-2012/lecture-notes/MIT6_837F12_Lec14.pdf
+
 // BVH ray tracing
 #include <vector>
 #define MAX_TRIG 16  // set to 2: [stanford dragon] rendering speed 1.1x but memory 1.6x and init time 1.5x [stanford lucy] out of memory (extremely slow in Win10)
@@ -912,25 +823,24 @@ struct BVH {
 	vec3 C, R;  // bounding box
 	BVH *b1 = 0, *b2 = 0;  // children
 } *BVH_R = 0;
-void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null and T should not be empty
-	vec3 Min(INFINITY), Max(-INFINITY);
+void constructBVH(BVH* &R, std::vector<Triangle*> &T, vec3 &Min, vec3 &Max) {  // R should not be null and T should not be empty, calculates box range
 	int N = (int)T.size();
-	for (int i = 0; i < N; i++) {
-		// Analysis shows this is the slowest part of this function
-		vec3 A = T[i]->P, B = T[i]->P + T[i]->A, C = T[i]->P + T[i]->B;
-		Min = pMin(pMin(Min, A), pMin(B, C));
-		Max = pMax(pMax(Max, A), pMax(B, C));
-	}
-	R->C = 0.5*(Max + Min), R->R = 0.5*(Max - Min);
+	Min = vec3(INFINITY), Max = vec3(-INFINITY);
 
 	if (N <= MAX_TRIG) {
 		for (int i = 0; i < N; i++) R->Obj[i] = T[i];
 		if (N < MAX_TRIG) R->Obj[N] = 0;
+		for (int i = 0; i < N; i++) {
+			vec3 A = T[i]->P, B = T[i]->P + T[i]->A, C = T[i]->P + T[i]->B;
+			Min = pMin(pMin(Min, A), pMin(B, C));
+			Max = pMax(pMax(Max, A), pMax(B, C));
+		}
+		R->C = 0.5*(Max + Min), R->R = 0.5*(Max - Min);
 		return;
 	}
 	else R->Obj[0] = NULL;
 
-	Min = vec3(INFINITY), Max = vec3(-INFINITY);
+	// Analysis shows this is the most time-consuming part in this function
 	const double _3 = 1. / 3;
 	for (int i = 0; i < N; i++) {
 		vec3 C = T[i]->P + _3 * (T[i]->A + T[i]->B);
@@ -940,45 +850,41 @@ void constructBVH(BVH* &R, std::vector<Triangle*> &T) {  // R should not be null
 
 	std::vector<Triangle*> c1, c2;
 	if (dP.x >= dP.y && dP.x >= dP.z) {
-		double x = 0.5*(Min.x + Max.x);
-		for (int i = 0; i < N; i++) {
+		double x = 0.5*(Min.x + Max.x); for (int i = 0; i < N; i++) {
 			if (T[i]->P.x + _3 * (T[i]->A.x + T[i]->B.x) < x) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
 	else if (dP.y >= dP.x && dP.y >= dP.z) {
-		double y = 0.5*(Min.y + Max.y);
-		for (int i = 0; i < N; i++) {
+		double y = 0.5*(Min.y + Max.y); for (int i = 0; i < N; i++) {
 			if (T[i]->P.y + _3 * (T[i]->A.y + T[i]->B.y) < y) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
-	else if (dP.z >= dP.x && dP.z >= dP.y) {
-		double z = 0.5*(Min.z + Max.z);
-		for (int i = 0; i < N; i++) {
+	else {
+		double z = 0.5*(Min.z + Max.z); for (int i = 0; i < N; i++) {
 			if (T[i]->P.z + _3 * (T[i]->A.z + T[i]->B.z) < z) c1.push_back(T[i]);
 			else c2.push_back(T[i]);
 		}
 	}
 
 	if (c1.empty() || c2.empty()) {
-		// theoretically faster but actually faster in neither construction nor intersection
+		// faster in neither construction nor intersection
 		// I keep it because...
-		if (dP.x >= dP.y && dP.x >= dP.z) {
-			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.x + a->A.x + a->B.x < 3.*b->P.x + b->A.x + b->B.x; });
-		}
-		else if (dP.y >= dP.x && dP.y >= dP.z) {
-			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.y + a->A.y + a->B.y < 3.*b->P.y + b->A.y + b->B.y; });
-		}
-		else if (dP.z >= dP.x && dP.z >= dP.y) {
-			std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.z + a->A.z + a->B.z < 3.*b->P.z + b->A.z + b->B.z; });
-		}
+		if (dP.x >= dP.y && dP.x >= dP.z) std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.x + a->A.x + a->B.x < 3.*b->P.x + b->A.x + b->B.x; });
+		else if (dP.y >= dP.x && dP.y >= dP.z) std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.y + a->A.y + a->B.y < 3.*b->P.y + b->A.y + b->B.y; });
+		else std::sort(T.begin(), T.end(), [](Triangle *a, Triangle *b) { return 3.*a->P.z + a->A.z + a->B.z < 3.*b->P.z + b->A.z + b->B.z; });
 		int d = N / 2;
 		c1 = std::vector<Triangle*>(T.begin(), T.begin() + d);
-		c1 = std::vector<Triangle*>(T.begin() + d, T.end());
+		c2 = std::vector<Triangle*>(T.begin() + d, T.end());
 	}
-	R->b1 = new BVH, constructBVH(R->b1, c1);
-	R->b2 = new BVH, constructBVH(R->b2, c2);
+	// A paper I haven't read yet: https://graphicsinterface.org/wp-content/uploads/gi1989-22.pdf
+
+	vec3 b0, b1;
+	R->b1 = new BVH; constructBVH(R->b1, c1, Min, Max);
+	R->b2 = new BVH; constructBVH(R->b2, c2, b0, b1);
+	Min = pMin(Min, b0); Max = pMax(Max, b1);
+	R->C = 0.5*(Max + Min), R->R = 0.5*(Max - Min);
 }
 void rayIntersectBVH(const BVH* R, invec3 ro, invec3 rd, invec3 inv_rd, double &mt, Triangle* &obj) {  // assume ray already intersects current BVH
 	const double eps = 1e-6;
@@ -1055,7 +961,8 @@ void render_RT_BVH() {
 		std::vector<Triangle*> T;
 		for (int i = 0; i < STL_N; i++) T.push_back(&STL[i]);
 		BVH_R = new BVH;
-		constructBVH(BVH_R, T);
+		vec3 Min(INFINITY), Max(-INFINITY);
+		constructBVH(BVH_R, T, Min, Max);
 		dbgprint("BVH constructed in %lfs\n", fsec(NTime::now() - t0).count());
 		//exit(0);
 	}
@@ -1070,7 +977,7 @@ void render_RT_BVH() {
 				rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, mt, obj);
 				//if (obj) Canvas(i, j) = color(CamP + mt * d, obj->n);
 				if (obj) Canvas(i, j) = color(obj->P, obj->n);
-				//_DEPTHBUF[i][j] = mt;
+				_DEPTHBUF[i][j] = mt;  // don't comment this line!
 			}
 		}
 		if (sig) *sig = true;
@@ -1105,6 +1012,7 @@ void render() {
 	Box_Hit_Count = 0;
 #endif
 
+	//render_Raster_BF();
 	render_RT_BVH();
 
 	drawCross3D(COM, 6, 0xFF0000);
@@ -1145,17 +1053,21 @@ void render() {
 bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
-	//readBinarySTL("D:\\3D Models\\Blender_Cube.stl");  // 12
-	//readBinarySTL("D:\\3D Models\\Blender_Isosphere.stl");  // 80
-	//readBinarySTL("D:\\3D Models\\Blender_Suzanne.stl");  // 968
-	//readBinarySTL("D:\\3D Models\\Utah_Teapot.stl");  // 9438
-	//readBinarySTL("D:\\3D Models\\Blender_Suzanne3.stl");  // 62976
-	//readBinarySTL("D:\\3D Models\\Stanford_Bunny.stl");  // 112402
-	//readBinarySTL("D:\\3D Models\\The_Thinker.stl");  // 837482
-	//readBinarySTL("D:\\3D Models\\Stanford_Dragon.stl");  // 871414
-	//readBinarySTL("D:\\3D Models\\Blender_Pipe.stl");  // 3145728
-	//readBinarySTL("D:\\3D Models\\Stanford_Lucy.stl");  // 28055742
-	Parametric1(500, 2500);
+	//readBinarySTL("3D Models\\Blender_Cube.stl");  // 12
+	//readBinarySTL("3D Models\\Blender_Isosphere.stl");  // 80
+	//readBinarySTL("3D Models\\Blender_Suzanne.stl");  // 968
+	//readBinarySTL("3D Models\\Utah_Teapot.stl");  // 9438
+	//readBinarySTL("3D Models\\Blender_Suzanne3.stl");  // 62976
+	//readBinarySTL("3D Models\\Stanford_Bunny.stl");  // 112402, modified version from Wikipedia
+	//readBinarySTL("3D Models\\Stanford_Armadillo.stl");  // 345944
+	//readBinarySTL("3D Models\\The_Thinker.stl");  // 837482
+	readBinarySTL("3D Models\\Stanford_Dragon.stl");  // 871414
+	//readBinarySTL("3D Models\\Stanford_Happy_Buddha.stl");  // 1087716
+	//readBinarySTL("3D Models\\Blender_Pipe.stl");  // 3145728
+	//readBinarySTL("3D Models\\Stanford_Asian_Dragon.stl");  // 7218906
+	//readBinarySTL("3D Models\\Stanford_Thai.stl");  // 10000000
+	//readBinarySTL("3D Models\\Stanford_Lucy.stl");  // 28055742, out of memory in x86
+	//Parametric1(500, 2500);
 	vec3 p0, p1; BoundingBox(STL, STL_N, p0, p1);
 	vec3 c = 0.5*(p1 + p0), b = 0.5*(p1 - p0);
 	double ir = 1.0 / cbrt(b.x*b.y*b.z);
@@ -1167,7 +1079,7 @@ void Init() {
 		STL[i].n = cross(STL[i].A, STL[i].B);
 	}
 	CenterOfMass(STL, STL_N, COM, ir);
-	printAllTriangles();
+	//printAllTriangles();
 }
 
 
