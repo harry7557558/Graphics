@@ -366,7 +366,7 @@ void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 // **: acceleration "breaks"
 // `: solution contains chaos
 
-// Unless otherwise stated, the magnitude of air resistance is propor to the cube of velosity instead of square
+// To maintain the continuity, unless otherwise stated, the magnitude of air resistance is propor to the cube of velosity instead of square
 
 #define Projectile      0x00    // Acceleration due to gravity
 #define Projectile_R    0x01    // Acceleration due to gravity + Air resistance
@@ -379,7 +379,7 @@ void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 #define NBody_m         0x08    // `One sun and one mobilized planet
 #define High_Resistance 0x09    // Air resistance proper to the sixth power of velosity
 
-#define SIMULATION NBody_1
+#define SIMULATION Pendulum
 
 #if SIMULATION==Projectile
 
@@ -394,7 +394,7 @@ const vec3 V0 = vec3(1.5, 1.5, 2);
 
 // A parabola opening down
 // Euler: a little higher
-// Modified Euler and Midpoint: exactly the same
+// Other: exactly the same
 
 #elif SIMULATION==Projectile_R
 
@@ -429,6 +429,7 @@ const vec3 V0 = vec3(3, 0, 3);
 // Euler: shorter wavelength, greater magnitude
 // Modified Euler: slightly gentler
 // Midpoint: few error
+// Modified Verlet: a little shorter wavelength
 
 #elif SIMULATION==Projectile_RW
 
@@ -447,24 +448,26 @@ const vec3 V0 = vec3(3, 0, 3);
 // Eulers: shorter wavelength and greater magnitude
 // Midpoint: longer wavelength and less magnitude
 // Midpoint works slightly better than Eulers after reducing t_step
+// Modified Verlet fits best but the error is visible
 
 #elif SIMULATION==Pendulum
 
 const double g = 9.81;
 auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
-	p -= vec3(0, 0, 1);
+	p -= vec3(0, 0, 0.5);
 	vec3 u = normalize(cross(p, cross(p, veck))) * (g * length(p.xy()) / length(p));
 	vec3 w = -p * dot(v, v);
 	return u + w;
 };
 const double t_step = 0.02;
 const double tMax = 6.0;
-const vec3 P0 = vec3(0, 1, 1);
+const vec3 P0 = vec3(0, 1, .5);
 const vec3 V0 = vec3(1, 0, 0);
 
 // Flower-liked path; forms a semisphere with a hole at the buttom after a long time
 // Euler flies away, then the modified Euler
 // Midpoint doesn't flie away and doesn't follow the path exactly
+// Modified Verlet fits better than Midpoint
 
 #elif SIMULATION==Pendulum_S
 
@@ -482,7 +485,8 @@ const vec3 V0 = vec3(3, 0, 3);
 
 // Chaos - "tangled clew"
 // Eulers' path have longer radius, modified Euler is slightly smaller
-// Whe tMax is set to 6, Midpoint has few noticeble error
+// Whe tMax is set to 6.0, Midpoint has few noticeble error
+// Modified Verlet fits slightly better than Midpoint
 
 #elif SIMULATION==NBody_1
 
@@ -497,9 +501,10 @@ const vec3 V0 = vec3(1, -1, -0.2);
 
 // A high-eccentricity ellipse with a rapid speed change
 // All three curves fly away close to the perihelion
-// The reference curve doesn't go back to its original point as it suppose to
 // Midpoint curve goes back to origin when t_step is set to 0.002
 // This test demonstrates the importance of adaptive step length
+
+// Added: Modified Verlet fits much better than Midpoint even though there's some error
 
 #elif SIMULATION==NBody_2
 
@@ -520,6 +525,7 @@ const vec3 V0 = vec3(1, -0.5, -0.2);
 // Eulers: circulates one sun and flies away
 // Midpoint and Reference: circulates one sun, then attracted by the other sun and rapidly turns and fly away in different directions
 // Midpoint has a greater velosity than other points
+// Modified Verlet works best when t_step==0.01 but loses to Midpoint when t_step==0.005
 // Note that the points don't have enough energy to get rid of the gravity
 
 #elif SIMULATION==NBody_m
@@ -531,7 +537,7 @@ auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
 	m = length(p);
 	return F - p / (m*m*m);
 };
-const double t_step = 0.01;
+const double t_step = 0.02;
 const double tMax = 2.*PI;
 const vec3 P0 = vec3(2, 2, 0);
 const vec3 V0 = vec3(1, -0.5, -0.2);
@@ -540,6 +546,8 @@ const vec3 V0 = vec3(1, -0.5, -0.2);
 // Eulers "deviate" the "orbit" for long
 // Midpoint deviates after the interference
 // Seems like that point will go back after several minutes
+
+// Added: Modified Verlet fits much better than Midpoint even though there's some error
 
 #elif SIMULATION==High_Resistance
 
@@ -658,14 +666,6 @@ typedef std::chrono::duration<double> fsec;
 auto start_time = NTime::now();
 double iTime;
 
-COLORREF toCOLORREF(const vec3 &col) {
-	COLORREF C; byte* c = (byte*)&C;
-	c[2] = (byte)(255 * clamp(col.x, 0., 1.));
-	c[1] = (byte)(255 * clamp(col.y, 0., 1.));
-	c[0] = (byte)(255 * clamp(col.z, 0., 1.));
-	return C;
-}
-
 
 // testcase utility
 bool drawTestcase(double t) {
@@ -680,6 +680,31 @@ bool drawTestcase(double t) {
 #endif
 	return true;
 }
+
+
+// reference path
+vec3 *RefPath;
+int RefN;
+#define REFPATH_DT 0.00001
+#define REFPATH_DT_N 100
+void initReferencePath() {   // brute-forcing Euler's method
+	const double dt = REFPATH_DT;
+	const int dtN = REFPATH_DT_N;
+	vec3 p0 = P0, v0 = V0, p = p0, v = v0, a;
+	RefN = (int)(tMax / (dtN*dt));
+	int N = (int)(tMax / dt);
+	RefPath = new vec3[RefN + 1];
+	RefPath[RefN] = vec3(NAN);
+	for (int i = 0; i < N; i++) {
+		if (i % dtN == 0) RefPath[i / dtN] = p0;
+		double t = i * dt;
+		a = Acceleration(p, v, t);
+		p += v * dt, v += a * dt;
+		p0 = p, v0 = v;
+	}
+	if (RefPath[RefN] == vec3(NAN)) RefN--;
+}
+
 
 
 #define plotPath(Color) \
@@ -725,6 +750,33 @@ void Euler_Midpoint(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), d
 	}
 }
 
+// sky blue, often better than Midpoint when path contain rapid speed change and step size is large
+void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: O(h^3); v: O(h^2)
+	vec3 a = acceleration(p0, v0, 0);
+	vec3 v = v0 + a * dt;
+	vec3 p = p0 + v0 * dt + a * (.5*dt*dt);
+	for (double t = 0.; t < tMax; t += dt) {
+		a = acceleration(p, v, t);
+		vec3 p1 = 2.*p - p0 + a * (dt*dt);
+		v += a * dt;
+		plotPath(0x0080FF);
+		p0 = p, p = p1;
+	}
+}
+
+// magenta
+void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // still mathing...
+	//dt *= 4.0;  // to be fair
+	vec3 p = p0, v = v0, a;
+	for (double t = 0.0; t < tMax; t += dt) {
+
+		// Numerical Recipes page 734
+
+		plotPath(0xFF00FF);
+		p0 = p, v0 = v;
+	}
+}
+
 void render() {
 	if (!_WINIMG) return;
 
@@ -753,22 +805,17 @@ void render() {
 	if (!Alt) iTime = fmod(fsec(NTime::now() - start_time).count(), tMax);
 
 	// reference path
-	const double dt = 0.0001;
-	vec3 p0 = P0, v0 = V0, p = p0, v = v0, a;
-	for (double t = 0.0; t < tMax; t += dt) {
-		a = Acceleration(p, v, t);
-		p += v * dt, v += a * dt;
-		drawLine_F(p0, p, 0x606080);
-		p0 = p, v0 = v;
-		double u = fmod(t, t_step);
-		if (u >= 0. && u <= dt) drawCross3D(p, 2, 0x606080);
-		if (t > iTime && t - iTime < dt) fillCircle((Tr*p).xy(), 6, 0x606080);
+	for (int i = 0; i < RefN; i++) {
+		if (i % 20 < 10) drawLine_F(RefPath[i], RefPath[i + 1], 0x606080);
 	}
+	fillCircle((Tr*RefPath[(int)(iTime / (REFPATH_DT*REFPATH_DT_N))]).xy(), 6, 0x606080);
 
 	// simulation paths with large step
-	EulersMethod(P0, V0, Acceleration, t_step, tMax);
-	EulersMethod_Modified(P0, V0, Acceleration, t_step, tMax);
+	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
+	//EulersMethod_Modified(P0, V0, Acceleration, t_step, tMax);
 	Euler_Midpoint(P0, V0, Acceleration, t_step, tMax);
+	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
+	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);  // not implemented yet
 
 	drawTestcase(iTime);
 
@@ -785,6 +832,7 @@ void render() {
 bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
+	initReferencePath();
 	new std::thread([](int x) {while (1) {
 		SendMessage(_HWND, WM_NULL, NULL, NULL);
 		Sleep(20);
