@@ -1,4 +1,4 @@
-// Test numerical ODE solving
+// Test numerical ODE solving: x''(t) = a
 
 // To-do:
 // * Runge-Kutta method
@@ -377,10 +377,13 @@ void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 #define NBody_1         0x06    // A "sun" in the center
 #define NBody_2         0x07    // `Two immobilized "suns" with equal mass
 #define NBody_m         0x08    // `One sun and one mobilized planet
-#define High_Resistance 0x09    // Air resistance proper to the sixth power of velosity
+#define TimeTest_1      0x09    // `Test a time-dependend equation (nothing to do with physics)
+#define TimeTest_2      0x10    // **`
+#define TimeTest_3      0x11    // `Contain various degree of derivatives
 
-#define SIMULATION Pendulum
+#define SIMULATION TimeTest_3
 
+#pragma region Simulation Test Cases
 #if SIMULATION==Projectile
 
 const vec3 g = vec3(0, 0, -9.81);
@@ -428,7 +431,7 @@ const vec3 V0 = vec3(3, 0, 3);
 // Damping oscillation, limit below horizon
 // Euler: shorter wavelength, greater magnitude
 // Modified Euler: slightly gentler
-// Midpoint: few error
+// Midpoint: few error; original midpoint slightly better
 // Modified Verlet: a little shorter wavelength
 
 #elif SIMULATION==Projectile_RW
@@ -448,7 +451,8 @@ const vec3 V0 = vec3(3, 0, 3);
 // Eulers: shorter wavelength and greater magnitude
 // Midpoint: longer wavelength and less magnitude
 // Midpoint works slightly better than Eulers after reducing t_step
-// Modified Verlet fits best but the error is visible
+// Midpoint_1's error is not obvious when t<2 but grows soon (better then Verlet)
+// Modified Verlet fits better but the error is visible
 
 #elif SIMULATION==Pendulum
 
@@ -466,7 +470,7 @@ const vec3 V0 = vec3(1, 0, 0);
 
 // Flower-liked path; forms a semisphere with a hole at the buttom after a long time
 // Euler flies away, then the modified Euler
-// Midpoint doesn't flie away and doesn't follow the path exactly
+// Midpoints doesn't flie away and doesn't follow the path exactly
 // Modified Verlet fits better than Midpoint
 
 #elif SIMULATION==Pendulum_S
@@ -485,7 +489,7 @@ const vec3 V0 = vec3(3, 0, 3);
 
 // Chaos - "tangled clew"
 // Eulers' path have longer radius, modified Euler is slightly smaller
-// Whe tMax is set to 6.0, Midpoint has few noticeble error
+// Whe tMax is set to 6.0, Midpoints has few noticeble error
 // Modified Verlet fits slightly better than Midpoint
 
 #elif SIMULATION==NBody_1
@@ -549,22 +553,47 @@ const vec3 V0 = vec3(1, -0.5, -0.2);
 
 // Added: Modified Verlet fits much better than Midpoint even though there's some error
 
-#elif SIMULATION==High_Resistance
+#elif SIMULATION==TimeTest_1
 
-const vec3 g = vec3(0, 0, -9.81);
 auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
-	double m = dot(v, v);
-	return g - m * m*m*normalize(v);
+	vec3 w = vec3(0, 0, sin(t) + cos(t) + 1);
+	return cross(v, w) - w.sqr() * p - 2.*p + vec3(0, 0, -1) - 0.01*v.sqr()*v;
 };
-const double t_step = 0.01;
-const double tMax = 1.0;
-const vec3 P0 = vec3(0, 0, 1);
-const vec3 V0 = vec3(20, 10, 0);
+const double t_step = 0.05;
+const double tMax = 6.0;
+const vec3 P0 = vec3(1, 1, 1);
+const vec3 V0 = vec3(0, 0, 0);
 
-// Intended to test the limit of the solver - to Neptune!
-// Set t_step to 1e-7: shoots horizontally, then turns and falls vertically
+#elif SIMULATION==TimeTest_2
+
+auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+	double s = floor(2.*t*t + 2.);
+	double a = fmod(1000 * sin(100 * floor(t)), 1.0);
+	double b = fmod(2000 * cos(200 * floor(t)), 1.0);
+	double c = fmod(3000 * sin(300 * floor(t)), 1.0);
+	vec3 w = 2.0*vec3(c, b, a) - vec3(1.0);
+	return cross(v, w) - (length(w) + 2.) * p + 0.2*w;
+};
+const double t_step = 0.05;
+const double tMax = 6.0;
+const vec3 P0 = vec3(1, 1, 1);
+const vec3 V0 = vec3(-1, 0, 0);
+
+#elif SIMULATION==TimeTest_3
+
+auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+	vec3 a = vec3(cos(p.x + t), sin(v.y - t), sin(p.z + t));
+	vec3 b = vec3(cos(v.x + t), exp(p.y), cos(v.z));
+	vec3 c = vec3(sin(t), cos(t), sin(t + .25*PI));
+	return 4.*(a + b + c - 5.*p);
+};
+const double t_step = 0.05;
+const double tMax = 6.0;
+const vec3 P0 = vec3(0, 0, 0);
+const vec3 V0 = vec3(0, 0, 0);
 
 #endif
+#pragma endregion
 
 
 
@@ -713,7 +742,7 @@ void initReferencePath() {   // brute-forcing Euler's method
 	double u = t + dt - iTime; if (u > 0 && u < dt) { u /= dt; fillCircle((Tr*(u*p0 + (1 - u)*p)).xy(), 6, Color); }
 
 // orange red
-void EulersMethod(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // O(h^2)
+void EulersMethod(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/2 h² p"(t0); v: 1/2 h² v"(t0)
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
 		a = acceleration(p, v, t);
@@ -724,8 +753,8 @@ void EulersMethod(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), dou
 	}
 }
 
-// orange, error no much smaller than simple Euler's method
-void EulersMethod_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: O(h^3); v: O(h^2)
+// orange, a little better than simple Euler's method
+void EulersMethod_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/2 h² v"(t0)
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
 		a = acceleration(p, v, t);
@@ -737,7 +766,7 @@ void EulersMethod_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, dou
 }
 
 // yellow
-void Euler_Midpoint(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // O(h^3)
+void Euler_Midpoint(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/24 h³ v³(t0) ??
 	dt *= 2.0;  // to be fair
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
@@ -750,19 +779,32 @@ void Euler_Midpoint(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), d
 	}
 }
 
-// sky blue, often better than Midpoint when path contain rapid speed change and step size is large
-void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: O(h^3); v: O(h^2)
+// yellow green, accuracy similar to Euler_Midpoint
+void Midpoint_1(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
+	vec3 p = p0, v = v0, a0, a = a0 = acceleration(p0, v0, 0);
+	for (double t = 0.0; t < tMax; t += dt) {
+		a = acceleration(p, v, t);
+		p += v * dt + a * (.5*dt*dt);
+		v += (1.5*a - 0.5*a0) * dt;
+		plotPath(0xA0FF00);
+		p0 = p, v0 = v, a0 = a;
+	}
+}
+
+// sky blue, sometimes better than Midpoint and sometimes not
+void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
 	vec3 a = acceleration(p0, v0, 0);
-	vec3 v = v0 + a * dt;
-	vec3 p = p0 + v0 * dt + a * (.5*dt*dt);
+	vec3 v = v0 + a * dt, p = p0 + v0 * dt + a * (.5*dt*dt);
+	vec3 a0 = acceleration(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
 	for (double t = 0.; t < tMax; t += dt) {
 		a = acceleration(p, v, t);
 		vec3 p1 = 2.*p - p0 + a * (dt*dt);
-		v += a * dt;
+		v += (1.5*a - 0.5*a0) * dt;
 		plotPath(0x0080FF);
-		p0 = p, p = p1;
+		p0 = p, a0 = a, p = p1;
 	}
 }
+
 
 // magenta
 void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // still mathing...
@@ -771,6 +813,7 @@ void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), doub
 	for (double t = 0.0; t < tMax; t += dt) {
 
 		// Numerical Recipes page 734
+		// http://lampx.tugraz.at/~hadley/num/ch8/rk4ode2.php works bad
 
 		plotPath(0xFF00FF);
 		p0 = p, v0 = v;
@@ -814,6 +857,7 @@ void render() {
 	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
 	//EulersMethod_Modified(P0, V0, Acceleration, t_step, tMax);
 	Euler_Midpoint(P0, V0, Acceleration, t_step, tMax);
+	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
 	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);  // not implemented yet
 
