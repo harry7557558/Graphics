@@ -384,6 +384,7 @@ void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
 #define SIMULATION TimeTest_3
 
 #pragma region Simulation Test Cases
+
 #if SIMULATION==Projectile
 
 const vec3 g = vec3(0, 0, -9.81);
@@ -521,8 +522,8 @@ auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
 	a += q / (m*m*m);
 	return -10.0*a;
 };
-const double t_step = 0.01;
-const double tMax = 8.0;
+const double t_step = 0.001;
+const double tMax = 10.0;
 const vec3 P0 = vec3(2, 2, 0);
 const vec3 V0 = vec3(1, -0.5, -0.2);
 
@@ -593,6 +594,7 @@ const vec3 P0 = vec3(0, 0, 0);
 const vec3 V0 = vec3(0, 0, 0);
 
 #endif
+
 #pragma endregion
 
 
@@ -727,8 +729,15 @@ void initReferencePath() {   // brute-forcing Euler's method
 	for (int i = 0; i < N; i++) {
 		if (i % dtN == 0) RefPath[i / dtN] = p0;
 		double t = i * dt;
+#if 0
 		a = Acceleration(p, v, t);
 		p += v * dt, v += a * dt;
+#else
+		a = Acceleration(p, v, t);
+		vec3 _p = p;
+		p += v * dt + a * (.5*dt*dt);
+		v += Acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
+#endif
 		p0 = p, v0 = v;
 	}
 	if (RefPath[RefN] == vec3(NAN)) RefN--;
@@ -791,7 +800,7 @@ void Midpoint_1(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), doubl
 	}
 }
 
-// sky blue, sometimes better than Midpoint and sometimes not
+// sky blue, works best when acceleration only depend on the position
 void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
 	vec3 a = acceleration(p0, v0, 0);
 	vec3 v = v0 + a * dt, p = p0 + v0 * dt + a * (.5*dt*dt);
@@ -805,6 +814,47 @@ void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), 
 	}
 }
 
+// Bruteforce Taylor expansion - numerical differentiation - bad and unstable - DO NOT USE!
+#if 0
+void Numerical_Dif2(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {
+	dt *= 3.0;
+	vec3 p = p0, v = v0;
+	const double e = 0.0001;
+	const double _6 = 1. / 6, _24 = 1. / 24;
+	for (double t = 0.; t < tMax; t += dt) {
+		vec3 a = acceleration(p, v, t);
+		vec3 a1 = acceleration((.5*a*e + v)*e + p, v + a * e, t + e);
+		vec3 a0 = acceleration((.5*a*e - v)*e + p, v - a * e, t - e);
+		vec3 da = (a1 - a0) / (2.*e);
+		vec3 d2a = (a1 + a0 - 2.*a) / (e*e);
+		p = (((d2a*dt*_24 + _6 * da)*dt + .5*a)*dt + v)*dt + p;
+		v = ((d2a*dt*_6 + .5*da)*dt + a)*dt + v;
+		plotPath(0x00FFFF);
+		p0 = p, v0 = v;
+	}
+}
+void Numerical_Dif4(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {
+	dt *= 5.0;
+	vec3 p = p0, v = v0;
+	const double e = 0.0001, f = 2.*e;
+	const double _6 = 1. / 6, _24 = 1. / 24, _120 = 1. / 120, _720 = 1. / 720;
+	for (double t = 0.; t < tMax; t += dt) {
+		vec3 a = acceleration(p, v, t);
+		vec3 a1 = acceleration((.5*a*e + v)*e + p, v + a * e, t + e);
+		vec3 a0 = acceleration((.5*a*e - v)*e + p, v - a * e, t - e);
+		vec3 da = (a1 - a0) / (2.*e);
+		vec3 d2a = (a1 + a0 - 2.*a) / (e*e);
+		vec3 b1 = acceleration((((d2a*f*_24 + da * _6)*f + .5*a)*f + v)*f + p, ((d2a*f*_6 + .5*da)*f + a)*f + v, t + f);
+		vec3 b0 = acceleration((((d2a*f*_24 - da * _6)*f + .5*a)*f - v)*f + p, ((-d2a * f*_6 + .5*da)*f - a)*f + v, t - f);
+		vec3 d3a = ((b1 - b0) - 2.*(a1 - a0)) / (2.*e*e*e);
+		vec3 d4a = ((b1 + b0) - 4.*(a1 + a0) + 6.*a) / (e*e*e*e);
+		p = p + dt * (v + dt * (.5*a + dt * (_6*da + dt * (_24*d2a + dt * (_120*d3a + dt * _720*d4a)))));
+		v = v + dt * (a + dt * (.5*da + dt * (_6*d2a + dt * (_24*d3a + dt * _120*d4a))));
+		plotPath(0x00FF80);
+		p0 = p, v0 = v;
+	}
+}
+#endif
 
 // magenta
 void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // still mathing...
@@ -819,6 +869,7 @@ void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), doub
 		p0 = p, v0 = v;
 	}
 }
+
 
 void render() {
 	if (!_WINIMG) return;
@@ -857,7 +908,7 @@ void render() {
 	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
 	//EulersMethod_Modified(P0, V0, Acceleration, t_step, tMax);
 	Euler_Midpoint(P0, V0, Acceleration, t_step, tMax);
-	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
+	Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
 	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);  // not implemented yet
 
