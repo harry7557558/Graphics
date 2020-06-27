@@ -2,14 +2,17 @@
 
 /* To-do:
 	 - implement orthogonal least square fitting
-	 - try other eigenvalue algorithms
+	 - try other eigenvalue algorithms (Jacobi, QR)
 	 - handle the case when the matrix is not invertible
 */
 
 
-#include <stdio.h>
-#include <cmath>
+// some modules are organized into the "numerical" folder
+#include "numerical/eigensystem.h"
+#include "numerical/geometry.h"
+#include "numerical/random.h"
 
+#include <stdio.h>
 #include <chrono>
 
 #define PI 3.1415926535897932384626
@@ -17,43 +20,9 @@
 #define min(x,y) ((x)<(y)?(x):(y))
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
 
-// vector template
-class vec2 {
-public:
-	double x, y;
-	vec2() {}
-	explicit vec2(double a) :x(a), y(a) {}
-	vec2(double x, double y) :x(x), y(y) {}
-	vec2 operator - () const { return vec2(-x, -y); }
-	vec2 operator + (vec2 v) const { return vec2(x + v.x, y + v.y); }
-	vec2 operator - (vec2 v) const { return vec2(x - v.x, y - v.y); }
-	vec2 operator * (vec2 v) const { return vec2(x * v.x, y * v.y); }
-	vec2 operator * (double a) const { return vec2(x*a, y*a); }
-	double sqr() const { return x * x + y * y; }
-	friend double length(vec2 v) { return sqrt(v.x*v.x + v.y*v.y); }
-	friend vec2 normalize(vec2 v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y)); }
-	friend double dot(vec2 u, vec2 v) { return u.x*v.x + u.y*v.y; }
-	friend double det(vec2 u, vec2 v) { return u.x*v.y - u.y*v.x; }
-	vec2 rot() const { return vec2(-y, x); }
-};
-
-// random numbers
-unsigned int _IDUM = 0;
-unsigned randu() { return _IDUM = _IDUM * 1664525 + 1013904223; }  // from Numerical Recipes
-double erfinv(double x) {
-	// inverse error function approximation
-	double n = log(1 - x * x), t = 0.5 * n + 2 / (PI*0.147);
-	return (x < 0 ? -1 : 1) * sqrt(-t + sqrt(t*t - n / 0.147));
-}
-double randf(double a, double b) { return a + (randu() / 4294967296.)*(b - a); }  // uniform distribution in [a,b)
-vec2 randv(double r) { double m = randf(0, r), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // default distribution in |v|<r
-vec2 randv_u(double r) { double m = sqrt(randf(0, r*r)), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // uniform distribution in |v|<r
-double randf_n(double a) { return sqrt(2.) * a * erfinv(2. * randf(0., 1.) - 1.); }  // normal distribution by standard deviation
-vec2 randv_n(double a) { return vec2(randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
 
 
-
-// generate intended matrix, should be positive (semi)definite
+// generate matrix for ellipse fitting, should be positive (semi)definite
 void generateMatrix(double M[6][6], const vec2 *P, int N) {
 	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) M[i][j] = 0;
 	for (int n = 0; n < N; n++) {
@@ -90,244 +59,6 @@ void printPolynomial(const double C[], int N, const char end[] = "\n") {
 	}
 	printf("%+.16lf%s", C[N], end);
 }
-
-
-
-
-// matrix calculations
-// all matrixes are 6x6
-
-#pragma region Matrix
-
-// copy a matrix
-void matcpy(const double src[6][6], double res[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) res[i][j] = src[i][j];
-}
-
-// matrix multiplication, C needs to be different from A B
-void matmul(const double A[6][6], const double B[6][6], double C[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
-		C[i][j] = 0;
-		for (int k = 0; k < 6; k++) C[i][j] += A[i][k] * B[k][j];
-	}
-}
-
-// matrix times vector, b needs to be different from x
-void matmul(const double A[6][6], const double x[6], double b[6]) {
-	for (int i = 0; i < 6; i++) {
-		b[i] = 0;
-		for (int j = 0; j < 6; j++) b[i] += A[i][j] * x[j];
-	}
-}
-
-// evaluate uᵀAv
-double quamul(const double u[6], const double A[6][6], const double v[6]) {
-	double s = 0;
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
-		s += u[i] * A[i][j] * v[j];
-	}
-	return s;
-}
-
-// trace of a matrix
-double trace(const double M[6][6]) {
-	double res = 0;
-	for (int i = 0; i < 6; i++) res += M[i][i];
-	return res;
-}
-
-// determinant of a matrix
-double determinant(const double M[6][6]) {
-	double A[6][6]; matcpy(M, A);
-	double det = 1;
-	for (int i = 0; i < 6; i++) {
-		for (int j = i + 1; j < 6; j++) {
-			double m = -A[j][i] / A[i][i];
-			for (int k = i; k < 6; k++) A[j][k] += m * A[i][k];
-		}
-		det *= A[i][i];
-	}
-	if (0.0*det != 0.0) return 0.0;
-	return det;
-}
-
-// matrix inversion
-void matinv(const double M[6][6], double I[6][6]) {
-	double A[6][6]; matcpy(M, A);
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) I[i][j] = double(i == j);
-	for (int i = 0; i < 6; i++) {
-		double m = 1.0 / A[i][i];
-		for (int k = 0; k < 6; k++) {
-			A[i][k] *= m, I[i][k] *= m;
-		}
-		for (int j = 0; j < 6; j++) if (j != i) {
-			m = -A[j][i];
-			for (int k = 0; k < 6; k++) {
-				A[j][k] += m * A[i][k];
-				I[j][k] += m * I[i][k];
-			}
-		}
-	}
-}
-
-#pragma endregion
-
-
-
-// find the eigenpair of a matrix with the smallest eigenvalue
-// assume all matrixes are 6x6 positive definite matrix
-
-#pragma region Eigens
-
-// find the all eigenpairs of a matrix by solving its characteristic equation
-void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]) {
-	double A[6][6]; matcpy(M, A);
-	double msc = 1.0;
-#if 1
-	// avoid overflow/precison error
-	msc = 1. / pow(determinant(A), 1. / 6);
-	if (0.0*msc == 0.0) {
-		for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) A[i][j] *= msc;
-		msc = 1. / msc;
-	}
-	else msc = 1.0;
-#endif
-
-	// expand characteristic polynomial, works in O(n^4)
-	// method discribed at https://mathworld.wolfram.com/CharacteristicPolynomial.html
-	double C[7], C0[7], Ci = -1;
-	double B[6][6]; matcpy(A, B);
-	C0[0] = C[0] = 1;
-	for (int i = 1; i <= 6; i++) {
-		Ci = trace(B) / i;
-		double T[6][6]; matcpy(B, T);
-		for (int k = 0; k < 6; k++) T[k][k] -= Ci;
-		matmul(A, T, B);
-		C0[i] = C[i] = -Ci;
-	}
-	//printPolynomial(C, 6);
-	matcpy(A, B);
-
-	// find the roots of the characteristic polynomial
-	for (int R = 6; R > 0; R--) {
-		// Newton's iteration method starting at x=0
-		// this should success because the matrix is positive difinite
-		double x = 0;
-		for (int i = 0; i < 64; i++) {
-			double y = 0, dy = 0;
-			for (int i = 0; i <= R; i++) {
-				y = y * x + C[i];
-				if (R - i) dy = dy * x + (R - i)*C[i];
-			}
-			double dx = y / dy;
-			x -= dx;
-			if (dx*dx < 1e-24) break;
-		}
-#if 0
-		// "refine" the root using the original polynomial
-		for (int i = 0; i < 3; i++) {
-			double y = 0, dy = 0;
-			for (int i = 0; i <= 6; i++) {
-				y = y * x + C0[i];
-				if (6 - i) dy = dy * x + (6 - i)*C0[i];
-			}
-			double dx = y / dy;
-			x -= dx;
-			if (dx*dx < 1e-24) break;
-		}
-#endif
-		// divide the root from the polynomial
-		for (int i = 0; i < R; i++) {
-			C[i + 1] += C[i] * x;
-		}
-		// export the eigenvalue
-		eigv[6 - R] = x * msc;
-
-		// find the eigenvector from the eigenvalue
-		double v[6];
-		matcpy(B, A);
-		for (int i = 0; i < 6; i++) A[i][i] -= x;
-		int sp = -1;
-		const double eps = 1e-6;
-		for (int i = 0, d = 0; d < 6; i++, d++) {
-			if (abs(A[i][d]) < eps) {
-				for (int j = i + 1; j < 6; j++) {
-					if (!(abs(A[j][d]) < eps)) {
-						for (int k = d; k < 6; k++) std::swap(A[i][k], A[j][k]);
-						break;
-					}
-				}
-			}
-			if (abs(A[i][d]) < eps) {
-				sp = d;
-				i--; continue;
-			}
-			else if (i == 5) {  // idk why this happens
-				sp = 5;
-				break;
-			}
-			double m = 1. / A[i][d];
-			for (int k = d; k < 6; k++) A[i][k] *= m;
-			for (int j = 0; j < 6; j++) if (j != i) {
-				double m = A[j][d];
-				for (int k = d; k < 6; k++) A[j][k] -= m * A[i][k];
-			}
-		}
-		for (int i = 0; i < sp; i++) v[i] = -A[i][sp];
-		v[sp] = 1;
-		for (int i = sp + 1; i < 6; i++) v[i] = 0;
-
-		// try to "refine" the eigenvector using some iterative methods
-
-		// export normalized eigenvector
-		double m = 1;
-		for (int i = 0; i < sp; i++) m += v[i] * v[i];
-		m = 1. / sqrt(m);
-		for (int i = 0; i < 6; i++) eigvec[6 - R][i] = v[i] * m;
-	}
-}
-
-// find an eigenpair using power iteration and inverse iteration
-void EigenPair_powIter(const double M[6][6], double &u, double a[6]) {
-	for (int i = 0; i < 6; i++) a[i] = sqrt(1. / 6);
-	double A[6][6]; matcpy(M, A);
-#if 1
-	// avoid overflow/precison error
-	double m = 1. / pow(determinant(A), 1. / 6);
-	if (0.*m == 0.) {
-		for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) A[i][j] *= m;
-		for (int i = 0; i < 2; i++) {
-			double T[6][6]; matmul(A, A, T);
-			matcpy(T, A);
-		}
-	}
-#endif
-	for (int i = 0; i < 1024; i++) {
-		double v[6]; matmul(A, a, v);
-		double m = 0;
-		for (int j = 0; j < 6; j++) m += v[j] * v[j];
-		m = 1. / sqrt(m);
-		double err = 0;
-		for (int j = 0; j < 6; j++) {
-			v[j] *= m;
-			err += v[j] * a[j];
-			a[j] = v[j];
-		}
-		if (abs(abs(err) - 1) < 1e-12) break;
-		// warning: floatpoint precision error
-	}
-	u = 0;
-	double v[6]; matmul(M, a, v);
-	for (int i = 0; i < 6; i++) u += v[i] * v[i];
-	u = sqrt(u);
-}
-void EigenPair_invIter(const double M[6][6], double &u, double a[6]) {
-	double A[6][6]; matinv(M, A);
-	EigenPair_powIter(A, u, a);
-	u = 1. / u;
-}
-
-#pragma endregion
 
 
 
