@@ -15,12 +15,6 @@
 #include <stdio.h>
 #include <chrono>
 
-#define PI 3.1415926535897932384626
-#define max(x,y) ((x)>(y)?(x):(y))
-#define min(x,y) ((x)<(y)?(x):(y))
-#define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
-
-
 
 // generate matrix for ellipse fitting, should be positive (semi)definite
 void generateMatrix(double M[6][6], const vec2 *P, int N) {
@@ -112,7 +106,7 @@ void fitEllipse1(const vec2 *P, int N, double v[6]) {
 #pragma region Visualization
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "libraries/stb_image_write.h"
+#include <libraries/stb_image_write.h>
 
 // color structs
 typedef unsigned char byte;

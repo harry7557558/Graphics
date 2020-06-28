@@ -1,4 +1,6 @@
-Organizing functions used by code in the parent folder.
+Organizing functions used by the parent folder.
 
-Most data types are unpacked for simplicy and performance.
+Most data types are unpacked for simplicity and performance.
+
+Files started with an underscore are used to debug header files.
 
