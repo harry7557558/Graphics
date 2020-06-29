@@ -141,13 +141,11 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 void drawCharacter(char c, vec2 p, double sz, COLOR col) {
 	int x0 = max((int)p.x, 0), y0 = max((int)p.y, 0);
 	int x1 = min((int)(p.x + sz), W - 1), y1 = min((int)(p.y + sz), H - 1);
-	for (int y = y0; y <= y1; y++) {
-		for (int x = x0; x <= x1; x++) {
-			double d = sdFont(c, (x - x0) / sz, (y - y0) / sz);
-			d *= sz;
-			if (d < 0.) canvas[y*W + x] = col;
-			else if (d < 1.) canvas[y*W + x] = mix(col, canvas[y*W + x], d);
-		}
+	for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+		double d = sdFont(c, (x - x0) / sz, (y - y0) / sz);
+		d *= sz;
+		if (d < 0.) canvas[y*W + x] = col;
+		else if (d < 1.) canvas[y*W + x] = mix(col, canvas[y*W + x], d);
 	}
 }
 void drawString(const char s[], vec2 p, double h, COLOR col) {
@@ -222,7 +220,7 @@ double F(vec2 p) {
 		if (Fi == 29) return sq(x - 1) + sq(2 * y*y - x);
 	}
 
-	return length(p) - 1.0;
+	return 0.0;
 };
 
 
@@ -237,43 +235,64 @@ int main() {
 		// iteration startpoints
 		vec2 P0[4] = { vec2(4,3), vec2(3,-5), vec2(-8,0), vec2(-0.5,1) };
 
-		for (int T = 0; T < 4; T++) {
+		for (int T = 0; T <= 4; T++) {
 			// initialize canvas
 			init();
 			drawContour(F, 1, .5, true);
 			drawAxis(0.5, COLOR{ 128,128,128 }, true, true);
 
-			drawDot(P0[T], 8, COLOR({ 232,0,0 }));
+			drawDot(P0[T - 1], 8, COLOR({ 232,0,0 }));
 			char s[256];
 
 			// Newton_Gradient_2d
 			{
-				vec2 p = P0[T];
+				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Gradient_2d(F, p);
 				drawDot(p, 8, COLOR({ 64,0,232 }));
-
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 4), 32, COLOR{ 128,0,128 });
+				drawString(s, vec2(0, 4), 28, COLOR{ 128,0,128 });
 			}
 
 			// Newton_Iteration_2d
 			{
-				vec2 p = P0[T];
+				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Iteration_2d(F, p);
 				drawDot(p, 8, COLOR({ 160,64,0 }));
-
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 36), 32, COLOR{ 128,128,0 });
+				drawString(s, vec2(0, 32), 28, COLOR{ 128,128,0 });
+			}
+
+			// Newton_Iteration_2d_
+			{
+				vec2 p = P0[T - 1];
+				F_count = 0;
+				p = Newton_Iteration_2d_(F, p);
+				drawDot(p, 8, COLOR({ 160,40,40 }));
+				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
+				drawString(s, vec2(0, 60), 28, COLOR{ 160,40,40 });
+			}
+
+			// debug method
+			{
+				vec2 p = P0[T - 1];
+				F_count = 0;
+				p = Untitled_Method(F, p);
+				drawDot(p, 8, COLOR({ 0,0,0 }));
+				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
+				drawString(s, vec2(0, 88), 28, COLOR{ 0,0,0 });
 			}
 
 			// save rendered image
+#ifdef _DEBUG
+			drawString("[DEBUG]", vec2(W - 160, 4), 40, COLOR{128,128,128});
+#endif
 			char file[] = "tests\\test00.0.png";
-			file[13] = T + '1', file[10] = Fi / 10 + '0', file[11] = Fi % 10 + '0';
+			file[13] = T + '0', file[10] = Fi / 10 + '0', file[11] = Fi % 10 + '0';
 			save(file);
+			//exit(0);
 		}
-		fflush(stdout);
 	}
 	return 0;
 }
