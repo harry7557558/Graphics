@@ -175,7 +175,7 @@ bool save(const char* path) {
 
 int Fi = 0;
 int F_count = 0;
-auto F = [](vec2 p) ->double {
+double F(vec2 p) {
 	F_count++;
 	double x = p.x, y = p.y;
 #define sq(x) ((x)*(x))
@@ -198,7 +198,7 @@ auto F = [](vec2 p) ->double {
 	if (Fi < 20) {
 		if (Fi == 10) return 100 * sq(y - x * x) + sq(1 - x);  // Rosenbrock function
 		if (Fi == 11) return sq(x*x + y - 11) + sq(y*y + x - 7);  // Himmelblau's function
-		if (Fi == 12) return sin(x + y) + sq(x - y) - 1.5*x + 2.5*y + 1;  // McCormick function
+		if (Fi == 12) return sin(x + y) + sq(x - y) - 1.5*x + 2.5*y + 1 + 0.1*x*x;  // McCormick function (modified)
 		if (Fi == 13) return sq(1.5 - x + x * y) + sq(2.25 - x + x * y*y) + sq(2.625 - x + x * y*y*y);  // Beale function
 		if (Fi == 14) return (1 + sq(x + y + 1)*(19 - 14 * (x + y) + 3 * sq(x + y)))*(30 + sq(2 * x - 3 * y)*(18 - 32 * x + 48 * y + 3 * sq(2 * x - 3 * y)));  // Goldstein-Price function
 		if (Fi == 15) return x * x * (2. + x * x* (-1.05 + 0.15*x * x)) + x * y + y * y;  // Three-hump camel function
@@ -233,14 +233,11 @@ auto F = [](vec2 p) ->double {
 #include "optimization.h"
 
 int main() {
-	freopen("tests\\log.txt", "w", stdout);
 	for (Fi = 0; Fi < 30; Fi++) {
 		// iteration startpoints
 		vec2 P0[4] = { vec2(4,3), vec2(3,-5), vec2(-8,0), vec2(-0.5,1) };
 
 		for (int T = 0; T < 4; T++) {
-			printf("Test %d.%d\n", Fi, T + 1);
-
 			// initialize canvas
 			init();
 			drawContour(F, 1, .5, true);
@@ -256,7 +253,6 @@ int main() {
 				p = Newton_Gradient_2d(F, p);
 				drawDot(p, 8, COLOR({ 64,0,232 }));
 
-				printf("%lf %lf\n", p.x, p.y);
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
 				drawString(s, vec2(0, 4), 32, COLOR{ 128,0,128 });
 			}
@@ -268,13 +264,11 @@ int main() {
 				p = Newton_Iteration_2d(F, p);
 				drawDot(p, 8, COLOR({ 160,64,0 }));
 
-				printf("%lf %lf\n", p.x, p.y);
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
 				drawString(s, vec2(0, 36), 32, COLOR{ 128,128,0 });
 			}
 
 			// save rendered image
-			printf("\n");
 			char file[] = "tests\\test00.0.png";
 			file[13] = T + '1', file[10] = Fi / 10 + '0', file[11] = Fi % 10 + '0';
 			save(file);
