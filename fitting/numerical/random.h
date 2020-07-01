@@ -6,6 +6,12 @@
 #define _INC_RANDOM_H
 
 
+#ifndef __INC_GEOMETRY_H
+#include "geometry.h"
+#endif
+
+
+
 // hash function
 unsigned hashu(unsigned x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3bu;

@@ -3,10 +3,6 @@
 // To-do: 
 
 
-// some modules are organized into the "numerical" folder
-#include "numerical/eigensystem.h"
-#include "numerical/geometry.h"
-
 #define _RANDOM_H_BETTER_QUALITY
 #include "numerical/random.h"
 
@@ -21,7 +17,6 @@
 // Fit points to a straight line ax+by+c=0
 
 
-
 // standard linear regression
 void linear_regression(const vec2* p, int N, double &a, double &b, double &c) {
 	double Sx = 0, Sy = 0, Sx2 = 0, Sy2 = 0, Sxy = 0;
@@ -32,7 +27,6 @@ void linear_regression(const vec2* p, int N, double &a, double &b, double &c) {
 	a = Sxy * N - Sx * Sy, b = Sx * Sx - Sx2 * N;
 	c = Sx2 * Sy - Sx * Sxy;
 }
-
 
 
 // orthogonal distance least square fitting
@@ -142,6 +136,7 @@ bool save(const char* path) {
 
 
 
+
 // ============================================================== Testing ==============================================================
 
 
@@ -188,9 +183,8 @@ void randomTest_image() {
 }
 
 
-
 int main() {
-	randomTest_image(); exit(0);
+	randomTest_image();
 	return 0;
 }
 
