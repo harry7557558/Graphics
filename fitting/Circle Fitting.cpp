@@ -1,7 +1,6 @@
 // Fitting a circle to point set experiment
 
 // To-do:
-// analytical gradient in orthogonal distance fitting (compare performance)
 // try the parametric equation of circle C+r(cos(t),sin(t))
 
 
@@ -138,6 +137,45 @@ void fitCircle_O(const vec2* P, int N, vec2 &C, double &R) {
 	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
 }
 
+// Same as previous except it uses analytical differentiation, more than 3 times faster
+void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
+	int Calls = 0;
+	// calculating the analytical gradient of this function is truely a nightmare......
+	auto E = [&](vec2 p, vec2 *grad, vec2 *grad2, double *dxy) ->double {
+		Calls++;
+		vec2 Su(0.), Sd(0.);
+		R = 0;
+		double Sd2 = 0., Sdi = 0.;
+		vec2 Si3(0); double Sx3 = 0;
+		for (int i = 0; i < N; i++) {
+			vec2 d = p - P[i]; Sd += d;
+			double d2 = dot(d, d); Sd2 += d2;
+			double dl = sqrt(d2); R += dl;
+			double di = 1. / dl; Sdi += di;
+			Su += d * di;
+			double di3 = di * di * di;
+			Si3 += (d*d)*di3, Sx3 += d.x*d.y*di3;
+		}
+		R /= N;
+		if (grad) *grad = 2.*(Sd - R * Su);
+		if (grad2) *grad2 = 2. * (vec2(N) - (Su*Su / N + R * (vec2(Sdi) - Si3)));
+		if (dxy) *dxy = (-2. / N) * (Su.x*Su.y - N * R*Sx3);
+		return Sd2 - N * R*R;
+	};
+	vec2 C0; double R0; fitCircle(P, N, C0, R0);
+	C = Newton_Iteration_2d_ad(E, C0);
+	// calculate R
+	R = 0.0;
+	for (int i = 0; i < N; i++) R += length(C - P[i]);
+	R /= N;
+	// debug output
+	printf("%d\t%.3lf %.3lf\t%.3lf\n", Calls, C.x, C.y, R);
+	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
+	// In the test, this function fails 6 cases in 10000 cases.
+	// All failtures are caused by the gradient information leading it to infinity.
+	// Try to detect failture and restart iteration from a new startpoint when fails.
+}
+
 
 
 
@@ -202,12 +240,8 @@ void drawCircle(vec2 c, double r, double width, COLOR col) {
 }
 
 // initialize and save image
-void init() {
-	for (int i = 0, l = W * H; i < l; i++) canvas[i] = COLOR{ 255,255,255 };
-}
-bool save(const char* path) {
-	return stbi_write_png(path, W, H, 3, canvas, 3 * W);
-}
+void init() { for (int i = 0, l = W * H; i < l; i++) canvas[i] = COLOR{ 255,255,255 }; }
+bool save(const char* path) { return stbi_write_png(path, W, H, 3, canvas, 3 * W); }
 
 #pragma endregion
 
@@ -216,6 +250,11 @@ bool save(const char* path) {
 
 
 // ============================================================== Testing ==============================================================
+
+
+#include <chrono>
+typedef std::chrono::high_resolution_clock NTime;
+typedef std::chrono::duration<double> fsec;
 
 
 // generate point data in the pattern of a circle
@@ -248,7 +287,8 @@ void randomTest_image() {
 		fitCircle_Numerical(P, N, c, r); drawCircle(c, r, 8, COLOR{ 192,192,192 });
 		fitCircle(P, N, c, r); drawCircle(c, r, 5, COLOR{ 192,255,128 });
 		fitCircle_E(P, N, c, r); drawCircle(c, r, 3, COLOR{ 160,232,255 });
-		fitCircle_O(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
+		//fitCircle_O(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
+		fitCircle_O_ad(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
 		// visualization
 		drawAxis(3, COLOR{ 0,0,255 });
 		for (int i = 0; i < N; i++) drawDot(P[i], 3.5, COLOR{ 255,0,0 });
@@ -264,6 +304,7 @@ void randomTest_image() {
 void randomTest_numerical() {
 	freopen("tests\\test.txt", "w", stdout);  // write to file
 	freopen("tests\\error.txt", "w", stderr);  // on my system this directly writes to console if this line is commented
+	auto t0 = NTime::now();
 	for (int i = 0; i < 10000; i++)
 	{
 		// the same generator as randomTest_image
@@ -273,12 +314,14 @@ void randomTest_numerical() {
 		printf("%d\t%d\t", i, N);
 		// fitting
 		vec2 c; double r;
-		fitCircle_O(P, N, c, r);
+		//fitCircle_O(P, N, c, r);
+		fitCircle_O_ad(P, N, c, r);
 		if (!(r < 10) && N > 3) {  // (possible) failture
 			fprintf(stderr, "%d\t%d\t%lf\t%lf\t%lf\t\n", i, N, c.x, c.y, r);
 		}
 		delete P;
 	}
+	fprintf(stderr, "%lfsecs elapsed\n", fsec(NTime::now() - t0).count());
 }
 
 

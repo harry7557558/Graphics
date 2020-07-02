@@ -55,7 +55,8 @@ template<typename Fun> void nGrad2(Fun F, vec2 x, double &Fx, vec2 &grad, vec2 &
 
 
 
-// Non-standard methods
+// Non-standard Newton methods
+// Fails when iterates to a point with discontinuous or zero gradient
 
 
 // this method performs Newton's iteration in gradient direction
@@ -103,7 +104,10 @@ template<typename Fun> vec2 Newton_Iteration_2d(Fun F, vec2 x0) {
 		nGrad2(F, x, z, g, g2, gxy, 0.0001);
 		double m = 1. / (g2.x*g2.y - gxy * gxy);
 		vec2 dx = m * vec2(g.x*g2.y - g.y*gxy, g2.x*g.y - g.x*gxy);
-		if (!(dx.sqr() > 1e-16 && abs(z - z0) > 1e-12)) break;
+		if (!(dx.sqr() > 1e-16 && abs(z - z0) > 1e-12)) {
+			if (0.0*dx.x == 0.0*dx.y) return x - dx;
+			return x;
+		}
 		x -= dx;
 		z0 = z;
 #ifdef _DEBUG_OPTIMIZATION
@@ -113,7 +117,8 @@ template<typename Fun> vec2 Newton_Iteration_2d(Fun F, vec2 x0) {
 	}
 	return x;
 }
-// this version doesn't get maxima and saddle but is slower and has a higher risk of failture
+
+// this version doesn't get maxima and saddle but is slower
 // ideas of improvement include checking signs of eigenvalues and detecting infinite loops
 template<typename Fun> vec2 Newton_Iteration_2d_(Fun F, vec2 x0) {
 	const double e = 0.0001;
@@ -152,6 +157,34 @@ template<typename Fun> vec2 Newton_Iteration_2d_(Fun F, vec2 x0) {
 		drawLine(x, x + dx, COLOR({ 160,40,40 }));
 		drawDot(x, 5, COLOR({ 160,40,40 }));
 #endif
+	}
+	return x;
+}
+
+// same function as Newton_Iteration_2d but uses analytical gradient, faster and more stable
+// F: double F(vec2 x, vec2 *grad, vec2 *grad2, double *dxy);
+template<typename Fun> vec2 Newton_Iteration_2d_ad(Fun F, vec2 x0) {
+	vec2 x = x0;
+	double z0 = INFINITY, z;
+	for (int i = 0; i < 10000; i++) {
+		vec2 g, g2; double gxy;
+		z = F(x, &g, &g2, &gxy);
+		// calculate Newton step
+		double m = 1. / (g2.x*g2.y - gxy * gxy);
+		vec2 dx = m * vec2(g.x*g2.y - g.y*gxy, g2.x*g.y - g.x*gxy);
+		// make sure it will reach a minimum
+		if (dot(dx, vec2(g2.x*dx.x + gxy * dx.y, gxy*dx.x + g2.y*dx.y)) > 2.*dot(dx, g)) dx = -dx;  // if not decent direction, go opposite
+		else if (dx.sqr() < 1e-12 && g2.x*g2.y < gxy*gxy) {  // break the balance when it converges to a saddle point
+			x -= dx; dx = vec2(0.0);
+			x += max(length(dx), 1e-6)*normalize(vec2(-g2.x + g2.y + sqrt(dot(g2, g2) - 2.*g2.x*g2.y + 4.*gxy*gxy), -2.*gxy));
+		}
+		// test termination condition
+		else if (!(dx.sqr() > 1e-16 && abs(z - z0) > 1e-12)) {  // Note that sometimes this terminates early due to coincidence
+			if (0.0*dx.x == 0.0*dx.y) return x - dx;
+			return x;
+		}
+		x -= dx;
+		z0 = z;
 	}
 	return x;
 }
@@ -203,7 +236,7 @@ template<typename Fun> vec2 Untitled_Method(Fun F, vec2 x0) {
 		drawLine(x, x + dx, COLOR({ 0,0,0 }));
 		drawDot(x, 5, COLOR({ 0,0,0 }));
 #endif
-	}
+}
 	return x;
 }
 

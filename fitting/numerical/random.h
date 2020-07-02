@@ -29,6 +29,7 @@ unsigned hashu(unsigned x) {
 // from Numerical Recipes
 unsigned int _IDUM = 0;
 unsigned randu() { return _IDUM = _IDUM * 1664525 + 1013904223; }
+void _SRAND(unsigned i) { _IDUM = hashu(i); }
 
 #else
 
