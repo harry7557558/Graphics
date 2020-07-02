@@ -1,8 +1,5 @@
 // Fitting a circle to point set experiment
 
-// To-do:
-// try the parametric equation of circle C+r(cos(t),sin(t))
-
 
 #include "numerical/optimization.h"
 
@@ -137,7 +134,7 @@ void fitCircle_O(const vec2* P, int N, vec2 &C, double &R) {
 	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
 }
 
-// Same as previous except it uses analytical differentiation, more than 3 times faster
+// Same as previous except it uses analytical gradients, more than 3 times faster
 void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 	int Calls = 0;
 	// calculating the analytical gradient of this function is truely a nightmare......
@@ -327,8 +324,8 @@ void randomTest_numerical() {
 
 
 int main() {
-	//randomTest_image(); exit(0);
-	randomTest_numerical(); exit(0);
+	randomTest_image(); exit(0);
+	//randomTest_numerical(); exit(0);
 	return 0;
 }
 
