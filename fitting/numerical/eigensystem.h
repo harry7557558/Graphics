@@ -10,6 +10,13 @@
 #include "linearsystem.h"
 #endif
 
+#ifndef PI
+#define PI 3.1415926535897932384626
+#endif
+
+
+
+
 
 // find the all eigenpairs of a matrix by solving its characteristic equation
 // doesn't seem to be practical
@@ -122,6 +129,9 @@ void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]
 	}
 }
 
+
+
+
 // find an eigenpair using power iteration and inverse iteration
 void EigenPair_powIter(const double M[6][6], double &u, double a[6]) {
 	for (int i = 0; i < 6; i++) a[i] = sqrt(1. / 6);
@@ -163,6 +173,59 @@ void EigenPair_invIter(const double M[6][6], double &u, double a[6]) {
 	double A[6][6]; matinv(M, A);
 	EigenPair_powIter(A, u, a);
 	u = 1. / u;
+}
+
+
+
+
+// zero off-diagonal elements of a symmetric matrix using given rotation matrixes
+// keep result eigenvalues and eigenvectors as diagonalized form (unsorted)
+void EigenPairs_Jacobi(const double M[6][6], double eigv[6], double eigvec[6][6]) {
+	double A[6][6]; matcpy(M, A);
+	double C[6][6]; for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) C[i][j] = i == j;
+	double err = 0.0;
+	for (int d = 0; d < 64; d++) {
+		err = 0.;
+		for (int i = 0; i < 6; i++) for (int j = 0; j < i; j++) {
+			err += A[i][j] * A[i][j];
+			// calculate the rotation matrix
+			double a = A[j][j], b = A[i][i], d = A[i][j];
+#if 1
+			auto atan2 = [](double y, double x) { return atan(y / x) + (x > 0 ? 0. : y < 0 ? -PI : PI); };  // idk why this makes it 1.4x faster on my machine
+			double t = .5*atan2(2.*d, a - b);
+			double c = cos(t), s = sin(t);
+#else
+			// much slower......
+			double x = 2.*d, y = a - b;
+			double m2 = x * x + y * y, m = sqrt(m2);
+			double s = sqrt(.5)*sqrt(y / sqrt(m2 + x * m));
+			double c = sqrt(.5)*sqrt(x / m + 1.);
+#endif
+			// apply inverse rotation to the left side of A
+			double tj[6], ti[6];
+			for (int k = 0; k < 6; k++) {
+				tj[k] = c * A[j][k] + s * A[i][k];
+				ti[k] = c * A[i][k] - s * A[j][k];
+			}
+			for (int k = 0; k < 6; k++) A[j][k] = tj[k], A[i][k] = ti[k];
+			// apply rotation to the right side of A
+			for (int k = 0; k < 6; k++) {
+				tj[k] = c * A[k][j] + s * A[k][i];
+				ti[k] = c * A[k][i] - s * A[k][j];
+			}
+			for (int k = 0; k < 6; k++) A[k][j] = tj[k], A[k][i] = ti[k];
+			// apply rotation to the right side of C
+			for (int k = 0; k < 6; k++) {
+				tj[k] = c * C[k][j] + s * C[k][i];
+				ti[k] = c * C[k][i] - s * C[k][j];
+			}
+			for (int k = 0; k < 6; k++) C[k][j] = tj[k], C[k][i] = ti[k];
+		}
+		//printf("%lf\n", .5*log10(err));
+		if (err < 1e-64) break;  // small number because it converges extremely fast
+	}
+	for (int i = 0; i < 6; i++) eigv[i] = A[i][i];
+	transpose(C, eigvec);
 }
 
 

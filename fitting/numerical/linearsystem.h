@@ -81,6 +81,18 @@ void matinv(const double M[6][6], double I[6][6]) {
 	}
 }
 
+// matrix transpose
+void transpose(const double src[6][6], double res[6][6]) {
+	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
+		res[i][j] = src[j][i];
+	}
+}
+void transpose(double A[6][6]) {
+	for (int i = 0; i < 6; i++) for (int j = 0; j < i; j++) {
+		double t = A[i][j]; A[i][j] = A[j][i]; A[j][i] = t;
+	}
+}
+
 
 
 
