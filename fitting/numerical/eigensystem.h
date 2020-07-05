@@ -1,7 +1,13 @@
 // organized from "Ellipse Fitting.cpp"
-// assume all 6x6 matrixes are positive definite
+// assume all matrixes are positive definite
 
 // To-do: implement more eigenvalue algorithms
+
+
+
+#ifndef __INC_EIGENSYSTEM_H
+
+#define __INC_EIGENSYSTEM_H
 
 
 #include <cmath>
@@ -18,25 +24,27 @@
 
 // checks the correctness of eigenpair calculation
 // eigvec should be normalized
-void _debug_check_eigenpair_correctness(const double M[6][6], double eigv, double eigvec[6]) {
-	double u[6]; matmul(M, eigvec, u);
-	double v[6]; for (int i = 0; i < 6; i++) v[i] = eigv * eigvec[i];
-	double e = 0; for (int i = 0; i < 6; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
+void _debug_check_eigenpair_correctness(int N, const double *M, double eigv, double *eigvec) {
+	double *u = new double[N]; matvecmul(N, M, eigvec, u);
+	double *v = new double[N]; for (int i = 0; i < N; i++) v[i] = eigv * eigvec[i];
+	double e = 0; for (int i = 0; i < N; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
 	if (abs(e / eigv - 1.) > 1e-10) {
-		printf("Error! eigensystem.h line %d\n", __LINE__);
+		printf("Error! [eigensystem.h %d] %lg\n", __LINE__, abs(e / eigv - 1.));
 	}
-	e = 0; for (int i = 0; i < 6; i++) e += u[i] * v[i]; e /= eigv * eigv;
+	e = 0; for (int i = 0; i < N; i++) e += u[i] * v[i]; e /= eigv * eigv;
 	if (abs(e - 1.) > 1e-10) {
-		printf("Error! eigensystem.h line %d\n", __LINE__);
+		printf("Error! [eigensystem.h %d] %lg\n", __LINE__, abs(e - 1.));
 	}
+	delete u; delete v;
 }
-bool _check_eigenpair_correctness(const double M[6][6], double eigv, double eigvec[6]) {
-	double u[6]; matmul(M, eigvec, u);
-	double v[6]; for (int i = 0; i < 6; i++) v[i] = eigv * eigvec[i];
-	double e = 0; for (int i = 0; i < 6; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
+bool _check_eigenpair_correctness(int N, const double *M, double eigv, double *eigvec) {
+	double *u = new double[N]; matvecmul(N, M, eigvec, u);
+	double *v = new double[N]; for (int i = 0; i < N; i++) v[i] = eigv * eigvec[i];
+	double e = 0; for (int i = 0; i < N; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
 	if (abs(e / eigv - 1.) > 1e-6) return false;
-	e = 0; for (int i = 0; i < 6; i++) e += u[i] * v[i]; e /= eigv * eigv;
+	e = 0; for (int i = 0; i < N; i++) e += u[i] * v[i]; e /= eigv * eigv;
 	if (abs(e - 1.) > 1e-6) return false;
+	delete u; delete v;
 	return true;
 }
 
@@ -46,15 +54,16 @@ bool _check_eigenpair_correctness(const double M[6][6], double eigv, double eigv
 
 
 // find the all eigenpairs of a matrix by solving its characteristic equation
-// doesn't seem to be practical
-void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]) {
-	double A[6][6]; matcpy(M, A);
+// eigvec: a matrix of row vectors
+// due to the O(N⁴) complexity and error accumlation in Gaussian elimination, it is not recommand for N>6
+void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
+	double *A = new double[N*N]; matcpy(N, M, A);
 	double msc = 1.0;
-#if 1
+#if 0
 	// avoid overflow/precison error
-	msc = 1. / pow(determinant(A), 1. / 6);
+	msc = 1. / pow(determinant(N, A), 1. / N);
 	if (0.0*msc == 0.0) {
-		for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) A[i][j] *= msc;
+		for (int i = 0; i < N*N; i++) A[i] *= msc;
 		msc = 1. / msc;
 	}
 	else msc = 1.0;
@@ -62,21 +71,22 @@ void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]
 
 	// expand characteristic polynomial, works in O(n^4)
 	// method discribed at https://mathworld.wolfram.com/CharacteristicPolynomial.html
-	double C[7], C0[7], Ci = -1;
-	double B[6][6]; matcpy(A, B);
+	double *C = new double[N + 1], *C0 = new double[N + 1], Ci = -1;
+	double *B = new double[N*N], *T = new double[N*N]; matcpy(N, A, B);
 	C0[0] = C[0] = 1;
-	for (int i = 1; i <= 6; i++) {
-		Ci = trace(B) / i;
-		double T[6][6]; matcpy(B, T);
-		for (int k = 0; k < 6; k++) T[k][k] -= Ci;
-		matmul(A, T, B);
+	for (int i = 1; i <= N; i++) {
+		Ci = trace(N, B) / i;
+		matcpy(N, B, T);
+		for (int k = 0; k < N; k++) T[k*N + k] -= Ci;
+		matmul(N, A, T, B);
 		C0[i] = C[i] = -Ci;
 	}
-	//printPolynomial(C, 6);
-	matcpy(A, B);
+	//printPolynomial(C, N);
+	matcpy(N, A, B);
 
 	// find the roots of the characteristic polynomial
-	for (int R = 6; R > 0; R--) {
+	double *v = new double[N];
+	for (int R = N; R > 0; R--) {
 		// Newton's iteration method starting at x=0
 		// this should success because the matrix is positive difinite
 		double x = 0;
@@ -90,13 +100,13 @@ void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]
 			x -= dx;
 			if (dx*dx < 1e-24) break;
 		}
-#if 0
+#if 1
 		// "refine" the root using the original polynomial
 		for (int i = 0; i < 3; i++) {
 			double y = 0, dy = 0;
-			for (int i = 0; i <= 6; i++) {
+			for (int i = 0; i <= N; i++) {
 				y = y * x + C0[i];
-				if (6 - i) dy = dy * x + (6 - i)*C0[i];
+				if (N - i) dy = dy * x + (N - i)*C0[i];
 			}
 			double dx = y / dy;
 			x -= dx;
@@ -108,43 +118,42 @@ void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]
 			C[i + 1] += C[i] * x;
 		}
 		// export the eigenvalue
-		eigv[6 - R] = x * msc;
+		eigv[N - R] = x * msc;
 
 		// find the eigenvector from the eigenvalue
-		double v[6];
-		matcpy(B, A);
-		for (int i = 0; i < 6; i++) A[i][i] -= x;
+		matcpy(N, B, A);
+		for (int i = 0; i < N; i++) A[i*N + i] -= x;
 		int sp = -1;
 		const double eps = 1e-6;
-		for (int i = 0, d = 0; d < 6; i++, d++) {
-			if (abs(A[i][d]) < eps) {
-				for (int j = i + 1; j < 6; j++) {
-					if (!(abs(A[j][d]) < eps)) {
-						for (int k = d; k < 6; k++) {
-							double t = A[i][k]; A[i][k] = A[j][k]; A[j][k] = t;
+		for (int i = 0, d = 0; d < N; i++, d++) {
+			if (abs(A[i*N + d]) < eps) {
+				for (int j = i + 1; j < N; j++) {
+					if (!(abs(A[j*N + d]) < eps)) {
+						for (int k = d; k < N; k++) {
+							double t = A[i*N + k]; A[i*N + k] = A[j*N + k]; A[j*N + k] = t;
 						}
 						break;
 					}
 				}
 			}
-			if (abs(A[i][d]) < eps) {
+			if (abs(A[i*N + d]) < eps) {
 				sp = d;
 				i--; continue;
 			}
-			else if (i == 5) {  // idk why this happens
-				sp = 5;
+			else if (i == N - 1) {  // idk why this happens
+				sp = N - 1;
 				break;
 			}
-			double m = 1. / A[i][d];
-			for (int k = d; k < 6; k++) A[i][k] *= m;
-			for (int j = 0; j < 6; j++) if (j != i) {
-				double m = A[j][d];
-				for (int k = d; k < 6; k++) A[j][k] -= m * A[i][k];
+			double m = 1. / A[i*N + d];
+			for (int k = d; k < N; k++) A[i*N + k] *= m;
+			for (int j = 0; j < N; j++) if (j != i) {
+				double m = A[j*N + d];
+				for (int k = d; k < N; k++) A[j*N + k] -= m * A[i*N + k];
 			}
 		}
-		for (int i = 0; i < sp; i++) v[i] = -A[i][sp];
+		for (int i = 0; i < sp; i++) v[i] = -A[i*N + sp];
 		v[sp] = 1;
-		for (int i = sp + 1; i < 6; i++) v[i] = 0;
+		for (int i = sp + 1; i < N; i++) v[i] = 0;
 
 		// try to "refine" the eigenvector using some iterative methods
 
@@ -152,112 +161,118 @@ void EigenPairs_expand(const double M[6][6], double eigv[6], double eigvec[6][6]
 		double m = 1;
 		for (int i = 0; i < sp; i++) m += v[i] * v[i];
 		m = 1. / sqrt(m);
-		for (int i = 0; i < 6; i++) eigvec[6 - R][i] = v[i] * m;
+		for (int i = 0; i < N; i++) eigvec[(N - R)*N + i] = v[i] * m;
 	}
+	delete v;
+
+	delete T; delete B; delete C; delete C0;
+	delete A;
 }
 
 
 
 
 // find an eigenpair using power iteration and inverse iteration
-void EigenPair_powIter(const double M[6][6], double &u, double a[6]) {
-	for (int i = 0; i < 6; i++) a[i] = sqrt(1. / 6);
-	double A[6][6]; matcpy(M, A);
+void EigenPair_powIter(int N, const double *M, double *eigv, double *eigvec) {
+	for (int i = 0; i < N; i++) eigvec[i] = sqrt(1. / N);
+	double *A = new double[N*N]; matcpy(N, M, A);
 #if 1
 	// use power of matrix to make it converge faster
 	// sometimes the numbers can get extremly large and cause precision/overflow error
-	double m = 1. / pow(determinant(A), 1. / 6);
+	double m = 1. / pow(determinant(N, A), 1. / N);
 	if (0.*m == 0.) {
-		for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) A[i][j] *= m;
+		for (int i = 0; i < N*N; i++) A[i] *= m;
+		double *T = new double[N*N];
 		for (int i = 0; i < 2; i++) {
-			double T[6][6]; matmul(A, A, T);
-			matcpy(T, A);
+			matmul(N, A, A, T);
+			matcpy(N, T, A);
 		}
+		delete T;
 	}
 #endif
 	// power iteration
+	double *v = new double[N];
 	for (int i = 0; i < 1024; i++) {
-		double v[6]; matmul(A, a, v);
+		matvecmul(N, A, eigvec, v);
 		double m = 0;
-		for (int j = 0; j < 6; j++) m += v[j] * v[j];
+		for (int j = 0; j < N; j++) m += v[j] * v[j];
 		m = 1. / sqrt(m);
 		double err = 0;
-		for (int j = 0; j < 6; j++) {
+		for (int j = 0; j < N; j++) {
 			v[j] *= m;
-			err += v[j] * a[j];
-			a[j] = v[j];
+			err += v[j] * eigvec[j];
+			eigvec[j] = v[j];
 		}
 		if (abs(abs(err) - 1) < 1e-12) break;
 		// warning: floatpoint precision
 	}
 	// calculate eigenvalue from eigenvector
-	double v[6]; matmul(M, a, v);
-	for (int i = 0; i < 6; i++) {
-		if (abs(a[i]) > .2) {
-			u = v[i] / a[i]; break;
+	matvecmul(N, M, eigvec, v);
+	for (int i = 0; i < N; i++) {
+		if (abs(eigvec[i]) > .2) {
+			if (eigv) *eigv = v[i] / eigvec[i];
+			break;
 		}
 	}
+	delete v;
+	delete A;
 }
-void EigenPair_invIter(const double M[6][6], double &u, double a[6]) {
-	double A[6][6]; matinv(M, A);
-	EigenPair_powIter(A, u, a);
-	u = 1. / u;
+void EigenPair_invIter(int N, const double *M, double *eigv, double *eigvec) {
+	double *A = new double[N*N]; matinv(N, M, A);
+	EigenPair_powIter(N, A, eigv, eigvec);
+	if (eigv) *eigv = 1. / *eigv;
+	delete A;
 }
 
 
 
 
 // zero off-diagonal elements of a symmetric matrix using given rotation matrixes
+// eigvec is an orthogonal matrix of row eigenvectors
 // keep result eigenvalues and eigenvectors as diagonalized form (unsorted)
-void EigenPairs_Jacobi(const double M[6][6], double eigv[6], double eigvec[6][6]) {
-	double A[6][6]; matcpy(M, A);
-	double C[6][6]; for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) C[i][j] = i == j;
+void EigenPairs_Jacobi(int N, const double *M, double *eigv, double *eigvec) {
+	double *A = new double[N*N]; matcpy(N, M, A);
+	double *C = new double[N*N]; for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) C[i*N + j] = i == j;
+	double *tj = new double[N], *ti = new double[N];
 	double err = 0.0;
 	for (int d = 0; d < 64; d++) {
 		err = 0.;
-		for (int i = 0; i < 6; i++) for (int j = 0; j < i; j++) {
-			err += A[i][j] * A[i][j];
+		for (int i = 0; i < N; i++) for (int j = 0; j < i; j++) {
+			err += A[i*N + j] * A[i*N + j];
 			// calculate the rotation matrix
-			double a = A[j][j], b = A[i][i], d = A[i][j];
-#if 1
+			double a = A[j*N + j], b = A[i*N + i], d = A[i*N + j];
 			auto atan2 = [](double y, double x) { return atan(y / x) + (x > 0 ? 0. : y < 0 ? -PI : PI); };  // idk why this makes it 1.4x faster on my machine
 			double t = .5*atan2(2.*d, a - b);
 			double c = cos(t), s = sin(t);
-#else
-			// much slower......
-			double x = 2.*d, y = a - b;
-			double m2 = x * x + y * y, m = sqrt(m2);
-			double s = sqrt(.5)*sqrt(y / sqrt(m2 + x * m));
-			double c = sqrt(.5)*sqrt(x / m + 1.);
-#endif
 			// apply inverse rotation to the left side of A
-			double tj[6], ti[6];
-			for (int k = 0; k < 6; k++) {
-				tj[k] = c * A[j][k] + s * A[i][k];
-				ti[k] = c * A[i][k] - s * A[j][k];
+			for (int k = 0; k < N; k++) {
+				tj[k] = c * A[j*N + k] + s * A[i*N + k];
+				ti[k] = c * A[i*N + k] - s * A[j*N + k];
 			}
-			for (int k = 0; k < 6; k++) A[j][k] = tj[k], A[i][k] = ti[k];
+			for (int k = 0; k < N; k++) A[j*N + k] = tj[k], A[i*N + k] = ti[k];
 			// apply rotation to the right side of A
-			for (int k = 0; k < 6; k++) {
-				tj[k] = c * A[k][j] + s * A[k][i];
-				ti[k] = c * A[k][i] - s * A[k][j];
+			for (int k = 0; k < N; k++) {
+				tj[k] = c * A[k*N + j] + s * A[k*N + i];
+				ti[k] = c * A[k*N + i] - s * A[k*N + j];
 			}
-			for (int k = 0; k < 6; k++) A[k][j] = tj[k], A[k][i] = ti[k];
+			for (int k = 0; k < N; k++) A[k*N + j] = tj[k], A[k*N + i] = ti[k];
 			// apply rotation to the right side of C
-			for (int k = 0; k < 6; k++) {
-				tj[k] = c * C[k][j] + s * C[k][i];
-				ti[k] = c * C[k][i] - s * C[k][j];
+			for (int k = 0; k < N; k++) {
+				tj[k] = c * C[k*N + j] + s * C[k*N + i];
+				ti[k] = c * C[k*N + i] - s * C[k*N + j];
 			}
-			for (int k = 0; k < 6; k++) C[k][j] = tj[k], C[k][i] = ti[k];
+			for (int k = 0; k < N; k++) C[k*N + j] = tj[k], C[k*N + i] = ti[k];
 		}
 		//printf("%lf\n", .5*log10(err));
-		if (err < 1e-64) break;  // small number because it converges extremely fast
+		if (err < 1e-32) break;
 	}
-	for (int i = 0; i < 6; i++) eigv[i] = A[i][i];
-	transpose(C, eigvec);
+	for (int i = 0; i < N; i++) eigv[i] = A[i*N + i];
+	transpose(N, C, eigvec);
+	delete A; delete C; delete tj; delete ti;
 }
 
 
 
 
+#endif  // __INC_EIGENSYSTEM_H
 

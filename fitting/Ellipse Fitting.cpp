@@ -51,11 +51,11 @@ void printPolynomial(const double C[], int N, const char end[] = "\n") {
 // Minimize vᵀMv, subject to vᵀv=1
 void fitEllipse0(const vec2 *P, int N, double v[6]) {
 	double M[6][6]; generateMatrix(M, P, N);
-	double lambda; EigenPair_invIter(M, lambda, v);
+	double lambda; EigenPair_invIter(6, &M[0][0], &lambda, v);
 	// if not ellipse, check other eivenvalues
 	if (4.*v[0] * v[2] <= v[1] * v[1]) {
 		double eigv[6], eigvec[6][6];
-		EigenPairs_expand(M, eigv, eigvec);
+		EigenPairs_expand(6, &M[0][0], eigv, &eigvec[0][0]);
 		for (int i = 1; i < 6; i++) {
 			auto w = eigvec[i];
 			if (4.*w[0] * w[2] > w[1] * w[1]) {
@@ -71,14 +71,14 @@ void fitEllipse0(const vec2 *P, int N, double v[6]) {
 // I'm sure there is a bug because it sometimes gets hyperbolas
 void fitEllipse_ConstraintMatrix(const vec2 *P, int N, double v[6], const double C[6][6], bool checkEllipse = true) {
 	double M[6][6]; generateMatrix(M, P, N);
-	double I[6][6]; matinv(M, I);
-	double B[6][6]; matmul(I, C, B);  // B is not symmetric
-	double u; EigenPair_powIter(B, u, v);
+	double I[6][6]; matinv(6, &M[0][0], &I[0][0]);
+	double B[6][6]; matmul(6, &I[0][0], &C[0][0], &B[0][0]);  // B is not symmetric
+	double u; EigenPair_powIter(6, &B[0][0], &u, v);
 	if (checkEllipse) {
 		// make sure it is an ellipse
 		if (4.*v[0] * v[2] <= v[1] * v[1]) {
 			double eigv[6], eigvec[6][6];
-			EigenPairs_expand(B, eigv, eigvec);
+			EigenPairs_expand(6, &B[0][0], eigv, &eigvec[0][0]);
 			for (int i = 1; i < 6; i++) {
 				auto w = eigvec[i];
 				if (4.*w[0] * w[2] > w[1] * w[1]) {
@@ -107,7 +107,7 @@ void fitEllipse3(const vec2 *P, int N, double v[6]) {
 }
 
 // Minimize vᵀMv/vᵀCv, where C is the sum of magnitude of gradients
-// visually good but checking hyperbolas makes it horrible
+// doesn't "shrink", visually good but checking hyperbolas makes it horrible
 void fitEllipse4(const vec2 *P, int N, double v[6]) {
 	double C[6][6] = { {0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
 	for (int i = 0; i < N; i++) {
@@ -129,7 +129,7 @@ void fitEllipse_ac1(const vec2 *P, int N, double v[6]) {
 	double M[6][6]; generateMatrix(M, P, N);
 	double c[6] = { 1,0,1,0,0,0 };
 	for (int i = 0; i < 6; i++) v[i] = c[i];
-	solveLinear(&M[0][0], v, 6);
+	solveLinear(6, &M[0][0], v);
 #else
 	double Sx4 = 0, Sx3y = 0, Sx2y2 = 0, Sxy3 = 0, Sy4 = 0;
 	double Sx3 = 0, Sx2y = 0, Sxy2 = 0, Sy3 = 0;
@@ -145,10 +145,10 @@ void fitEllipse_ac1(const vec2 *P, int N, double v[6]) {
 		Sx3y - Sxy3, Sx2y2, Sx2y, Sxy2, Sxy,
 		Sx3 - Sxy2, Sx2y, Sx2, Sxy, Sx,
 		Sx2y - Sy3, Sxy2, Sxy, Sy2, Sy,
-		Sx2 - Sy2, Sxy, Sx, Sy, N
+		Sx2 - Sy2, Sxy, Sx, Sy, double(N)
 	};
 	double B[5] = { Sx2y2 - Sy4, Sxy3, Sxy2, Sy3, Sy2 };
-	solveLinear(&M[0][0], &B[0], 5);
+	solveLinear(5, &M[0][0], &B[0]);
 	v[0] = -B[0], v[1] = -B[1], v[2] = 1. + B[0], v[3] = -B[2], v[4] = -B[3], v[5] = -B[4];
 #endif
 }
@@ -159,7 +159,7 @@ void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
 	double M[6][6]; generateMatrix(M, P, N);
 	double c[6] = { 0,0,0,0,0,1 };
 	for (int i = 0; i < 6; i++) v[i] = c[i];
-	solveLinear(&M[0][0], v, 6);
+	solveLinear(6, &M[0][0], v);
 #else
 	double Sx4 = 0, Sx3y = 0, Sx2y2 = 0, Sxy3 = 0, Sy4 = 0;
 	double Sx3 = 0, Sx2y = 0, Sxy2 = 0, Sy3 = 0;
@@ -178,7 +178,7 @@ void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
 		Sx2y, Sxy2, Sy3, Sxy, Sy2
 	};
 	double B[5] = { Sx2, Sxy, Sy2, Sx, Sy };
-	solveLinear(&M[0][0], &B[0], 5);
+	solveLinear(5, &M[0][0], &B[0]);
 	for (int i = 0; i < 5; i++) v[i] = B[i];
 	v[5] = -1;
 #endif
@@ -210,7 +210,7 @@ typedef unsigned char byte;
 typedef struct { byte r, g, b; } COLOR;
 COLOR mix(COLOR a, COLOR b, double d) {
 	//auto f = [&](byte a, byte b) { return (byte)((1 - d)*a + d * b); };
-	int k = d * 256; auto f = [&](byte a, byte b) { return (byte)(((256 - k)*a + k * b) >> 8); };
+	int k = int(d * 256); auto f = [&](byte a, byte b) { return (byte)(((256 - k)*a + k * b) >> 8); };
 	return COLOR{ f(a.r,b.r), f(a.g,b.g), f(a.b,b.b) };
 }
 
@@ -293,7 +293,7 @@ bool save(const char* path) {
 // test eigenvalue calculation
 bool checkEigenpair(const double M[6][6], double lambda, const double v[6]) {
 	bool ok = true;
-	double Ax[6]; matmul(M, v, Ax);
+	double Ax[6]; matvecmul(6, &M[0][0], v, Ax);
 	double m = 0; for (int i = 0; i < 6; i++) m += Ax[i] * Ax[i]; m = 1. / sqrt(m);
 	double e;
 	if ((e = abs(m * lambda - 1)) > 1e-6) {
@@ -321,11 +321,11 @@ void randomTest_eigen() {
 
 #if 0
 		double lambda, lambda0, eigv[6];
-		EigenPair_invIter(M, lambda, eigv);
+		EigenPair_invIter(6, &M[0][0], &lambda, eigv);
 		checkEigenpair(M, lambda, eigv);
 #else
 		double eigv[6], eigvec[6][6];
-		EigenPairs_expand(M, eigv, eigvec);
+		EigenPairs_expand(6, &M[0][0], eigv, &eigvec[0][0]);
 		for (int t = 0; t < 6; t++) {
 			if (!checkEigenpair(M, eigv[t], eigvec[t])) {
 				printf("%d_%d\n", i, t);
@@ -369,8 +369,9 @@ void randomPointData(vec2 *P, int N) {
 	}
 }
 
-// write lots of pictures to see fitting results
+// use random data to test ellipse fitting methods
 void randomTest_image() {
+	freopen("tests\\test.txt", "w", stdout);
 	for (int i = 0; i < 100; i++)
 	{
 		// generate point data
@@ -383,6 +384,14 @@ void randomTest_image() {
 		double c2[6]; fitEllipse2(P, N, c2);
 		double c3[6]; fitEllipse3(P, N, c3);
 		double c4[6]; fitEllipse4(P, N, c4);
+		// write result to stdout
+		auto printc = [](double *c) {
+			printf("%c %lfx^2%+lfxy%+lfy^2%+lfx%+lfy%+lf=0\n", 4.*c[0] * c[2] > c[1] * c[1] ? 'E' : 'H',
+				c[0], c[1], c[2], c[3], c[4], c[5]);
+		};
+		printf("Test %d\n", i);
+		printc(c0); printc(c1); printc(c2); printc(c3); printc(c4); printf("\n");
+#if 1
 		// visualization
 		init();
 		drawQuadraticCurve(c0, 4, COLOR{ 192,255,128 });  // v² : light green
@@ -398,6 +407,7 @@ void randomTest_image() {
 		char s[] = "tests\\test00.png";
 		s[10] = i / 10 + '0', s[11] = i % 10 + '0';
 		save(s);
+#endif
 	}
 }
 

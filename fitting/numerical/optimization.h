@@ -197,6 +197,7 @@ template<typename Fun> vec2 Newton_Iteration_2d_ad(Fun F, vec2 x0) {
 // numerical differentiation in higher dimensions
 
 // F: double F(const double *x);
+// 2N samples
 template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, double e = .0001) {
 	double *p = new double[N];
 	for (int i = 0; i < N; i++) p[i] = x[i];
@@ -212,6 +213,7 @@ template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, d
 }
 
 // grad2: standard Hessian matrix
+// 2N²+1 samples - analytical derivative is highly recommand
 template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, double *grad, double *grad2, double e = .0001) {
 	double *p = new double[N];
 	for (int i = 0; i < N; i++) p[i] = x[i];

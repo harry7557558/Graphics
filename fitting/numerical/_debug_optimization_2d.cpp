@@ -233,16 +233,6 @@ void test_image() {
 				drawString(s, vec2(0, 60), 28, COLOR{ 160,40,40 });
 			}
 
-			// debug method
-			{
-				vec2 p = P0[T - 1];
-				F_count = 0;
-				p = Untitled_Method(F, p);
-				drawDot(p, 8, COLOR({ 0,0,0 }));
-				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 88), 28, COLOR{ 0,0,0 });
-			}
-
 			// save rendered image
 #ifdef _DEBUG
 			drawString("[DEBUG]", vec2(W - 160, 4), 40, COLOR{ 128,128,128 });

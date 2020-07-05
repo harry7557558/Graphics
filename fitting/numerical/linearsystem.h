@@ -8,93 +8,95 @@
 
 
 
-// 6x6 matrixes
 
 // copy a matrix
-void matcpy(const double src[6][6], double res[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) res[i][j] = src[i][j];
+void matcpy(int N, const double *src, double *res) {
+	for (int i = 0, l = N * N; i < l; i++) res[i] = src[i];
 }
 
 // matrix multiplication, C needs to be different from A B
-void matmul(const double A[6][6], const double B[6][6], double C[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
-		C[i][j] = 0;
-		for (int k = 0; k < 6; k++) C[i][j] += A[i][k] * B[k][j];
+void matmul(int N, const double *A, const double *B, double *C) {
+	for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) {
+		double t = 0;
+		for (int k = 0; k < N; k++) t += A[i*N + k] * B[k*N + j];
+		C[i*N + j] = t;
 	}
 }
 
 // matrix times vector, b needs to be different from x
-void matmul(const double A[6][6], const double x[6], double b[6]) {
-	for (int i = 0; i < 6; i++) {
+void matvecmul(int N, const double *A, const double *x, double *b) {
+	for (int i = 0; i < N; i++) {
 		b[i] = 0;
-		for (int j = 0; j < 6; j++) b[i] += A[i][j] * x[j];
+		for (int j = 0; j < N; j++) b[i] += A[i*N + j] * x[j];
 	}
 }
 
 // evaluate uᵀAv
-double quamul(const double u[6], const double A[6][6], const double v[6]) {
+double quamul(int N, const double *u, const double *A, const double *v) {
 	double s = 0;
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
-		s += u[i] * A[i][j] * v[j];
+	for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) {
+		s += u[i] * A[i*N + j] * v[j];
 	}
 	return s;
 }
 
 // trace of a matrix
-double trace(const double M[6][6]) {
+double trace(int N, const double *M) {
 	double res = 0;
-	for (int i = 0; i < 6; i++) res += M[i][i];
+	for (int i = 0; i < N; i++) res += M[i*N + i];
 	return res;
 }
 
 // determinant of a matrix
-double determinant(const double M[6][6]) {
-	double A[6][6]; matcpy(M, A);
+double determinant(int N, const double *M) {
+	double *A = new double[N*N]; matcpy(N, M, A);
 	double det = 1;
-	for (int i = 0; i < 6; i++) {
-		for (int j = i + 1; j < 6; j++) {
-			double m = -A[j][i] / A[i][i];
-			for (int k = i; k < 6; k++) A[j][k] += m * A[i][k];
+	for (int i = 0; i < N; i++) {
+		for (int j = i + 1; j < N; j++) {
+			double m = -A[j*N + i] / A[i*N + i];
+			for (int k = i; k < N; k++) A[j*N + k] += m * A[i*N + k];
 		}
-		det *= A[i][i];
+		det *= A[i*N + i];
 	}
+	delete A;
 	if (0.0*det != 0.0) return 0.0;
 	return det;
 }
 
 // matrix inversion
-void matinv(const double M[6][6], double I[6][6]) {
-	double A[6][6]; matcpy(M, A);
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) I[i][j] = double(i == j);
-	for (int i = 0; i < 6; i++) {
-		double m = 1.0 / A[i][i];
-		for (int k = 0; k < 6; k++) {
-			A[i][k] *= m, I[i][k] *= m;
+void matinv(int N, const double *M, double *I) {
+	double *A = new double[N*N]; matcpy(N, M, A);
+	for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) I[i*N + j] = double(i == j);
+	for (int i = 0; i < N; i++) {
+		double m = 1.0 / A[i*N + i];
+		for (int k = 0; k < N; k++) {
+			A[i*N + k] *= m, I[i*N + k] *= m;
 		}
-		for (int j = 0; j < 6; j++) if (j != i) {
-			m = -A[j][i];
-			for (int k = 0; k < 6; k++) {
-				A[j][k] += m * A[i][k];
-				I[j][k] += m * I[i][k];
+		for (int j = 0; j < N; j++) if (j != i) {
+			m = -A[j*N + i];
+			for (int k = 0; k < N; k++) {
+				A[j*N + k] += m * A[i*N + k];
+				I[j*N + k] += m * I[i*N + k];
 			}
 		}
 	}
+	delete A;
 }
 
 // matrix transpose
-void transpose(const double src[6][6], double res[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) {
-		res[i][j] = src[j][i];
+void transpose(int N, const double *src, double *res) {
+	for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) {
+		res[i*N + j] = src[j*N + i];
 	}
 }
-void transpose(double A[6][6]) {
-	for (int i = 0; i < 6; i++) for (int j = 0; j < i; j++) {
-		double t = A[i][j]; A[i][j] = A[j][i]; A[j][i] = t;
+void transpose(int N, double *A) {
+	for (int i = 0; i < N; i++) for (int j = 0; j < i; j++) {
+		double t = A[i*N + j]; A[i*N + j] = A[j*N + i]; A[j*N + i] = t;
 	}
 }
 
 // solve linear system
-void solveLinear(const double *M, double *x, int N) {
+void solveLinear(int N, const double *M, double *x) {
 	double *A = new double[N*N]; for (int i = 0; i < N*N; i++) A[i] = M[i];
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) if (j != i) {

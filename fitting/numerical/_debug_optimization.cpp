@@ -2,6 +2,7 @@
 
 #include "optimization.h"
 #include "random.h"
+#include <stdio.h>
 
 // test numerical differentiation
 // this function helped me discovered and killed 3 bugs ;)
@@ -126,7 +127,7 @@ void testNGradN(int N) {
 
 
 int main() {
-	testNGradN(11);
+	testNGrad();
 	return 0;
 }
 
