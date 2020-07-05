@@ -193,7 +193,9 @@ template<typename Fun> vec2 Newton_Iteration_2d_ad(Fun F, vec2 x0) {
 
 
 
+
 // numerical differentiation in higher dimensions
+
 // F: double F(const double *x);
 template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, double e = .0001) {
 	double *p = new double[N];
@@ -209,5 +211,38 @@ template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, d
 	delete p;
 }
 
+// grad2: standard Hessian matrix
+template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, double *grad, double *grad2, double e = .0001) {
+	double *p = new double[N];
+	for (int i = 0; i < N; i++) p[i] = x[i];
+	double f = F(p); if (Fx) *Fx = f;
+	for (int i = 0; i < N; i++) {
+		// gradient
+		p[i] = x[i] - e; double a = F(p);
+		p[i] = x[i] + e; double b = F(p);
+		if (grad) grad[i] = (.5 / e)*(b - a);
+		// second derivative
+		grad2[i*N + i] = (1. / (e*e))*(a + b - 2.*f);
+		// other derivatives
+		for (int j = 0; j < i; j++) {
+			p[i] = x[i] + e;
+			p[j] = x[j] + e; a = F(p);
+			p[j] = x[j] - e; double c = F(p);
+			p[i] = x[i] - e; b = F(p);
+			p[j] = x[j] + e; double d = F(p);
+			grad2[i*N + j] = grad2[j*N + i] = (.25 / (e*e))*((a + b) - (c + d));
+			p[j] = x[j];
+		}
+		p[i] = x[i];
+	}
+	delete p;
+}
+
+
+
+
+// To-do: optimization in higher dimensions
+
+#include "linearsystem.h"
 
 
