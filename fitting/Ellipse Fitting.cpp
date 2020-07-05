@@ -5,6 +5,8 @@
 /* To-do:
 	 - implement orthogonal least square fitting
 	 - handle the case when the matrix is not invertible
+	 - try to render dashed/dotted lines because the colors are really messy
+	 - think this problem: do fitted shapes change after translating the points?
 */
 
 
@@ -47,6 +49,9 @@ void printPolynomial(const double C[], int N, const char end[] = "\n") {
 
 
 // ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }, {a,b,c,d,e,f}
+
+
+// Ellipse fitting with quadratic constraints, solve for eigenvalues
 
 // Minimize vᵀMv, subject to vᵀv=1
 void fitEllipse0(const vec2 *P, int N, double v[6]) {
@@ -120,8 +125,8 @@ void fitEllipse4(const vec2 *P, int N, double v[6]) {
 }
 
 
-// all linear constraints DO NOT WORK
-#if 0
+
+// Ellipse fitting with linear constraints, solve a linear system
 
 // Minimize vᵀMv, subject to a+c=1
 void fitEllipse_ac1(const vec2 *P, int N, double v[6]) {
@@ -155,7 +160,7 @@ void fitEllipse_ac1(const vec2 *P, int N, double v[6]) {
 
 // Minimize vᵀMv, subject to f=1
 void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
-#if 1
+#if 0
 	double M[6][6]; generateMatrix(M, P, N);
 	double c[6] = { 0,0,0,0,0,1 };
 	for (int i = 0; i < 6; i++) v[i] = c[i];
@@ -184,7 +189,6 @@ void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
 #endif
 }
 
-#endif
 
 
 
@@ -233,7 +237,7 @@ void drawAxis(double width, COLOR col) {
 			vec2 p = vec2(i, -j) * (1.0 / Scale) + fromScreen;
 			p = vec2(abs(p.x), abs(p.y));
 			double d = min(p.x, p.y) * Scale - width;
-			//d = min(d, Scale * (.5 - max(abs(fmod(p.x, 1.) - .5), abs(fmod(p.y, 1.) - .5))));  // grid
+			d = min(d, Scale * (.5 - max(abs(fmod(p.x, 1.) - .5), abs(fmod(p.y, 1.) - .5))));  // grid
 			if (d < 0) canvas[j*W + i] = col;
 			else if (d < 1) canvas[j*W + i] = mix(col, canvas[j*W + i], d);
 		}
@@ -250,26 +254,23 @@ void drawDot(vec2 c, double r, COLOR col) {
 		canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - abs(d), 0., 1.));  // draw hollow circle so the point density is more obvious
 	}
 }
-void drawQuadraticCurve(const double v[6], double width, COLOR col) {
+void drawQuadraticCurve(const double v[6], double width, COLOR col, bool hollow = false) {
 	double r = 0.5*width;
 	// initialize a value buffer
-	for (int j = 0; j < H; j++) {
-		for (int i = 0; i < W; i++) {
-			vec2 p = vec2(i, -j) * (1.0 / Scale) + fromScreen;
-			double x = p.x, y = p.y;
-			buffer[j*W + i] = v[0] * x*x + v[1] * x*y + v[2] * y*y + v[3] * x + v[4] * y + v[5];
-		}
+	for (int j = 0; j < H; j++) for (int i = 0; i < W; i++) {
+		vec2 p = vec2(i, -j) * (1.0 / Scale) + fromScreen;
+		double x = p.x, y = p.y;
+		buffer[j*W + i] = v[0] * x*x + v[1] * x*y + v[2] * y*y + v[3] * x + v[4] * y + v[5];
 	}
 	// map the value of the buffer to the image
-	for (int j = 1; j < H - 1; j++) {
-		for (int i = 1; i < W - 1; i++) {
-			// calculate numerical gradient from neighbourhood values
-			double dx = buffer[j*W + i + 1] - buffer[j*W + i - 1];
-			double dy = buffer[j*W + i + W] - buffer[j*W + i - W];
-			double m = .5*sqrt(dx * dx + dy * dy);  // magnitude of gradient
-			double d = abs(buffer[j*W + i] / m) - r;  // divide by gradient to estimate distance
-			if ((d = 1. - d) > 0.) canvas[j*W + i] = mix(canvas[j*W + i], col, 0.8 * clamp(d, 0., 1.));
-		}
+	for (int j = 1; j < H - 1; j++) for (int i = 1; i < W - 1; i++) {
+		// calculate numerical gradient from neighbourhood values
+		double dx = buffer[j*W + i + 1] - buffer[j*W + i - 1];
+		double dy = buffer[j*W + i + W] - buffer[j*W + i - W];
+		double m = .5*sqrt(dx * dx + dy * dy);  // magnitude of gradient
+		double d = abs(buffer[j*W + i] / m) - r;  // divide by gradient to estimate distance
+		if (hollow) d = abs(d);
+		if ((d = 1. - d) > 0.) canvas[j*W + i] = mix(canvas[j*W + i], col, 0.8 * clamp(d, 0., 1.));
 	}
 }
 
@@ -330,9 +331,9 @@ void randomTest_eigen() {
 			if (!checkEigenpair(M, eigv[t], eigvec[t])) {
 				printf("%d_%d\n", i, t);
 			}
-		}
-#endif
 	}
+#endif
+}
 
 	printf("%lfs elapsed\n", std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count());
 }
@@ -384,22 +385,28 @@ void randomTest_image() {
 		double c2[6]; fitEllipse2(P, N, c2);
 		double c3[6]; fitEllipse3(P, N, c3);
 		double c4[6]; fitEllipse4(P, N, c4);
+		double d0[6]; fitEllipse_ac1(P, N, d0);
+		double d1[6]; fitEllipse_f1(P, N, d1);
 		// write result to stdout
 		auto printc = [](double *c) {
 			printf("%c %lfx^2%+lfxy%+lfy^2%+lfx%+lfy%+lf=0\n", 4.*c[0] * c[2] > c[1] * c[1] ? 'E' : 'H',
 				c[0], c[1], c[2], c[3], c[4], c[5]);
 		};
 		printf("Test %d\n", i);
-		printc(c0); printc(c1); printc(c2); printc(c3); printc(c4); printf("\n");
+		printc(c0); printc(c1); printc(c2); printc(c3); printc(c4);
+		printc(d0); printc(d1);
+		printf("\n");
 #if 1
 		// visualization
 		init();
+		drawAxis(2, COLOR{ 232,232,232 });
 		drawQuadraticCurve(c0, 4, COLOR{ 192,255,128 });  // v² : light green
 		drawQuadraticCurve(c1, 4, COLOR{ 232,232,128 });  // 4ac-b² : khaki color
 		drawQuadraticCurve(c2, 4, COLOR{ 255,192, 64 });  // a²+c² :  orange
 		drawQuadraticCurve(c3, 4, COLOR{ 255,168,128 });  // a²+b²/2+c² : pink
 		drawQuadraticCurve(c4, 4, COLOR{ 192, 64,192 });  // v²/grad² : purple
-		//drawAxis(4, COLOR{ 255,0,0 });
+		drawQuadraticCurve(d0, 3, COLOR{ 128,128,255 }, true);  // a+c : hollow blue
+		drawQuadraticCurve(d1, 3, COLOR{ 255,128,128 }, true);  // f : hollow pink
 		for (int i = 0; i < N; i++) {
 			drawDot(P[i], 3, COLOR{ 0,0,0 });
 		}

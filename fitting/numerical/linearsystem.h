@@ -99,6 +99,9 @@ void transpose(int N, double *A) {
 void solveLinear(int N, const double *M, double *x) {
 	double *A = new double[N*N]; for (int i = 0; i < N*N; i++) A[i] = M[i];
 	for (int i = 0; i < N; i++) {
+		double m = 1.0 / A[i*N + i];
+		for (int k = i; k < N; k++) A[i*N + k] *= m;
+		x[i] *= m;
 		for (int j = 0; j < N; j++) if (j != i) {
 			double m = -A[j*N + i] / A[i*N + i];
 			for (int k = i; k < N; k++) A[j*N + k] += m * A[i*N + k];
