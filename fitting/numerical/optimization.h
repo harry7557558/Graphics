@@ -55,7 +55,7 @@ template<typename Fun> void nGrad2(Fun F, vec2 x, double &Fx, vec2 &grad, vec2 &
 
 
 
-// Non-standard Newton methods
+// Non-standard 2d methods based on Newton's iteration
 // Fails when iterates to a point with discontinuous or zero gradient
 
 
@@ -193,55 +193,21 @@ template<typename Fun> vec2 Newton_Iteration_2d_ad(Fun F, vec2 x0) {
 
 
 
-// debugging method
-template<typename Fun> vec2 Untitled_Method(Fun F, vec2 x0) {
-	const double e = 0.0001;
-	vec2 x = x0;
-	double F0x = INFINITY;
-	for (int i = 0; i < 10000; i++) {
-#if 0
-		double Fx = F(x);
-		double xp = F(x + vec2(e, 0)), xm = F(x - vec2(e, 0));
-		double yp = F(x + vec2(0, e)), ym = F(x - vec2(0, e));
-		vec2 g = (.5 / e)*vec2(xp - xm, yp - ym), eg = normalize(g);
-		double gm = (1. / (e*e)) * (F(x + e * eg) + F(x - e * eg) - 2.*Fx);
-		double t0 = 0, t1 = abs(1. / gm), phi0 = Fx, phi1 = F(x - t1 * g);
-		GoldenSectionSearch_1d([&](double t) { return F(x - t * g); }, t0, t1, phi0, phi1, 1e-4);
-		vec2 dx = g * (phi0 < phi1 ? t0 : t1);
-#else
-		double D[3][3];
-		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
-			D[i][j] = F(x + e * vec2(j - 1, i - 1));
-		double Fx = D[1][1];
-		vec2 g = (.5 / e) * vec2(D[1][2] - D[1][0], D[2][1] - D[0][1]);
-		vec2 g2 = (1. / (e*e)) * vec2(D[1][2] + D[1][0] - 2.*Fx, D[2][1] + D[0][1] - 2.*Fx);
-		double gxy = (.25 / (e*e)) * ((D[0][0] + D[2][2]) - (D[0][2] + D[2][0]));
-		double m = 1. / (g2.x*g2.y - gxy * gxy);
-		vec2 dx = m * vec2(g.x*g2.y - g.y*gxy, g2.x*g.y - g.x*gxy);
-		if (2.*dot(dx, g) < dot(dx, vec2(g2.x*dx.x + gxy * dx.y, gxy*dx.x + g2.y*dx.y))) dx = -dx;
-		if (dot(dx, dx) > 1e-4) {
-			double t0 = 0, t1 = 2, phi0 = Fx, phi1 = F(x - t1 * dx);
-			GoldenSectionSearch_1d([&](double t) { return F(x - t * dx); }, t0, t1, phi0, phi1, 1e-4);
-			dx = dx * (phi0 < phi1 ? t0 : t1);
-		}
-#endif
-
-		if (!(dx.sqr() > 1e-16 && abs(Fx - F0x) > 1e-12)) {
-			if (0.0*dot(dx, dx) == 0.0) return x - dx;
-			else return x;
-		}
-		else x -= dx;
-		F0x = Fx;
-#ifdef _DEBUG_OPTIMIZATION
-		drawLine(x, x + dx, COLOR({ 0,0,0 }));
-		drawDot(x, 5, COLOR({ 0,0,0 }));
-#endif
-}
-	return x;
+// numerical differentiation in higher dimensions
+// F: double F(const double *x);
+template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, double e = .0001) {
+	double *p = new double[N];
+	for (int i = 0; i < N; i++) p[i] = x[i];
+	for (int i = 0; i < N; i++) {
+		p[i] = x[i] - e;
+		double a = F(p);
+		p[i] = x[i] + e;
+		double b = F(p);
+		p[i] = x[i];
+		grad[i] = (.5 / e)*(b - a);
+	}
+	delete p;
 }
 
 
 
-
-// Numerical Recipe
-// http://user.it.uu.se/~matsh/opt/f8/f8.html

@@ -1,8 +1,9 @@
 // Fitting ellipse to point set experiment (incomplete)
 
+// WHY IS FITTING SUCH SIMPLE SHAPE SO **** ????
+
 /* To-do:
 	 - implement orthogonal least square fitting
-	 - try other eigenvalue algorithms (Jacobi, QR)
 	 - handle the case when the matrix is not invertible
 */
 
@@ -29,18 +30,6 @@ void generateMatrix(double M[6][6], const vec2 *P, int N) {
 }
 
 // debug functions
-void printMatrix(const double M[6][6], const char end[] = "\\\\\n") {  // latex output
-	printf("\\begin{bmatrix}");
-	for (int i = 0; i < 6; i++) {
-		for (int j = 0; j < 6; j++) {
-			if (abs(M[i][j]) < 1e-6) printf("0");
-			else printf("%.6g", M[i][j]);
-			if (j < 5) putchar('&');
-		}
-		printf("\\\\");
-	}
-	printf("\\end{bmatrix}%s", end);
-}
 void printVector(const double v[6], const char end[] = "\n") {
 	printf("(");
 	for (int i = 0; i < 6; i++) printf("%lf%c", v[i], i == 5 ? ')' : ',');
@@ -57,9 +46,10 @@ void printPolynomial(const double C[], int N, const char end[] = "\n") {
 
 
 
-// ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }
-void fitEllipse(const vec2 *P, int N, double v[6]) {
-	// Minimize vᵀMv, subject to vᵀv=1
+// ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }, {a,b,c,d,e,f}
+
+// Minimize vᵀMv, subject to vᵀv=1
+void fitEllipse0(const vec2 *P, int N, double v[6]) {
 	double M[6][6]; generateMatrix(M, P, N);
 	double lambda; EigenPair_invIter(M, lambda, v);
 	// if not ellipse, check other eivenvalues
@@ -75,26 +65,133 @@ void fitEllipse(const vec2 *P, int N, double v[6]) {
 		}
 	}
 }
-void fitEllipse1(const vec2 *P, int N, double v[6]) {
-	// Minimize vᵀMv, subject to 4ac-b²=1
-	// I'm sure there is a bug because it sometimes get hyperbolas
+
+// Minimize vᵀMv, subject to vᵀCv=1
+// To get expected result, C should be non-negative definite
+// I'm sure there is a bug because it sometimes gets hyperbolas
+void fitEllipse_ConstraintMatrix(const vec2 *P, int N, double v[6], const double C[6][6], bool checkEllipse = true) {
 	double M[6][6]; generateMatrix(M, P, N);
-	const double F[6][6] = { {0,0,2,0,0,0},{0,-1,0,0,0,0},{2,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
 	double I[6][6]; matinv(M, I);
-	double B[6][6]; matmul(I, F, B);
+	double B[6][6]; matmul(I, C, B);  // B is not symmetric
 	double u; EigenPair_powIter(B, u, v);
-	if (4.*v[0] * v[2] <= v[1] * v[1]) {
-		double eigv[6], eigvec[6][6];
-		EigenPairs_expand(B, eigv, eigvec);
-		for (int i = 1; i < 6; i++) {
-			auto w = eigvec[i];
-			if (4.*w[0] * w[2] > w[1] * w[1]) {
-				for (int j = 0; j < 6; j++) v[j] = w[j];
-				return;
+	if (checkEllipse) {
+		// make sure it is an ellipse
+		if (4.*v[0] * v[2] <= v[1] * v[1]) {
+			double eigv[6], eigvec[6][6];
+			EigenPairs_expand(B, eigv, eigvec);
+			for (int i = 1; i < 6; i++) {
+				auto w = eigvec[i];
+				if (4.*w[0] * w[2] > w[1] * w[1]) {
+					for (int j = 0; j < 6; j++) v[j] = w[j];
+					return;
+				}
 			}
 		}
 	}
 }
+
+// Minimize vᵀMv, subject to 4ac-b²=1
+void fitEllipse1(const vec2 *P, int N, double v[6]) {
+	const double C[6][6] = { {0,0,2,0,0,0},{0,-1,0,0,0,0},{2,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
+	fitEllipse_ConstraintMatrix(P, N, v, C);
+}
+// Minimize vᵀMv, subject to a²+c²=1
+void fitEllipse2(const vec2 *P, int N, double v[6]) {
+	const double C[6][6] = { {1,0,0,0,0,0},{0,0,0,0,0,0},{0,0,1,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
+	fitEllipse_ConstraintMatrix(P, N, v, C);
+}
+// Minimize vᵀMv, subject to a²+1/2b²+c²=1
+void fitEllipse3(const vec2 *P, int N, double v[6]) {
+	const double C[6][6] = { {1,0,0,0,0,0},{0,.5,0,0,0,0},{0,0,1,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
+	fitEllipse_ConstraintMatrix(P, N, v, C);
+}
+
+// Minimize vᵀMv/vᵀCv, where C is the sum of magnitude of gradients
+// visually good but checking hyperbolas makes it horrible
+void fitEllipse4(const vec2 *P, int N, double v[6]) {
+	double C[6][6] = { {0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
+	for (int i = 0; i < N; i++) {
+		double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y, xy = x * y;
+		C[0][0] += 4 * x2, C[1][1] += x2 + y2, C[2][2] += 4 * y2, C[3][3] += 1, C[4][4] += 1;
+		C[0][1] += 2 * xy, C[1][0] += 2 * xy; C[1][2] += 2 * xy, C[2][1] += 2 * xy;
+		C[0][3] += 2 * x, C[3][0] += 2 * x; C[2][4] += 2 * y, C[4][2] += 2 * y; C[1][3] += y, C[3][1] += y; C[1][4] += x, C[4][1] += x;
+	}
+	fitEllipse_ConstraintMatrix(P, N, v, C, false);
+}
+
+
+// all linear constraints DO NOT WORK
+#if 0
+
+// Minimize vᵀMv, subject to a+c=1
+void fitEllipse_ac1(const vec2 *P, int N, double v[6]) {
+#if 0
+	double M[6][6]; generateMatrix(M, P, N);
+	double c[6] = { 1,0,1,0,0,0 };
+	for (int i = 0; i < 6; i++) v[i] = c[i];
+	solveLinear(&M[0][0], v, 6);
+#else
+	double Sx4 = 0, Sx3y = 0, Sx2y2 = 0, Sxy3 = 0, Sy4 = 0;
+	double Sx3 = 0, Sx2y = 0, Sxy2 = 0, Sy3 = 0;
+	double Sx2 = 0, Sxy = 0, Sy2 = 0, Sx = 0, Sy = 0;
+	for (int i = 0; i < N; i++) {
+		double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y, xy = x * y;
+		Sx += x, Sy += y, Sx2 += x2, Sxy += xy, Sy2 += y2;
+		Sx3 += x2 * x, Sx2y += x2 * y, Sxy2 += x * y2, Sy3 += y2 * y;
+		Sx4 += x2 * x2, Sx3y += x2 * xy, Sx2y2 += xy * xy, Sxy3 += xy * y2, Sy4 += y2 * y2;
+	}
+	double M[5][5] = {
+		Sx4 - 2 * Sx2y2 + Sy4, Sx3y - Sxy3, Sx3 - Sxy2, Sx2y - Sy3, Sx2 - Sy2,
+		Sx3y - Sxy3, Sx2y2, Sx2y, Sxy2, Sxy,
+		Sx3 - Sxy2, Sx2y, Sx2, Sxy, Sx,
+		Sx2y - Sy3, Sxy2, Sxy, Sy2, Sy,
+		Sx2 - Sy2, Sxy, Sx, Sy, N
+	};
+	double B[5] = { Sx2y2 - Sy4, Sxy3, Sxy2, Sy3, Sy2 };
+	solveLinear(&M[0][0], &B[0], 5);
+	v[0] = -B[0], v[1] = -B[1], v[2] = 1. + B[0], v[3] = -B[2], v[4] = -B[3], v[5] = -B[4];
+#endif
+}
+
+// Minimize vᵀMv, subject to f=1
+void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
+#if 1
+	double M[6][6]; generateMatrix(M, P, N);
+	double c[6] = { 0,0,0,0,0,1 };
+	for (int i = 0; i < 6; i++) v[i] = c[i];
+	solveLinear(&M[0][0], v, 6);
+#else
+	double Sx4 = 0, Sx3y = 0, Sx2y2 = 0, Sxy3 = 0, Sy4 = 0;
+	double Sx3 = 0, Sx2y = 0, Sxy2 = 0, Sy3 = 0;
+	double Sx2 = 0, Sxy = 0, Sy2 = 0, Sx = 0, Sy = 0;
+	for (int i = 0; i < N; i++) {
+		double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y, xy = x * y;
+		Sx += x, Sy += y, Sx2 += x2, Sxy += xy, Sy2 += y2;
+		Sx3 += x2 * x, Sx2y += x2 * y, Sxy2 += x * y2, Sy3 += y2 * y;
+		Sx4 += x2 * x2, Sx3y += x2 * xy, Sx2y2 += xy * xy, Sxy3 += xy * y2, Sy4 += y2 * y2;
+	}
+	double M[5][5] = {
+		Sx4, Sx3y, Sx2y2, Sx3, Sx2y,
+		Sx3y, Sx2y2, Sxy3, Sx2y, Sxy2,
+		Sx2y2, Sxy3, Sy4, Sxy2, Sy3,
+		Sx3, Sx2y, Sxy2, Sx2, Sxy,
+		Sx2y, Sxy2, Sy3, Sxy, Sy2
+	};
+	double B[5] = { Sx2, Sxy, Sy2, Sx, Sy };
+	solveLinear(&M[0][0], &B[0], 5);
+	for (int i = 0; i < 5; i++) v[i] = B[i];
+	v[5] = -1;
+#endif
+}
+
+#endif
+
+
+
+
+#include "numerical/optimization.h"
+
+// To-do: minimize Euclidian distance numerically
 
 
 
@@ -112,17 +209,17 @@ void fitEllipse1(const vec2 *P, int N, double v[6]) {
 typedef unsigned char byte;
 typedef struct { byte r, g, b; } COLOR;
 COLOR mix(COLOR a, COLOR b, double d) {
-	auto f = [&](byte a, byte b) { return (byte)((1 - d)*a + d * b); };
-	//int k = d * 256; auto f = [&](byte a, byte b) { return (byte)(((256 - k)*a + k * b) >> 8); };
+	//auto f = [&](byte a, byte b) { return (byte)((1 - d)*a + d * b); };
+	int k = d * 256; auto f = [&](byte a, byte b) { return (byte)(((256 - k)*a + k * b) >> 8); };
 	return COLOR{ f(a.r,b.r), f(a.g,b.g), f(a.b,b.b) };
 }
 
 // image variables
-#define W 900
-#define H 600
+#define W 600
+#define H 400
 COLOR canvas[W*H];
 double buffer[W*H];
-#define Scale 50
+#define Scale 30
 #define Center vec2(0, 0)
 const vec2 fromCoord(0.5*W - Scale * Center.x, Scale*Center.y - (0.5 - 0.5*H));
 const vec2 fromScreen(-0.5*W / Scale + Center.x, (0.5*H - 0.5) / Scale + Center.y);
@@ -147,12 +244,10 @@ void drawDot(vec2 c, double r, COLOR col) {
 	r -= 0.5;
 	int i0 = max(0, (int)floor(C.x - r - 1)), i1 = min(W - 1, (int)ceil(C.x + r + 1));
 	int j0 = max(0, (int)floor(C.y - r - 1)), j1 = min(H - 1, (int)ceil(C.y + r + 1));
-	for (int j = j0; j <= j1; j++) {
-		for (int i = i0; i <= i1; i++) {
-			vec2 p = vec2(i - 0.5*W, 0.5*H - (j + 1)) * (1.0 / Scale) + Center;
-			double d = length(p - c) * Scale - r;
-			canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - d, 0., 1.));  // shade by distance to anti-aliase
-		}
+	for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
+		vec2 p = vec2(i - 0.5*W, 0.5*H - (j + 1)) * (1.0 / Scale) + Center;
+		double d = length(p - c) * Scale - r;
+		canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - abs(d), 0., 1.));  // draw hollow circle so the point density is more obvious
 	}
 }
 void drawQuadraticCurve(const double v[6], double width, COLOR col) {
@@ -223,7 +318,6 @@ void randomTest_eigen() {
 		vec2 P[10];
 		for (int i = 0; i < 10; i++) P[i] = randv(1.0);
 		generateMatrix(M, P, 10);
-		//printMatrix(M);
 
 #if 0
 		double lambda, lambda0, eigv[6];
@@ -277,21 +371,28 @@ void randomPointData(vec2 *P, int N) {
 
 // write lots of pictures to see fitting results
 void randomTest_image() {
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < 100; i++)
+	{
 		// generate point data
 		_IDUM = i;
 		const int N = 200;
 		vec2 *P = new vec2[N]; randomPointData(P, N);
 		// fitting
-		double c0[6]; fitEllipse(P, N, c0);
+		double c0[6]; fitEllipse0(P, N, c0);
 		double c1[6]; fitEllipse1(P, N, c1);
+		double c2[6]; fitEllipse2(P, N, c2);
+		double c3[6]; fitEllipse3(P, N, c3);
+		double c4[6]; fitEllipse4(P, N, c4);
 		// visualization
 		init();
-		drawQuadraticCurve(c0, 8, COLOR{ 192,255,128 });
-		drawQuadraticCurve(c1, 8, COLOR{ 255,192,128 });
-		drawAxis(5, COLOR{ 255,0,0 });
+		drawQuadraticCurve(c0, 4, COLOR{ 192,255,128 });  // v² : light green
+		drawQuadraticCurve(c1, 4, COLOR{ 232,232,128 });  // 4ac-b² : khaki color
+		drawQuadraticCurve(c2, 4, COLOR{ 255,192, 64 });  // a²+c² :  orange
+		drawQuadraticCurve(c3, 4, COLOR{ 255,168,128 });  // a²+b²/2+c² : pink
+		drawQuadraticCurve(c4, 4, COLOR{ 192, 64,192 });  // v²/grad² : purple
+		//drawAxis(4, COLOR{ 255,0,0 });
 		for (int i = 0; i < N; i++) {
-			drawDot(P[i], 5, COLOR{ 0,0,255 });
+			drawDot(P[i], 3, COLOR{ 0,0,0 });
 		}
 		// save image
 		char s[] = "tests\\test00.png";

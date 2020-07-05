@@ -93,6 +93,47 @@ void transpose(double A[6][6]) {
 	}
 }
 
+// solve linear system
+void solveLinear(const double *M, double *x, int N) {
+	double *A = new double[N*N]; for (int i = 0; i < N*N; i++) A[i] = M[i];
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) if (j != i) {
+			double m = -A[j*N + i] / A[i*N + i];
+			for (int k = i; k < N; k++) A[j*N + k] += m * A[i*N + k];
+			x[j] += m * x[i];
+		}
+	}
+	delete A;
+}
+
+
+
+
+
+// debug
+#include <stdio.h>
+void printMatrix(const double A[6][6], const char* end = "\n") {
+	putchar('{');
+	for (int i = 0; i < 6; i++) {
+		putchar('{');
+		for (int j = 0; j < 6; j++) printf("%lf%c", A[i][j], j == 5 ? '}' : ',');
+		putchar(i == 5 ? '}' : ',');
+	}
+	printf(end);
+}
+void printMatrix_latex(const double M[6][6], const char end[] = "\\\\\n") {
+	printf("\\begin{bmatrix}");
+	for (int i = 0; i < 6; i++) {
+		for (int j = 0; j < 6; j++) {
+			if (abs(M[i][j]) < 1e-6) printf("0");
+			else printf("%.6g", M[i][j]);
+			if (j < 5) putchar('&');
+		}
+		printf("\\\\");
+	}
+	printf("\\end{bmatrix}%s", end);
+}
+
 
 
 

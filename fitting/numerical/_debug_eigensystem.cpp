@@ -14,21 +14,6 @@ typedef std::chrono::duration<double> fsec;
 #include "random.h"
 
 
-// a debug function that checks the correctness of eigenpair calculation
-// eigvec should be normalized
-void _debug_check_eigenpair_correctness(const double M[6][6], double eigv, double eigvec[6]) {
-	double u[6]; matmul(M, eigvec, u);
-	double v[6]; for (int i = 0; i < 6; i++) v[i] = eigv * eigvec[i];
-	double e = 0; for (int i = 0; i < 6; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
-	if (abs(e / eigv - 1.) > 1e-10) {
-		printf("Error! %d\n", __LINE__);
-	}
-	e = 0; for (int i = 0; i < 6; i++) e += u[i] * v[i]; e /= eigv * eigv;
-	if (abs(e - 1.) > 1e-10) {
-		printf("Error! %d\n", __LINE__);
-	}
-}
-
 
 int main() {
 	auto t0 = NTime::now();

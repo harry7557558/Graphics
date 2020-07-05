@@ -16,6 +16,33 @@
 
 
 
+// checks the correctness of eigenpair calculation
+// eigvec should be normalized
+void _debug_check_eigenpair_correctness(const double M[6][6], double eigv, double eigvec[6]) {
+	double u[6]; matmul(M, eigvec, u);
+	double v[6]; for (int i = 0; i < 6; i++) v[i] = eigv * eigvec[i];
+	double e = 0; for (int i = 0; i < 6; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
+	if (abs(e / eigv - 1.) > 1e-10) {
+		printf("Error! eigensystem.h line %d\n", __LINE__);
+	}
+	e = 0; for (int i = 0; i < 6; i++) e += u[i] * v[i]; e /= eigv * eigv;
+	if (abs(e - 1.) > 1e-10) {
+		printf("Error! eigensystem.h line %d\n", __LINE__);
+	}
+}
+bool _check_eigenpair_correctness(const double M[6][6], double eigv, double eigvec[6]) {
+	double u[6]; matmul(M, eigvec, u);
+	double v[6]; for (int i = 0; i < 6; i++) v[i] = eigv * eigvec[i];
+	double e = 0; for (int i = 0; i < 6; i++) e += u[i] * u[i]; e = sqrt(e) * (eigv > 0. ? 1. : -1);
+	if (abs(e / eigv - 1.) > 1e-6) return false;
+	e = 0; for (int i = 0; i < 6; i++) e += u[i] * v[i]; e /= eigv * eigv;
+	if (abs(e - 1.) > 1e-6) return false;
+	return true;
+}
+
+
+
+
 
 
 // find the all eigenpairs of a matrix by solving its characteristic equation
@@ -164,10 +191,12 @@ void EigenPair_powIter(const double M[6][6], double &u, double a[6]) {
 		// warning: floatpoint precision
 	}
 	// calculate eigenvalue from eigenvector
-	u = 0;
 	double v[6]; matmul(M, a, v);
-	for (int i = 0; i < 6; i++) u += v[i] * v[i];
-	u = sqrt(u);
+	for (int i = 0; i < 6; i++) {
+		if (abs(a[i]) > .2) {
+			u = v[i] / a[i]; break;
+		}
+	}
 }
 void EigenPair_invIter(const double M[6][6], double &u, double a[6]) {
 	double A[6][6]; matinv(M, A);
@@ -227,5 +256,8 @@ void EigenPairs_Jacobi(const double M[6][6], double eigv[6], double eigvec[6][6]
 	for (int i = 0; i < 6; i++) eigv[i] = A[i][i];
 	transpose(C, eigvec);
 }
+
+
+
 
 
