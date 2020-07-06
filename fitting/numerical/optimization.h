@@ -243,8 +243,54 @@ template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, do
 
 
 
-// To-do: optimization in higher dimensions
+// Optimization in higher dimensions
 
 #include "linearsystem.h"
+#include "eigensystem.h"
+
+// one iteration: O(N²) samples, O(N³) complexity; quadratic convergence
+// currently no checks for saddle point
+template<typename Fun> void Newton_Iteration_Minimize(int N, Fun F, const double* x0, double* xm, bool checkSaddle = false) {
+	if (xm != x0) for (int i = 0; i < N; i++) xm[i] = x0[i];
+	double *g = new double[N], *g2 = new double[N*N];
+	double *dx = new double[N];
+	double y0 = INFINITY, y;
+	bool converging = false;
+	for (int i = 0; i < 10000; i++) {
+		NGrad2(N, F, xm, &y, g, g2);
+		for (int i = 0; i < N; i++) dx[i] = g[i];
+		solveLinear(N, g2, dx);
+		if (quamul(N, dx, g2, dx) > 2.0*vecdot(N, dx, g)) {  // make sure decent direction
+			for (int i = 0; i < N; i++) dx[i] = -dx[i];
+		}
+		double m = 0; for (int i = 0; i < N; i++) m += dx[i] * dx[i];
+		if (0.0*m == 0.0) {
+			for (int i = 0; i < N; i++) xm[i] -= dx[i];
+		}
+		if (!(m > 1e-12 && abs(y - y0) > 1e-8)) {
+			if (!converging) {
+				if (checkSaddle) {  // test positive-definiteness (slow)
+					EigenPairs_Jacobi(N, g2, g, g2);
+					double mg = INFINITY; int mi = -1;
+					for (int i = 0; i < N; i++) {
+						if (g[i] < mg) mg = g[i], mi = i;
+					}
+					if (mg < 0) {  // break the balance when it reaches a saddle point
+						m = max(sqrt(m), 1e-4);
+						for (int i = 0; i < N; i++) xm[i] -= m * g2[mi*N + i];
+					}
+					else converging = true;
+				}
+				else converging = true;
+			}
+			if (converging && !(m > 1e-16 && abs(y - y0) > 1e-12)) {  // termination
+				break;
+			}
+		}
+		y0 = y;
+	}
+	delete g; delete g2;
+	delete dx;
+}
 
 

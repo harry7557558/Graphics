@@ -40,6 +40,13 @@ double quamul(int N, const double *u, const double *A, const double *v) {
 	return s;
 }
 
+// evaluate uᵀv
+double vecdot(int N, const double *u, const double *v) {
+	double r = 0;
+	for (int i = 0; i < N; i++) r += u[i] * v[i];
+	return r;
+}
+
 // trace of a matrix
 double trace(int N, const double *M) {
 	double res = 0;

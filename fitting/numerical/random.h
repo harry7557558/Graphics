@@ -18,6 +18,9 @@ unsigned hashu(unsigned x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3bu;
 	return x = (x >> 16) ^ x;
 }
+double hashf(double x, double y) {
+	return fmod(sin(12.9898*x + 78.233*y + 1.) * 43758.5453, 1.);  // infamous; [-1,1] in C++
+};
 
 
 
