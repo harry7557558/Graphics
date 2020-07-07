@@ -166,11 +166,80 @@ void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 	for (int i = 0; i < N; i++) R += length(C - P[i]);
 	R /= N;
 	// debug output
-	printf("%d\t%.3lf %.3lf\t%.3lf\n", Calls, C.x, C.y, R);
+	printf("%d\t%.3lf %.3lf\t%.3lf\n", Calls, C.x, C.y, R);  // 3-6 calls
 	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
 	// In the test, this function fails 6 cases in 10000 cases.
 	// All failtures are caused by the gradient information leading it to infinity.
 	// Try to detect failture and restart iteration from a new startpoint when fails.
+}
+
+
+// Minimize Σ[x²+y²+ax+by+c]²/Σ[(2x+a)²+(2y+b)²], numerically
+// This formula gives a better estimate of the Euclidian distance
+void fitCircle_LN(const vec2* P, int N, vec2 &C, double &R) {
+	auto F = [&](double* coe) {
+		double a = coe[0], b = coe[1], c = coe[2];
+		double n = 0, m = 0;
+		for (int i = 0; i < N; i++) {
+			double x = P[i].x, y = P[i].y;
+			double u = x * x + y * y + a * x + b * y + c;
+			n += u * u;
+			m += (2 * x + a)*(2 * x + a) + (2 * y + b)*(2 * y + b);
+		}
+		return n / m;
+	};
+	fitCircle(P, N, C, R);
+	double coe[3] = { -2.*C.x, -2.*C.y, dot(C,C) - R * R };
+	Newton_Iteration_Minimize(3, F, coe, coe, true);
+	C = -.5*vec2(coe[0], coe[1]);
+	R = sqrt(dot(C, C) - coe[2]);
+
+#if 0
+	{
+		double Sx = 0, Sy = 0, Sx2 = 0, Sy2 = 0, Sxy = 0, Sx3 = 0, Sy3 = 0, Sx2y = 0, Sxy2 = 0, Sx4 = 0, Sy4 = 0;
+		for (int i = 0; i < N; i++) {
+			double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y;
+			Sx += x, Sy += y, Sx2 += x2, Sy2 += y2, Sxy += x * y;
+			Sx3 += x2 * x, Sy3 += y2 * y, Sx2y += x2 * y, Sxy2 += x * y2;
+			Sx4 += x2 * x2, Sy4 += y2 * y2;
+		}
+		double a = coe[0], b = coe[1], c = coe[2];  // 0.000000
+		printf("%lf ", N * c + Sx2 + Sy2 + a * Sx + b * Sy);
+		double Fl = N * Sx3 + N * Sxy2 - Sx * Sx2 - Sx * Sy2;
+		double Al = N * Sx2 - Sx * Sx, Bl = N * Sxy - Sx * Sy;
+		double Gl = 4 * Sx2 + 4 * Sy2;
+		double Fr = N * N*Sx4 + N * N*Sy4 + 2 * N*N*Sx2*Sy2 - N * Sx2*Sx2 - N * Sy2*Sy2 - 2 * N*Sx2*Sy2;
+		double Ar = 2 * N*N*Sx3 + 2 * N*N*Sxy2 - 2 * N*Sx*Sx2 - 2 * N*Sx*Sy2;
+		double Br = 2 * N*N*Sx2y + 2 * N*N*Sy3 - 2 * N*Sx2*Sy - 2 * N*Sy*Sy2;
+		double Ab = 2 * N*N*Sxy - 2 * N*Sx*Sy, A2 = N * N*Sx2 - N * Sx*Sx, B2 = N * N*Sy2 - N * Sy*Sy;
+		double Ca3 = N * Al - N * A2, Ca2b = N * Bl - N * Ab, Cab2 = N * Al - N * B2, Cb3 = N * Bl;
+		double Ca2 = N * Fl + 4 * Al*Sx - 2 * A2*Sx - N * Br, Cb2 = N * Fl + 4 * Bl*Sy - 2 * B2*Sx, Cab = 4 * Al*Sy + 4 * Bl*Sx - 2 * Ab*Sx - N * Br;
+		double Ca = 4 * Fl*Sx + Al * Gl - 2 * Ar*Sx - N * Fr, Cb = 4 * Fl*Sy + Bl * Gl - 2 * Br*Sx, C0 = Fl * Gl - 2 * Fr*Sx;
+		printf("%lf\n", Ca3*a*a*a + Ca2b * a*a*b + Cab2 * a*b*b + Cb3 * b*b*b + Ca2 * a*a + Cab * a*b + Cb2 * b*b + Ca * a + Cb * b + C0);  // not zero
+	}
+#endif
+	// I attempted to minimize this expression analytically. It took me almost two hours to get one equation (see above), only to find my calculation is wrong.
+	// If the expression is fully-expanded, it becomes a system of cubic equations with two variables, which can be solved numerically. In theory, that will be much faster.
+}
+
+// Numerically minimize Σ (x²+y²+ax+by+c)²/((2x+a)²+(2y+b)²)
+// Surprisingly, this one doesn't work better than the previous one (and is more unstable)
+void fitCircle_LS(const vec2* P, int N, vec2 &C, double &R) {
+	auto F = [&](double* coe) {
+		double a = coe[0], b = coe[1], c = coe[2];
+		double d = 0;
+		for (int i = 0; i < N; i++) {
+			double x = P[i].x, y = P[i].y;
+			double u = x * x + y * y + a * x + b * y + c;
+			d += u * u / ((2 * x + a)*(2 * x + a) + (2 * y + b)*(2 * y + b));
+		}
+		return d;
+	};
+	fitCircle(P, N, C, R);
+	double coe[3] = { -2.*C.x, -2.*C.y, dot(C,C) - R * R };
+	Newton_Iteration_Minimize(3, F, coe, coe, true);
+	C = -.5*vec2(coe[0], coe[1]);
+	R = sqrt(dot(C, C) - coe[2]);
 }
 
 
@@ -226,11 +295,12 @@ void drawDot(vec2 c, double r, COLOR col) {
 		canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - d, 0., 1.));
 	}
 }
-void drawCircle(vec2 c, double r, double width, COLOR col) {
+void drawCircle(vec2 c, double r, double width, COLOR col, bool hollow = false) {
 	width *= 0.5;
 	for (int j = 0; j < H; j++) for (int i = 0; i < W; i++) {
 		vec2 p = fromScreen(i, j);
 		double d = abs(length(p - c) - r) * Scale - width;
+		if (hollow) d = abs(d);
 		if (d < 0) canvas[j*W + i] = col;
 		else if (d < 1) canvas[j*W + i] = mix(col, canvas[j*W + i], d);
 	}
@@ -281,11 +351,15 @@ void randomTest_image() {
 		// fitting and visualization
 		init();
 		vec2 c; double r;
+		// minimize algebraic distance, should be identical
 		fitCircle_Numerical(P, N, c, r); drawCircle(c, r, 8, COLOR{ 192,192,192 });
 		fitCircle(P, N, c, r); drawCircle(c, r, 5, COLOR{ 192,255,128 });
 		fitCircle_E(P, N, c, r); drawCircle(c, r, 3, COLOR{ 160,232,255 });
-		//fitCircle_O(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
+		// minimize Euclidian distance
 		fitCircle_O_ad(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
+		// minimize approximated Euclidian distance
+		fitCircle_LS(P, N, c, r); drawCircle(c, r, 3, COLOR{ 255,128,128 }, true);
+		fitCircle_LN(P, N, c, r); drawCircle(c, r, 3, COLOR{ 128,128,255 }, true);
 		// visualization
 		drawAxis(3, COLOR{ 0,0,255 });
 		for (int i = 0; i < N; i++) drawDot(P[i], 3.5, COLOR{ 255,0,0 });
