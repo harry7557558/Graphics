@@ -174,7 +174,7 @@ void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 }
 
 
-// Minimize Σ[x²+y²+ax+by+c]²/Σ[(2x+a)²+(2y+b)²], numerically
+// [blue] Minimize Σ[x²+y²+ax+by+c]²/Σ[(2x+a)²+(2y+b)²], numerically
 // This formula gives a better estimate of the Euclidian distance
 void fitCircle_LN(const vec2* P, int N, vec2 &C, double &R) {
 	auto F = [&](double* coe) {
@@ -193,36 +193,38 @@ void fitCircle_LN(const vec2* P, int N, vec2 &C, double &R) {
 	Newton_Iteration_Minimize(3, F, coe, coe, true);
 	C = -.5*vec2(coe[0], coe[1]);
 	R = sqrt(dot(C, C) - coe[2]);
-
-#if 0
-	{
-		double Sx = 0, Sy = 0, Sx2 = 0, Sy2 = 0, Sxy = 0, Sx3 = 0, Sy3 = 0, Sx2y = 0, Sxy2 = 0, Sx4 = 0, Sy4 = 0;
-		for (int i = 0; i < N; i++) {
-			double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y;
-			Sx += x, Sy += y, Sx2 += x2, Sy2 += y2, Sxy += x * y;
-			Sx3 += x2 * x, Sy3 += y2 * y, Sx2y += x2 * y, Sxy2 += x * y2;
-			Sx4 += x2 * x2, Sy4 += y2 * y2;
-		}
-		double a = coe[0], b = coe[1], c = coe[2];  // 0.000000
-		printf("%lf ", N * c + Sx2 + Sy2 + a * Sx + b * Sy);
-		double Fl = N * Sx3 + N * Sxy2 - Sx * Sx2 - Sx * Sy2;
-		double Al = N * Sx2 - Sx * Sx, Bl = N * Sxy - Sx * Sy;
-		double Gl = 4 * Sx2 + 4 * Sy2;
-		double Fr = N * N*Sx4 + N * N*Sy4 + 2 * N*N*Sx2*Sy2 - N * Sx2*Sx2 - N * Sy2*Sy2 - 2 * N*Sx2*Sy2;
-		double Ar = 2 * N*N*Sx3 + 2 * N*N*Sxy2 - 2 * N*Sx*Sx2 - 2 * N*Sx*Sy2;
-		double Br = 2 * N*N*Sx2y + 2 * N*N*Sy3 - 2 * N*Sx2*Sy - 2 * N*Sy*Sy2;
-		double Ab = 2 * N*N*Sxy - 2 * N*Sx*Sy, A2 = N * N*Sx2 - N * Sx*Sx, B2 = N * N*Sy2 - N * Sy*Sy;
-		double Ca3 = N * Al - N * A2, Ca2b = N * Bl - N * Ab, Cab2 = N * Al - N * B2, Cb3 = N * Bl;
-		double Ca2 = N * Fl + 4 * Al*Sx - 2 * A2*Sx - N * Br, Cb2 = N * Fl + 4 * Bl*Sy - 2 * B2*Sx, Cab = 4 * Al*Sy + 4 * Bl*Sx - 2 * Ab*Sx - N * Br;
-		double Ca = 4 * Fl*Sx + Al * Gl - 2 * Ar*Sx - N * Fr, Cb = 4 * Fl*Sy + Bl * Gl - 2 * Br*Sx, C0 = Fl * Gl - 2 * Fr*Sx;
-		printf("%lf\n", Ca3*a*a*a + Ca2b * a*a*b + Cab2 * a*b*b + Cb3 * b*b*b + Ca2 * a*a + Cab * a*b + Cb2 * b*b + Ca * a + Cb * b + C0);  // not zero
-	}
-#endif
-	// I attempted to minimize this expression analytically. It took me almost two hours to get one equation (see above), only to find my calculation is wrong.
-	// If the expression is fully-expanded, it becomes a system of cubic equations with two variables, which can be solved numerically. In theory, that will be much faster.
 }
 
-// Numerically minimize Σ (x²+y²+ax+by+c)²/((2x+a)²+(2y+b)²)
+// [green] Same formula with some analytical simplifications
+void fitCircle_LNS(const vec2* P, int N, vec2 &C, double &R) {
+	double Sx = 0, Sy = 0, Sx2 = 0, Sy2 = 0;
+	for (int i = 0; i < N; i++) {
+		double x = P[i].x, y = P[i].y;
+		Sx += x, Sy += y, Sx2 += x * x, Sy2 += y * y;
+	}
+	double Ax = Sx / N, Ay = Sy / N, Ax2 = Sx2 / N, Ay2 = Sy2 / N;
+	double A2 = N, B2 = 0, C2 = N, D2 = 4.*Sx, E2 = 4.*Sy, F2 = 4.*(Sx2 + Sy2);
+	double A1 = 0, B1 = 0, C1 = 0, D1 = 0, E1 = 0, F1 = 0;
+	for (int i = 0; i < N; i++) {
+		double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y;
+		double d2 = x2 - Ax2 + y2 - Ay2;
+		double dx = x - Ax, dy = y - Ay;
+		A1 += dx * dx, C1 += dy * dy, F1 += d2 * d2;
+		B1 += 2.*dx*dy, D1 += 2.*dx*d2, E1 += 2.*dy*d2;
+	}
+	// just too lazy to calculate the analytical derivative of this
+	auto E = [&](vec2 p) {
+		double x = p.x, y = p.y, x2 = x * x, y2 = y * y, xy = x * y;
+		double n = A1 * x2 + B1 * xy + C1 * y2 + D1 * x + E1 * y + F1, m = A2 * x2 + B2 * xy + C2 * y2 + D2 * x + E2 * y + F2;
+		return n / m;
+	};
+	fitCircle(P, N, C, R);
+	vec2 ab = Newton_Iteration_2d_(E, vec2(-2.*C.x, -2.*C.y));
+	C = -.5*ab;
+	R = sqrt(dot(C, C) + (Sx2 + Sy2 + ab.x * Sx + ab.y * Sy) / N);
+}
+
+// [red] Numerically minimize Σ (x²+y²+ax+by+c)²/((2x+a)²+(2y+b)²)
 // Surprisingly, this one doesn't work better than the previous one (and is more unstable)
 void fitCircle_LS(const vec2* P, int N, vec2 &C, double &R) {
 	auto F = [&](double* coe) {
@@ -330,8 +332,8 @@ void randomPointData(vec2 *P, int N) {
 	vec2 c = randv_n(2.0);
 	double r = randf(1.0, 4.0);
 	// parameters of random number generator
-	double u = randf(0, 2.*PI), v = randf(0.5, 2.0);
-	double f = randf(0.05, 0.4);
+	double u = randf(0, 2.*PI), v = 0.5 + abs(randf_n(0.8));
+	double f = randf(0.1, 0.5);
 	// generating random points
 	for (int i = 0; i < N; i++) {
 		double t = u + randf_n(v);
@@ -346,7 +348,7 @@ void randomTest_image() {
 	{
 		// generate point data
 		_SRAND(i);
-		int N = (int)(randf_n(80) + 200); N = max(N, 3);
+		int N = (int)(randf_n(50) + 120); N = max(N, 3);
 		vec2 *P = new vec2[N]; randomPointData(P, N);
 		// fitting and visualization
 		init();
@@ -360,6 +362,7 @@ void randomTest_image() {
 		// minimize approximated Euclidian distance
 		fitCircle_LS(P, N, c, r); drawCircle(c, r, 3, COLOR{ 255,128,128 }, true);
 		fitCircle_LN(P, N, c, r); drawCircle(c, r, 3, COLOR{ 128,128,255 }, true);
+		fitCircle_LNS(P, N, c, r); drawCircle(c, r, 3, COLOR{ 128,255,128 }, true);
 		// visualization
 		drawAxis(3, COLOR{ 0,0,255 });
 		for (int i = 0; i < N; i++) drawDot(P[i], 3.5, COLOR{ 255,0,0 });
@@ -380,13 +383,21 @@ void randomTest_numerical() {
 	{
 		// the same generator as randomTest_image
 		_SRAND(i);
-		int N = (int)(randf_n(80) + 200); N = max(N, 3);
+		int N = (int)(randf_n(50) + 120); N = max(N, 3);
 		vec2 *P = new vec2[N]; randomPointData(P, N);
 		printf("%d\t%d\t", i, N);
 		// fitting
 		vec2 c; double r;
-		//fitCircle_O(P, N, c, r);
-		fitCircle_O_ad(P, N, c, r);
+
+		//c = vec2(r = 0.0);  // 0.26s, reference
+		//fitCircle(P, N, c, r);  // 0.27s
+		//fitCircle_E(P, N, c, r);  // 0.27s
+		//fitCircle_O(P, N, c, r);  // 2.88s, 29 fails
+		//fitCircle_O_ad(P, N, c, r);  // 0.48s, 20 fails
+		//fitCircle_LN(P, N, c, r);  // 1.15s, 2 fails
+		fitCircle_LNS(P, N, c, r);  // 0.29s, 2 fails
+		//fitCircle_LS(P, N, c, r);  // 10.66s, 81 fails
+
 		if (!(r < 10) && N > 3) {  // (possible) failture
 			fprintf(stderr, "%d\t%d\t%lf\t%lf\t%lf\t\n", i, N, c.x, c.y, r);
 		}
@@ -398,8 +409,8 @@ void randomTest_numerical() {
 
 
 int main() {
-	randomTest_image(); exit(0);
-	//randomTest_numerical(); exit(0);
+	//randomTest_image(); exit(0);
+	randomTest_numerical(); exit(0);
 	return 0;
 }
 
