@@ -249,14 +249,14 @@ template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, do
 #include "eigensystem.h"
 
 // one iteration: O(N²) samples, O(N³) complexity; quadratic convergence
-// currently no checks for saddle point
-template<typename Fun> void Newton_Iteration_Minimize(int N, Fun F, const double* x0, double* xm, bool checkSaddle = false) {
+// return true when (possible) succeed
+template<typename Fun> bool Newton_Iteration_Minimize(int N, Fun F, const double* x0, double* xm, bool checkSaddle = false, int MAX_ITER = 10000) {
 	if (xm != x0) for (int i = 0; i < N; i++) xm[i] = x0[i];
 	double *g = new double[N], *g2 = new double[N*N];
 	double *dx = new double[N];
 	double y0 = INFINITY, y;
 	bool converging = false;
-	for (int i = 0; i < 10000; i++) {
+	for (int i = 0; i < MAX_ITER; i++) {
 		NGrad2(N, F, xm, &y, g, g2);
 		for (int i = 0; i < N; i++) dx[i] = g[i];
 		solveLinear(N, g2, dx);
@@ -284,13 +284,14 @@ template<typename Fun> void Newton_Iteration_Minimize(int N, Fun F, const double
 				else converging = true;
 			}
 			if (converging && !(m > 1e-16 && abs(y - y0) > 1e-12)) {  // termination
-				break;
+				delete g; delete g2; delete dx;
+				return true;
 			}
 		}
 		y0 = y;
 	}
-	delete g; delete g2;
-	delete dx;
+	delete g; delete g2; delete dx;
+	return false;
 }
 
 

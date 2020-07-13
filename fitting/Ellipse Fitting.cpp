@@ -1,25 +1,37 @@
-// Fitting ellipse to point set experiment (incomplete)
+// Fitting ellipse to planar point set experiment
 
 // WHY IS FITTING SUCH SIMPLE SHAPE SO **** ????
 
 /* To-do:
-	 - implement orthogonal least square fitting
 	 - handle the case when the matrix is not invertible
 	 - try to render dashed/dotted lines because the colors are really messy
 	 - think this problem: do fitted shapes change after translating the points?
 */
+
+// Ironically, in this file, testing code is longer than fitting code.
+
 
 
 // some modules are organized into the "numerical" folder
 #include "numerical/eigensystem.h"
 #include "numerical/geometry.h"
 #include "numerical/random.h"
+#include "numerical/rootfinding.h"
+#include "numerical/optimization.h"
+
 
 #include <stdio.h>
 #include <chrono>
+#include <algorithm>
 
 
-// generate matrix for ellipse fitting, should be positive (semi)definite
+
+
+
+
+// Ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }, {a,b,c,d,e,f}
+
+// generate least square fitting matrix, should be positive (semi)definite
 void generateMatrix(double M[6][6], const vec2 *P, int N) {
 	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) M[i][j] = 0;
 	for (int n = 0; n < N; n++) {
@@ -31,24 +43,6 @@ void generateMatrix(double M[6][6], const vec2 *P, int N) {
 	}
 }
 
-// debug functions
-void printVector(const double v[6], const char end[] = "\n") {
-	printf("(");
-	for (int i = 0; i < 6; i++) printf("%lf%c", v[i], i == 5 ? ')' : ',');
-	printf("%s", end);
-}
-void printPolynomial(const double C[], int N, const char end[] = "\n") {
-	printf("%lgx^{%d}", C[0], N);
-	for (int i = 1; i < N; i++) {
-		printf("%+.16lf*x^{%d}", C[i], N - i);
-	}
-	printf("%+.16lf%s", C[N], end);
-}
-
-
-
-
-// ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }, {a,b,c,d,e,f}
 
 
 // Ellipse fitting with quadratic constraints, solve for eigenvalues
@@ -113,7 +107,7 @@ void fitEllipse3(const vec2 *P, int N, double v[6]) {
 
 // Minimize vᵀMv/vᵀCv, where C is the sum of magnitude of gradients
 // doesn't "shrink", visually good but checking hyperbolas makes it horrible
-void fitEllipse4(const vec2 *P, int N, double v[6]) {
+void fitEllipse_grad(const vec2 *P, int N, double v[6]) {
 	double C[6][6] = { {0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };
 	for (int i = 0; i < N; i++) {
 		double x = P[i].x, y = P[i].y, x2 = x * x, y2 = y * y, xy = x * y;
@@ -191,13 +185,81 @@ void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
 
 
 
+// Fitting quadratic curves by minimizing the sum of the square of the exact Euclidian distance
+// As a reference, doesn't seem to be practical
+
+// calculate the exact distance to a quadratic curve (slow)
+double distanceToQuadratic(const double v[6], vec2 p) {
+	double a = v[0], b = v[1], c = v[2], d = v[3], e = v[4], f = v[5];
+	double x0 = p.x, y0 = p.y;
+	// temp variables
+	double u2 = b * e - 2 * c*d, u1 = 4 * c*x0 - 2 * b*y0 - 2 * d, u0 = 4 * x0;
+	double v2 = b * d - 2 * a*e, v1 = 4 * a*y0 - 2 * b*x0 - 2 * e, v0 = 4 * y0;
+	double w2 = 4 * a*c - b * b, w1 = 4 * a + 4 * c, w0 = 4;
+	// coefficients of the quartic equation
+	double c4 = a * u2*u2 + b * u2*v2 + c * v2*v2 + d * u2*w2 + e * v2*w2 + f * w2*w2;
+	double c3 = a * (2 * u1*u2) + b * (u2*v1 + u1 * v2) + c * (2 * v1*v2) + d * (u2*w1 + u1 * w2) + e * (v2*w1 + v1 * w2) + f * (2 * w1*w2);
+	double c2 = a * (2 * u0*u2 + u1 * u1) + b * (u2*v0 + u0 * v2 + u1 * v1) + c * (2 * v0*v2 + v1 * v1) + d * (u2*w0 + u0 * w2 + u1 * w1) + e * (v2*w0 + v0 * w2 + v1 * w1) + f * (2 * w0*w2 + w1 * w1);
+	double c1 = a * (2 * u0*u1) + b * (u1*v0 + u0 * v1) + c * (2 * v0*v1) + d * (u0*w1 + u1 * w0) + e * (v0*w1 + v1 * w0) + f * (2 * w1*w0);
+	double c0 = a * u0*u0 + b * u0*v0 + c * v0*v0 + d * u0*w0 + e * v0*w0 + f * w0*w0;
+	// solve for the Lagrangian
+	double r[4];
+	int N = solveQuartic(c4, c3, c2, c1, c0, r);
+	if (N == 0) {  // curve not exist
+		// not sure if this can work
+		// continuous but not differentiable
+		double invdet = 1. / (4 * a*c - b * b);
+		double x = invdet * (-2 * c*d + b * e);
+		double y = invdet * (-2 * a*e + b * d);
+		double val = a * x*x + b * x*y + c * y*y + d * x + e * y + f;
+		return length(p - vec2(x, y)) + val;
+	}
+	// find the nearest root
+	double md = INFINITY, ml;
+	for (int i = 0; i < N; i++) {
+		double l = r[i];
+		double invdet = 1.0 / (w0 + l * (w1 + l * w2));
+		double x = invdet * (u0 + l * (u1 + l * u2));
+		double y = invdet * (v0 + l * (v1 + l * v2));
+		double d = (x - x0)*(x - x0) + (y - y0)*(y - y0);
+		if (d < md) md = d, ml = l;
+	}
+	// "refine" the root
+	ml = refineRoot_quartic(c4, c3, c2, c1, c0, ml);
+	return length(vec2(u0 + ml * (u1 + ml * u2), v0 + ml * (v1 + ml * v2)) / (w0 + ml * (w1 + ml * w2)) - p);
+}
+
+// Ellipse fitting using the Euclidian distance
+void fitEllipse_Euclidian(const vec2 *P, int N, double v[6]) {
+	// hope this curve doesn't go through the origin...
+	auto E = [&](double c[5]) {
+		double k[6] = { c[0], c[1], c[2], c[3], c[4], 1 };
+		double s = 0;
+		for (int i = 0; i < N; i++) {
+			double d = distanceToQuadratic(k, P[i]);
+			s += d * d;
+		}
+		return s;
+	};
+	double c[6];
+	fitEllipse_grad(P, N, c);
+	for (int i = 0; i < 5; i++) c[i] /= c[5];
+	Newton_Iteration_Minimize(5, E, c, c, true, 128);
+	double eg = E(c);
+	for (int i = 0; i < 5; i++) v[i] = c[i]; v[5] = 1;
+	fitEllipse0(P, N, c);
+	for (int i = 0; i < 5; i++) c[i] /= c[5];
+	Newton_Iteration_Minimize(5, E, c, c, true, 128);
+	if (E(c) < eg) for (int i = 0; i < 5; i++) v[i] = c[i];
+}
 
 
-#include "numerical/optimization.h"
-
-// To-do: minimize Euclidian distance numerically
 
 
+
+
+
+// ================================================================ Testing Code ================================================================
 
 
 
@@ -229,7 +291,7 @@ const vec2 fromCoord(0.5*W - Scale * Center.x, Scale*Center.y - (0.5 - 0.5*H));
 const vec2 fromScreen(-0.5*W / Scale + Center.x, (0.5*H - 0.5) / Scale + Center.y);
 
 // painting functions
-void drawAxis(double width, COLOR col) {
+void drawAxis(double width, COLOR col, bool grid = true) {
 	width *= 0.5;
 	// go through all pixels (may be slow)
 	for (int j = 0; j < H; j++) {
@@ -237,13 +299,13 @@ void drawAxis(double width, COLOR col) {
 			vec2 p = vec2(i, -j) * (1.0 / Scale) + fromScreen;
 			p = vec2(abs(p.x), abs(p.y));
 			double d = min(p.x, p.y) * Scale - width;
-			d = min(d, Scale * (.5 - max(abs(fmod(p.x, 1.) - .5), abs(fmod(p.y, 1.) - .5))));  // grid
+			if (grid) d = min(d, Scale * (.5 - max(abs(fmod(p.x, 1.) - .5), abs(fmod(p.y, 1.) - .5))));
 			if (d < 0) canvas[j*W + i] = col;
 			else if (d < 1) canvas[j*W + i] = mix(col, canvas[j*W + i], d);
 		}
 	}
 }
-void drawDot(vec2 c, double r, COLOR col) {
+void drawDot(vec2 c, double r, COLOR col, bool hollow = true) {
 	vec2 C = vec2(c.x, -c.y) * Scale + fromCoord;
 	r -= 0.5;
 	int i0 = max(0, (int)floor(C.x - r - 1)), i1 = min(W - 1, (int)ceil(C.x + r + 1));
@@ -251,7 +313,8 @@ void drawDot(vec2 c, double r, COLOR col) {
 	for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
 		vec2 p = vec2(i - 0.5*W, 0.5*H - (j + 1)) * (1.0 / Scale) + Center;
 		double d = length(p - c) * Scale - r;
-		canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - abs(d), 0., 1.));  // draw hollow circle so the point density is more obvious
+		if (hollow) d = abs(d);
+		canvas[j*W + i] = mix(canvas[j*W + i], col, 0.75 * clamp(1. - d, 0., 1.));
 	}
 }
 void drawQuadraticCurve(const double v[6], double width, COLOR col, bool hollow = false) {
@@ -274,6 +337,18 @@ void drawQuadraticCurve(const double v[6], double width, COLOR col, bool hollow 
 	}
 }
 
+// visualizing distance function
+void visualizeDistance(const double c[6]) {
+	for (int j = 0; j < H; j++) for (int i = 0; i < W; i++) {
+		vec2 p = vec2(i, -j) * (1.0 / Scale) + fromScreen;
+		double d0 = distanceToQuadratic(c, p);
+		double d = Scale * abs(d0);
+		double s = 128 * (0.2 * cos(0.5*d) + 1) * (1.0 - 0.7*exp(-.03*d));
+		canvas[j*W + i] = mix(COLOR{ byte(1.6*s), byte(1.4*s), byte(1.2*s) }, COLOR{ 255,255,255 }, clamp(.4*(4. - d), 0., 1.));
+		if (d0 < 0.) std::swap(canvas[j*W + i].r, canvas[j*W + i].b);
+	}
+}
+
 // initialize and save image
 void init() {
 	for (int i = 0, l = W * H; i < l; i++) canvas[i] = COLOR{ 255,255,255 };
@@ -289,7 +364,7 @@ bool save(const char* path) {
 
 
 
-// random tests for debug
+// Test fitting methods with random data
 
 // test eigenvalue calculation
 bool checkEigenpair(const double M[6][6], double lambda, const double v[6]) {
@@ -331,9 +406,9 @@ void randomTest_eigen() {
 			if (!checkEigenpair(M, eigv[t], eigvec[t])) {
 				printf("%d_%d\n", i, t);
 			}
-	}
+		}
 #endif
-}
+	}
 
 	printf("%lfs elapsed\n", std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count());
 }
@@ -384,38 +459,125 @@ void randomTest_image() {
 		double c1[6]; fitEllipse1(P, N, c1);
 		double c2[6]; fitEllipse2(P, N, c2);
 		double c3[6]; fitEllipse3(P, N, c3);
-		double c4[6]; fitEllipse4(P, N, c4);
+		double cg[6]; fitEllipse_grad(P, N, cg);
 		double d0[6]; fitEllipse_ac1(P, N, d0);
 		double d1[6]; fitEllipse_f1(P, N, d1);
+		double ec[6]; fitEllipse_Euclidian(P, N, ec);  // EXTREMLY SLOW!!!!!!
 		// write result to stdout
 		auto printc = [](double *c) {
 			printf("%c %lfx^2%+lfxy%+lfy^2%+lfx%+lfy%+lf=0\n", 4.*c[0] * c[2] > c[1] * c[1] ? 'E' : 'H',
 				c[0], c[1], c[2], c[3], c[4], c[5]);
 		};
 		printf("Test %d\n", i);
-		printc(c0); printc(c1); printc(c2); printc(c3); printc(c4);
-		printc(d0); printc(d1);
+		printc(c0); printc(c1); printc(c2); printc(c3); printc(cg);
+		printc(d0); printc(d1); printc(ec);
 		printf("\n");
 #if 1
 		// visualization
+#if 1
+		// visualize fitting result
 		init();
 		drawAxis(2, COLOR{ 232,232,232 });
+		drawQuadraticCurve(ec, 8, COLOR{ 232,232,232 });  // reference; one should be able to identify failtures visually (#97 is pretty obvious)
 		drawQuadraticCurve(c0, 4, COLOR{ 192,255,128 });  // v² : light green
 		drawQuadraticCurve(c1, 4, COLOR{ 232,232,128 });  // 4ac-b² : khaki color
 		drawQuadraticCurve(c2, 4, COLOR{ 255,192, 64 });  // a²+c² :  orange
 		drawQuadraticCurve(c3, 4, COLOR{ 255,168,128 });  // a²+b²/2+c² : pink
-		drawQuadraticCurve(c4, 4, COLOR{ 192, 64,192 });  // v²/grad² : purple
+		drawQuadraticCurve(cg, 4, COLOR{ 192, 64,192 });  // v²/grad² : purple
 		drawQuadraticCurve(d0, 3, COLOR{ 128,128,255 }, true);  // a+c : hollow blue
 		drawQuadraticCurve(d1, 3, COLOR{ 255,128,128 }, true);  // f : hollow pink
 		for (int i = 0; i < N; i++) {
 			drawDot(P[i], 3, COLOR{ 0,0,0 });
 		}
+#else
+		// debug distance - WHY IS MY ART SO BAD???
+		visualizeDistance(cg);
+		drawAxis(2, COLOR{ 232,232,232 }, false);
+		for (int i = 0; i < N; i++) {
+			drawDot(P[i], 3, COLOR{ 255,0,0 }, false);
+		}
+#endif
 		// save image
 		char s[] = "tests\\test00.png";
 		s[10] = i / 10 + '0', s[11] = i % 10 + '0';
 		save(s);
 #endif
+		delete P;
 	}
+}
+
+// test the performance and stability of ellipse fitting methods
+#define TEST_N 10000
+void randomTest_numerical() {
+	freopen("tests\\test.txt", "w", stdout);
+	// generate test data
+	int PN[TEST_N]; vec2 *P[TEST_N];
+	for (int i = 0; i < TEST_N; i++) {
+		_SRAND(i);
+		PN[i] = (int)(randf_n(50) + 200); PN[i] = max(PN[i], 5);
+		P[i] = new vec2[PN[i]]; randomPointData(P[i], PN[i]);
+	}
+	// fitting
+	double v[TEST_N][6];
+	auto t0 = std::chrono::high_resolution_clock::now();
+	for (int i = 0; i < TEST_N; i++) {
+		// place an ellipse fitting function there
+		fitEllipse0(P[i], PN[i], v[i]);
+	}
+	double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
+	// check result
+	double Err[TEST_N], sumErr = 0; int totS = 0;
+	int HyperbolaCount = 0;
+	for (int T = 0; T < TEST_N; T++) {
+		double err = 0;
+		for (int i = 0; i < PN[T]; i++) {
+			double e = distanceToQuadratic(v[T], P[T][i]);
+			err += e * e;
+		}
+		Err[T] = err / PN[T];
+		if (0.0*Err[T] == 0.0) sumErr += Err[T], totS++;
+		if (!(abs(v[T][1]) < 1e6 && abs(v[T][5]) < 1e6)) {
+			printf("#%d %lfx^2%+lfxy%+lfy^2%+lfx%+lfy%+lf=0\n", T, v[T][0], v[T][1], v[T][2], v[T][3], v[T][4], v[T][5]);
+		}
+		HyperbolaCount += v[T][1] * v[T][1] > 4. * v[T][0] * v[T][2];
+	}
+	printf("%.3lfsecs, %d hyperbolas;\n", time_elapsed, HyperbolaCount);
+	std::sort(Err, Err + TEST_N);
+	printf("Average loss %.3lf; Minimum/Median/Maximum losses %.3lf, %.3lf, %.3lf, %.3lf, %.3lf.\n",
+		sumErr / totS, Err[0], Err[TEST_N / 4], Err[TEST_N / 2], Err[3 * TEST_N / 4], Err[TEST_N - 1]);
+}
+
+// test if shape change after linear transforms
+void randomTest_transform(void fitEllipse(const vec2*, int, double[])) {
+	double sse = 0, ste = 0;
+	auto normalize = [](double v[6]) {
+		double m = 0; for (int i = 0; i < 6; i++) m += v[i] * v[i];
+		m = 1.0 / sqrt(m); for (int i = 0; i < 6; i++) v[i] *= m;
+	};
+	auto normalizef = [](double v[6]) {
+		double m = 0; for (int i = 0; i < 3; i++) m += v[i] * v[i];
+		m = 1.0 / sqrt(m); for (int i = 0; i < 6; i++) v[i] *= m;
+	};
+	for (int i = 0; i < TEST_N; i++) {
+		_IDUM = i;
+		vec2 P[100]; randomPointData(P, 100);
+		double v0[6]; fitEllipse(P, 100, v0); normalize(v0);
+		double sc = randf(0.01, 100);
+		vec2 PS[100]; for (int i = 0; i < 100; i++) PS[i] = P[i] * sc;
+		double vs[6]; fitEllipse(PS, 100, vs);
+		vs[0] *= sc * sc, vs[1] *= sc * sc, vs[2] *= sc * sc, vs[3] *= sc, vs[4] *= sc; normalize(vs);
+		double e = 0; for (int i = 0; i < 6; i++) e += v0[i] * vs[i]; sse += (e - 1)*(e - 1);
+		vec2 tr = randv_n(20);
+		vec2 PT[100]; for (int i = 0; i < 100; i++) PT[i] = P[i] + tr;
+		double vt[6]; fitEllipse(PT, 100, vt);
+		normalizef(v0); normalizef(vt);
+		if (vt[0] * v0[0] < 0) for (int i = 0; i < 6; i++) vt[i] *= -1;
+		vt[5] += vt[0] * tr.x*tr.x + vt[1] * tr.x*tr.y + vt[2] * tr.y*tr.y + vt[3] * tr.x + vt[4] * tr.y;
+		vt[3] += 2 * vt[0] * tr.x + vt[1] * tr.y, vt[4] += 2 * vt[2] * tr.y + vt[1] * tr.x;
+		normalize(v0); normalize(vt);
+		e = 0; for (int i = 0; i < 6; i++) e += v0[i] * vt[i]; ste += (e - 1)*(e - 1);
+	}
+	printf("%lf %lf\n", sse / TEST_N, ste / TEST_N);
 }
 
 
@@ -423,7 +585,84 @@ void randomTest_image() {
 
 
 int main() {
-	randomTest_image(); exit(0);
+	randomTest_image();
 	return 0;
 }
+
+
+
+/*
+
+Experiment result: (TEST_N=10000)
+
+fitEllipse0 - Minimize vᵀMv, subject to vᵀv=1
+0.213secs, 0 hyperbolas;
+Average loss 0.313; Minimum/Median/Maximum losses 0.000, 0.015, 0.034, 0.115, 55.721.
+
+fitEllipse1 - Minimize vᵀMv, subject to 4ac-b²=1
+0.225secs, 1351 hyperbolas;
+Average loss 0.132; Minimum/Median/Maximum losses 0.000, 0.016, 0.040, 0.131, 4.739.
+
+fitEllipse2 - Minimize vᵀMv, subject to a²+c²=1
+0.210secs, 1483 hyperbolas;
+Average loss 0.115; Minimum/Median/Maximum losses 0.000, 0.015, 0.035, 0.103, 3.605.
+
+fitEllipse3 - Minimize vᵀMv, subject to a²+1/2b²+c²=1
+0.209secs, 693 hyperbolas;
+Average loss 0.132; Minimum/Median/Maximum losses 0.000, 0.015, 0.037, 0.118, 16.775.
+
+fitEllipse_grad - Minimize vᵀMv/vᵀCv, C is the sum of magnitude of gradients
+0.238secs, 1075 hyperbolas;
+Average loss 0.105; Minimum/Median/Maximum losses 0.000, 0.013, 0.030, 0.091, 3.507.
+
+fitEllipse_ac1 - Minimize vᵀMv, subject to a+c=1
+0.044secs, 1198 hyperbolas;
+Average loss 0.114; Minimum/Median/Maximum losses 0.000, 0.015, 0.034, 0.099, 3.963.
+
+fitEllipse_f1 - Minimize vᵀMv, subject to f=1
+0.054secs, 2461 hyperbolas;
+Average loss 0.147; Minimum/Median/Maximum losses 0.000, 0.016, 0.039, 0.127, 16.398.
+
+*/
+
+
+/*
+
+Linear transformation test:
+
+TEST_N = 10:
+fitEllipse0: 0.091399 0.371707
+fitEllipse1: 0.674457 0.000000
+fitEllipse2: 0.000000 0.000000
+fitEllipse3: 0.005112 0.000000
+fitEllipse_grad: 0.000000 0.000000
+fitEllipse_ac1: 0.000000 0.000000
+fitEllipse_f1: 0.000000 0.001966
+
+TEST_N = 100:
+fitEllipse0: 0.103037 0.332775
+fitEllipse1: 0.320260 0.159825
+fitEllipse2: 0.016617 0.033467
+fitEllipse3: 0.008571 0.076296
+fitEllipse_grad: 0.000000 0.000000
+fitEllipse_ac1: 0.000000 0.000000
+fitEllipse_f1: 0.000000 0.198647
+
+TEST_N = 10000:
+fitEllipse0: 0.114073 0.274444
+fitEllipse1: 0.350403 0.079191
+fitEllipse2: 0.032357 0.025077
+fitEllipse3: 0.023227 0.049633
+fitEllipse_grad: 0.010400 0.000000
+fitEllipse_ac1: 0.000000 0.000000
+fitEllipse_f1: 0.000000 0.224596
+
+Note that fitEllipse 1-3 checks hyperbolas; fitEllipse_grad uses numerical optimization that sometimes fails.
+
+*/
+
+
+// All methods except fitEllipse0 can get hyperbolas.
+// Among these methods, fitEllipse_grad works visually best.
+
 
