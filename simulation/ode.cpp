@@ -1,16 +1,23 @@
-// Test numerical ODE solving: x''(t) = a
+// Test numerical integration of ODEs: x"(t) = a
+// In this experiment, integration variables are 3d vectors
+
+// Compilable with Microsoft Visual Studio
+// 2kb simulation code and 30kb debugging code?! oh no...
+
 
 // To-do:
 // * Runge-Kutta method
 // * Adaptive step size
 
 
+
 // debug
 #define _USE_CONSOLE 0
 
 #include <cmath>
-#include <stdio.h>
+#include <cstdio>
 #include <algorithm>
+#include <functional>
 #pragma warning(disable: 4244 4305 4996)
 
 // ========================================= Win32 Standard =========================================
@@ -32,9 +39,7 @@ wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 
 #pragma region Window Macros / Forward Declarations
 
-// First Window (Main Window): UI Editor
-
-#define WIN_NAME "UI"
+#define WIN_NAME "ode"
 #define WinW_Padding 100
 #define WinH_Padding 100
 #define WinW_Default 640
@@ -44,7 +49,7 @@ wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 #define WinW_Max 3840
 #define WinH_Max 2160
 
-void Init();  // only use this function to initialize variables (or test)
+void Init();
 void render();
 void WindowResize(int _oldW, int _oldH, int _W, int _H);
 void WindowClose();
@@ -61,8 +66,7 @@ HWND _HWND; int _WIN_W, _WIN_H;
 HBITMAP _HIMG; COLORREF *_WINIMG;
 #define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
 #define setColor(x,y,col) do{if((x)>=0&&(x)<_WIN_W&&(y)>=0&&(y)<_WIN_H)Canvas(x,y)=col;}while(0)
-
-double _DEPTHBUF[WinW_Max][WinH_Max];  // how you use this depends on you
+double _DEPTHBUF[WinW_Max][WinH_Max];
 
 #pragma endregion
 
@@ -116,8 +120,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
 double mod(double x, double m) { return x - m * floor(x / m); }
 
-class vec2 {
-public:
+// vector templates - huge!
+struct vec2 {
 	double x, y;
 	explicit vec2() {}
 	explicit vec2(const double &a) :x(a), y(a) {}
@@ -125,14 +129,13 @@ public:
 	vec2 operator - () const { return vec2(-x, -y); }
 	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
 	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
-	vec2 operator * (const vec2 &v) const { return vec2(x * v.x, y * v.y); }	// not standard
+	vec2 operator * (const vec2 &v) const { return vec2(x * v.x, y * v.y); }
 	vec2 operator * (const double &a) const { return vec2(x*a, y*a); }
-	double sqr() const { return x * x + y * y; } 	// not standard
+	double sqr() const { return x * x + y * y; }
 	friend double length(const vec2 &v) { return sqrt(v.x*v.x + v.y*v.y); }
 	friend vec2 normalize(const vec2 &v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y)); }
 	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
-	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; } 	// not standard
-#if 1
+	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; }
 	void operator += (const vec2 &v) { x += v.x, y += v.y; }
 	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }
 	void operator *= (const vec2 &v) { x *= v.x, y *= v.y; }
@@ -140,29 +143,9 @@ public:
 	void operator *= (const double &a) { x *= a, y *= a; }
 	vec2 operator / (const double &a) const { return vec2(x / a, y / a); }
 	void operator /= (const double &a) { x /= a, y /= a; }
-#endif
-	vec2 yx() const { return vec2(y, x); }
 	vec2 rot() const { return vec2(-y, x); }
-	vec2 rotr() const { return vec2(y, -x); }
-#if 1
-	// added when needed
-	bool operator == (const vec2 &v) const { return x == v.x && y == v.y; }
-	bool operator != (const vec2 &v) const { return x != v.x || y != v.y; }
-	vec2 operator / (const vec2 &v) const { return vec2(x / v.x, y / v.y); }
-	friend vec2 pMax(const vec2 &a, const vec2 &b) { return vec2(max(a.x, b.x), max(a.y, b.y)); }
-	friend vec2 pMin(const vec2 &a, const vec2 &b) { return vec2(min(a.x, b.x), min(a.y, b.y)); }
-	friend vec2 abs(const vec2 &a) { return vec2(abs(a.x), abs(a.y)); }
-	friend vec2 floor(const vec2 &a) { return vec2(floor(a.x), floor(a.y)); }
-	friend vec2 ceil(const vec2 &a) { return vec2(ceil(a.x), ceil(a.y)); }
-	friend vec2 sqrt(const vec2 &a) { return vec2(sqrt(a.x), sqrt(a.y)); }
-	friend vec2 sin(const vec2 &a) { return vec2(sin(a.x), sin(a.y)); }
-	friend vec2 cos(const vec2 &a) { return vec2(cos(a.x), cos(a.y)); }
-	friend vec2 atan(const vec2 &a) { return vec2(atan(a.x), atan(a.y)); }
-#endif
 };
-
-class vec3 {
-public:
+struct vec3 {
 	double x, y, z;
 	explicit vec3() {}
 	explicit vec3(const double &a) :x(a), y(a), z(a) {}
@@ -178,7 +161,6 @@ public:
 	friend vec3 normalize(vec3 v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y + v.z*v.z)); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
-#if 1
 	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
 	void operator *= (const vec3 &v) { x *= v.x, y *= v.y, z *= v.z; }
@@ -186,28 +168,13 @@ public:
 	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
 	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
-#endif
 	vec2 xy() const { return vec2(x, y); }
-	// vec2& xy() { return *(vec2*)this; }
-	vec2 xz() const { return vec2(x, z); }
-	vec2 yz() const { return vec2(y, z); }
-#if 1
-	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
-	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
-	vec3 operator / (const vec3 &v) const { return vec3(x / v.x, y / v.y, z / v.z); }
-	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
-	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
-	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
-	friend vec3 floor(const vec3 &a) { return vec3(floor(a.x), floor(a.y), floor(a.z)); }
-	friend vec3 ceil(const vec3 &a) { return vec3(ceil(a.x), ceil(a.y), ceil(a.z)); }
-	friend vec3 mod(const vec3 &a, double m) { return vec3(mod(a.x, m), mod(a.y, m), mod(a.z, m)); }
-#endif
 };
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
 
-// 4x4 matrix
+// 4x4 matrix (simple)
 struct Affine {
 	vec3 u, v, w;  // first row, second row, third row
 	vec3 t, p;  // translation, perspective
@@ -231,16 +198,17 @@ Affine operator * (const Affine &A, const Affine &B) {
 }
 
 
-#pragma endregion Add __inline so compiler will expand them in debug mode
+#pragma endregion
 
 
 // ======================================== Data / Parameters ========================================
 
 // viewport
+// Ctrl/Shift + Drag/Wheel to adjust these variables
 vec3 Center(0.0, 0.0, 0.0);  // view center in world coordinate
 double rz = -0.8, rx = 0.3, ry = 0.0, dist = 120.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
 
-#pragma region General Global Variables
+#pragma region General Global Variables and Functions
 
 // window parameters
 char text[64];	// window title
@@ -252,10 +220,6 @@ auto scrDir = [](vec2 pixel) { return normalize(ScrO + (pixel.x / _WIN_W)*ScrA +
 vec2 Cursor = vec2(0, 0), clickCursor;  // current cursor and cursor position when mouse down
 bool mouse_down = false;
 bool Ctrl = false, Shift = false, Alt = false;  // these variables are shared by both windows
-
-#pragma endregion Window, Camera/Screen, Mouse/Key
-
-#pragma region Global Variable Related Functions
 
 // projection
 Affine axisAngle(vec3 axis, double a) {
@@ -290,230 +254,90 @@ void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
 }
 
-// these functions often need to handle perspective case
-void projRange_Triangle(vec3 A, vec3 B, vec3 C, vec2 &p0, vec2 &p1) {
-	vec2 p = (Tr*A).xy(); p0 = p1 = p;
-	p = (Tr*B).xy(); p0 = pMin(p0, p), p1 = pMax(p1, p);
-	p = (Tr*C).xy(); p0 = pMin(p0, p), p1 = pMax(p1, p);
-}
-void projRange_Circle(vec3 P, vec3 u, vec3 v, vec2 &p0, vec2 &p1) {  // any space curve defined by C(t)=P+u*cos(t)+v*sin(t)
-	vec2 Ru(dot(Tr.u, u), dot(Tr.v, u)), Rv(dot(Tr.u, v), dot(Tr.v, v)), Rp(dot(Tr.u, P), dot(Tr.v, P));
-	double Pu = dot(Tr.p, u), Pv = dot(Tr.p, v), Pp = dot(Tr.p, P);
-	vec2 a = Rv * (Pp + Tr.s) - Pv * (Rp + Tr.t.xy()), b = -Ru * (Pp + Tr.s) + Pu * (Rp + Tr.t.xy()), c = Pv * Ru - Rv * Pu;
-	vec2 d = sqrt(a * a + b * b - c * c);
-	vec2 t0 = 2.0*atan((b + d) / (a + c)), t1 = 2.0*atan((b - d) / (a + c));
-	p0.x = (Tr * (P + cos(t0.x)*u + sin(t0.x)*v)).x, p1.x = (Tr * (P + cos(t1.x)*u + sin(t1.x)*v)).x; if (p0.x > p1.x) std::swap(p0.x, p1.x);
-	p0.y = (Tr * (P + cos(t0.y)*u + sin(t0.y)*v)).y, p1.y = (Tr * (P + cos(t1.y)*u + sin(t1.y)*v)).y; if (p0.y > p1.y) std::swap(p0.y, p1.y);
-}
-void projRange_Cylinder(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
-	vec3 d = B - A, u = r * normalize(cross(d, vec3(1.2345, 6.5432, -1.3579))), v = r * normalize(cross(u, d));
-	projRange_Circle(A, u, v, p0, p1);
-	vec2 q0, q1; projRange_Circle(B, u, v, q0, q1);
-	p0 = pMin(p0, q0), p1 = pMax(p1, q1);
-}
-void projRange_Sphere(vec3 P, double r, vec2 &p0, vec2 &p1) {
-	/*if (dot(Tr.p, P) + Tr.s < r * length(Tr.p)) {
-		//if (dot(Tr.p, P) + Tr.s < -r * length(Tr.p)) {
-		p0 = p1 = vec2(NAN); return;
-	}*/
-	vec3 O = ScrO - CamP, k = CamP - P;
-	vec3 Ak = cross(ScrA, k), Bk = cross(ScrB, k), Ok = cross(O, k);
-	double r2 = r * r;
-	// A x² + B y² + C xy + D x + E y + F = 0
-	double A = r2 * ScrA.sqr() - Ak.sqr();
-	double B = r2 * ScrB.sqr() - Bk.sqr();
-	double C = 2.0*(r2*dot(ScrA, ScrB) - dot(Ak, Bk));
-	double D = 2.0*(r2*dot(ScrA, O) - dot(Ak, Ok));
-	double E = 2.0*(r2*dot(ScrB, O) - dot(Bk, Ok));
-	double F = r2 * O.sqr() - Ok.sqr();
-	double a, b, c, delta, t0, t1;
-	if (abs(C / F) < 1e-6) {  // not sure if I use the right formula
-		a = 4 * A*B, b = 4 * A*E, c = 4 * A*F - D * D;
-		delta = sqrt(b*b - 4 * a*c);
-		t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a); if (t0 > t1) std::swap(t0, t1);
-		p0.y = t0 * _WIN_H, p1.y = t1 * _WIN_H;
-		a = 4 * A*B, b = 4 * B*D, c = 4 * B*F - E * E;
-		delta = sqrt(b*b - 4 * a*c);
-		t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a); if (t0 > t1) std::swap(t0, t1);
-		p0.x = t0 * _WIN_W, p1.x = t1 * _WIN_W;
-	}
-	else {
-		a = 4 * A*A*B - A * C*C, b = 4 * A*B*D - 2 * A*C*E, c = B * D*D - C * D*E + C * C*F;
-		delta = sqrt(b*b - 4 * a*c);
-		t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a);
-		t0 = (-D - 2 * A*t0) / C, t1 = (-D - 2 * A*t1) / C; if (t0 > t1) std::swap(t0, t1);
-		p0.y = t0 * _WIN_H, p1.y = t1 * _WIN_H;
-		a = 4 * A*B*B - B * C*C, b = 4 * A*B*E - 2 * B*C*D, c = A * E*E - C * D*E + C * C*F;
-		delta = sqrt(b*b - 4 * a*c);
-		t0 = (-b + delta) / (2.0*a), t1 = (-b - delta) / (2.0*a);
-		t0 = (-E - 2 * B*t0) / C, t1 = (-E - 2 * B*t1) / C; if (t0 > t1) std::swap(t0, t1);
-		p0.x = t0 * _WIN_W, p1.x = t1 * _WIN_W;
-	}
-}
-void projRange_Cone(vec3 A, vec3 B, double r, vec2 &p0, vec2 &p1) {
-	vec3 d = B - A, u = r * normalize(cross(d, vec3(1.2345, 6.5432, -1.3579))), v = r * normalize(cross(u, d));
-	projRange_Circle(A, u, v, p0, p1);
-	vec2 q = (Tr*B).xy();
-	p0 = pMin(p0, q), p1 = pMax(p1, q);
-}
+// rasterization forward declaration
+void drawLine(vec2 p, vec2 q, COLORREF col);
+void drawCross(vec2 p, double r, COLORREF col);
+void drawCircle(vec2 c, double r, COLORREF col);
+void fillCircle(vec2 c, double r, COLORREF col);
+void drawLine_F(vec3 A, vec3 B, COLORREF col);
+void drawCross3D(vec3 P, double r, COLORREF col, bool relative);
 
-#pragma endregion Get Ray/Screen, projection
+#pragma endregion
 
-
-
-// simulation test cases
-// *: acceleration C0 continuity
-// **: acceleration "breaks"
-// `: solution contains chaos
-
-// To maintain the continuity, unless otherwise stated, the magnitude of air resistance is propor to the cube of velosity instead of square
-
-#define Projectile      0x00    // Acceleration due to gravity
-#define Projectile_R    0x01    // Acceleration due to gravity + Air resistance
-#define Projectile_RB   0x02    // *Drops onto an elastic surface and bounces up
-#define Projectile_RW   0x03    // **Drops into some heavy liquid and bounces up
-#define Pendulum        0x04    // On a one-meter-long non-deformable rod
-#define Pendulum_S      0x05    // `On a one-meter-long spring with air resistance
-#define NBody_1         0x06    // A "sun" in the center
-#define NBody_2         0x07    // `Two immobilized "suns" with equal mass
-#define NBody_m         0x08    // `One sun and one mobilized planet
-#define TimeTest_1      0x09    // `Test a time-dependend equation (nothing to do with physics)
-#define TimeTest_2      0x10    // **`
-#define TimeTest_3      0x11    // `Contain various degree of derivatives
-
-#define SIMULATION TimeTest_3
 
 #pragma region Simulation Test Cases
 
-#if SIMULATION==Projectile
-
-const vec3 g = vec3(0, 0, -9.81);
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
-	return g;
+class Test_Case {
+public:
+	double dt, t1;
+	vec3 P0, V0;
+	std::function<vec3(vec3, vec3, double)> Acceleration;
+	std::function<void(double)> additional_render;
+	template<typename Fun>
+	Test_Case(Fun acc, double t1, double dt, vec3 p0, vec3 v0) {
+		this->dt = dt, this->t1 = t1; P0 = p0, V0 = v0; Acceleration = acc;
+		additional_render = [](double) {};
+	}
+	template<typename Fun, typename Rd>
+	Test_Case(Fun acc, double t1, double dt, vec3 p0, vec3 v0, Rd render = [](double) {}) {
+		this->dt = dt, this->t1 = t1; P0 = p0, V0 = v0; Acceleration = acc;
+		additional_render = render;
+	}
 };
-const double t_step = 0.1;
-const double tMax = 2.0;
-const vec3 P0 = vec3(0, 0, 1);
-const vec3 V0 = vec3(1.5, 1.5, 2);
 
-// A parabola opening down
-// Euler: a little higher
-// Other: exactly the same
+// Gravitational Acceleration
+vec3 g = vec3(0, 0, -9.81);
 
-#elif SIMULATION==Projectile_R
+// Acceleration due to gravity
+Test_Case Projectile([](vec3 p, vec3 v, double t)->vec3 {
+	return g;
+}, 2.0, 0.1, vec3(0, 0, 1), vec3(1.5, 1.5, 2));
 
-const vec3 g = vec3(0, 0, -9.81);
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// Acceleration due to gravity + v³ air resistance
+Test_Case Projectile_R([](vec3 p, vec3 v, double t)->vec3 {
 	double r = 0.1*dot(v, v);
 	return g - r * v;
-};
-const double t_step = 0.06;
-const double tMax = 2.0;
-const vec3 P0 = vec3(0, 0, 1);
-const vec3 V0 = vec3(2, 2, 3);
+}, 2.0, 0.06, vec3(0, 0, 1), vec3(2, 2, 3));
 
-// Slightly deformed parabola, no significant velosity change
-// Eulers: error
-// Midpoint: error hard to notice
-
-#elif SIMULATION==Projectile_RB
-
-const vec3 g = vec3(0, 0, -9.81);
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// *Drops onto an elastic surface and bounces up
+Test_Case Projectile_RB([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 r = -0.1*dot(v, v)*v;
 	vec3 b = min(p.z, 0.)*vec3(0, 0, -50);
 	return g + r + b;
-};
-const double t_step = 0.02;
-const double tMax = 6.0;
-const vec3 P0 = vec3(-2.5, 0, 1);
-const vec3 V0 = vec3(3, 0, 3);
+}, 6.0, 0.02, vec3(-2.5, 0, 1), vec3(3, 0, 3));
 
-// Damping oscillation, limit below horizon
-// Euler: shorter wavelength, greater magnitude
-// Modified Euler: slightly gentler
-// Midpoint: few error; original midpoint slightly better
-// Modified Verlet: a little shorter wavelength
-
-#elif SIMULATION==Projectile_RW
-
-const vec3 g = vec3(0, 0, -9.81);
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// **Drops into heavy liquid and bounces up
+Test_Case Projectile_RW([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 r = -(p.z > 0. ? 0.05 : 0.5)*dot(v, v)*v;
 	vec3 b = (p.z < 0. ? 1. : 0.)*vec3(0, 0, 50);
 	return g + r + b;
-};
-const double t_step = 0.01;
-const double tMax = 6.0;
-const vec3 P0 = vec3(-3, 0, 1);
-const vec3 V0 = vec3(3, 0, 3);
+}, 6.0, 0.01, vec3(-3, 0, 1), vec3(3, 0, 3));
 
-// Damping oscillation, converges to horizon
-// Eulers: shorter wavelength and greater magnitude
-// Midpoint: longer wavelength and less magnitude
-// Midpoint works slightly better than Eulers after reducing t_step
-// Midpoint_1's error is not obvious when t<2 but grows soon (better then Verlet)
-// Modified Verlet fits better but the error is visible
-
-#elif SIMULATION==Pendulum
-
-const double g = 9.81;
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
-	p -= vec3(0, 0, 0.5);
+// On a one-meter-long non-deformable rod
+// An accurate solution should not deviate the unit sphere
+Test_Case Pendulum([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 u = normalize(cross(p, cross(p, veck))) * (g * length(p.xy()) / length(p));
 	vec3 w = -p * dot(v, v);
 	return u + w;
-};
-const double t_step = 0.02;
-const double tMax = 6.0;
-const vec3 P0 = vec3(0, 1, .5);
-const vec3 V0 = vec3(1, 0, 0);
+}, 6.0, 0.02, vec3(0, 1, 0), vec3(1, 0, 0));
 
-// Flower-liked path; forms a semisphere with a hole at the buttom after a long time
-// Euler flies away, then the modified Euler
-// Midpoints doesn't flie away and doesn't follow the path exactly
-// Modified Verlet fits better than Midpoint
-
-#elif SIMULATION==Pendulum_S
-
-const vec3 g = vec3(0, 0, -9.81);
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
-	vec3 d = p - vec3(0, 0, 1);
+// `On a one-meter-long spring with air resistance
+Test_Case Pendulum_S([](vec3 p, vec3 v, double t)->vec3 {
+	vec3 d = p - vec3(0, 0, 2);
 	vec3 N = -10.0*(length(d) - 1)*normalize(d);
 	vec3 r = -0.01*dot(v, v)*v;
 	return g + N + r;
-};
-const double t_step = 0.05;
-const double tMax = 6.0;
-const vec3 P0 = vec3(0, 1, 0);
-const vec3 V0 = vec3(3, 0, 3);
+}, 6.0, 0.05, vec3(0, 1, 0), vec3(3, 0, 3));
 
-// Chaos - "tangled clew"
-// Eulers' path have longer radius, modified Euler is slightly smaller
-// Whe tMax is set to 6.0, Midpoints has few noticeble error
-// Modified Verlet fits slightly better than Midpoint
-
-#elif SIMULATION==NBody_1
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// A "sun" in the center
+// The solution is an ellipse
+Test_Case NBody_1([](vec3 p, vec3 v, double t)->vec3 {
 	double m = length(p);
 	return -20.0*p / (m*m*m);
-};
-const double t_step = 0.05;
-const double tMax = 3.0;
-const vec3 P0 = vec3(2, 2, 0);
-const vec3 V0 = vec3(1, -1, -0.2);
+}, 3.0, 0.05, vec3(2, 2, 0), vec3(1, -1, -0.02));
 
-// A high-eccentricity ellipse with a rapid speed change
-// All three curves fly away close to the perihelion
-// Midpoint curve goes back to origin when t_step is set to 0.002
-// This test demonstrates the importance of adaptive step length
-
-// Added: Modified Verlet fits much better than Midpoint even though there's some error
-
-#elif SIMULATION==NBody_2
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// `Two "suns" with equal mass
+Test_Case NBody_2([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 q = p - vec3(0, 1, 0);
 	double m = length(q);
 	vec3 a = q / (m*m*m);
@@ -521,81 +345,49 @@ auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
 	m = length(q);
 	a += q / (m*m*m);
 	return -10.0*a;
-};
-const double t_step = 0.001;
-const double tMax = 10.0;
-const vec3 P0 = vec3(2, 2, 0);
-const vec3 V0 = vec3(1, -0.5, -0.2);
+}, 8.0, 0.01, vec3(2, 2, 0), vec3(1, -0.5, -0.2), [](double t) {
+	fillCircle((Tr*vec3(0, 1, 0)).xy(), 4, 0x00A0FF);
+	fillCircle((Tr*vec3(0, -1, 0)).xy(), 4, 0x00A0FF);
+});
 
-// Eulers: circulates one sun and flies away
-// Midpoint and Reference: circulates one sun, then attracted by the other sun and rapidly turns and fly away in different directions
-// Midpoint has a greater velosity than other points
-// Modified Verlet works best when t_step==0.01 but loses to Midpoint when t_step==0.005
-// Note that the points don't have enough energy to get rid of the gravity
-
-#elif SIMULATION==NBody_m
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// `One sun and one mobilized planet
+Test_Case NBody_m([](vec3 p, vec3 v, double t)->vec3 {
 	double m = length(p);
 	vec3 F = -9.*p / (m*m*m);
 	p -= vec3(cos(3.*t), sin(3.*t), 0);
 	m = length(p);
 	return F - p / (m*m*m);
-};
-const double t_step = 0.02;
-const double tMax = 2.*PI;
-const vec3 P0 = vec3(2, 2, 0);
-const vec3 V0 = vec3(1, -0.5, -0.2);
+}, 2.*PI, 0.02, vec3(2, 2, 0), vec3(1, -.5, -.2), [](double t) {
+	fillCircle((Tr*vec3(cos(3.*t), sin(3.*t), 0)).xy(), 4, 0x00FF00);
+});
 
-// "Interfered" by the gravity of the planet after the perihelion and flies away
-// Eulers "deviate" the "orbit" for long
-// Midpoint deviates after the interference
-// Seems like that point will go back after several minutes
-
-// Added: Modified Verlet fits much better than Midpoint even though there's some error
-
-#elif SIMULATION==TimeTest_1
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// `Artificial equation #1
+Test_Case TimeTest_1([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 w = vec3(0, 0, sin(t) + cos(t) + 1);
 	return cross(v, w) - w.sqr() * p - 2.*p + vec3(0, 0, -1) - 0.01*v.sqr()*v;
-};
-const double t_step = 0.05;
-const double tMax = 6.0;
-const vec3 P0 = vec3(1, 1, 1);
-const vec3 V0 = vec3(0, 0, 0);
+}, 6.0, 0.05, vec3(1, 1, 1), vec3(0, 0, 0));
 
-#elif SIMULATION==TimeTest_2
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// **`Artificial equation #2
+Test_Case TimeTest_2([](vec3 p, vec3 v, double t)->vec3 {
 	double s = floor(2.*t*t + 2.);
 	double a = fmod(1000 * sin(100 * floor(t)), 1.0);
 	double b = fmod(2000 * cos(200 * floor(t)), 1.0);
 	double c = fmod(3000 * sin(300 * floor(t)), 1.0);
 	vec3 w = 2.0*vec3(c, b, a) - vec3(1.0);
 	return cross(v, w) - (length(w) + 2.) * p + 0.2*w;
-};
-const double t_step = 0.05;
-const double tMax = 6.0;
-const vec3 P0 = vec3(1, 1, 1);
-const vec3 V0 = vec3(-1, 0, 0);
+}, 6.0, 0.05, vec3(1, 1, 1), vec3(-1, 0, 0));
 
-#elif SIMULATION==TimeTest_3
-
-auto Acceleration = [](vec3 p, vec3 v, double t)->vec3 {
+// `Artifical equation #3 (continuous)
+Test_Case TimeTest_3([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 a = vec3(cos(p.x + t), sin(v.y - t), sin(p.z + t));
 	vec3 b = vec3(cos(v.x + t), exp(p.y), cos(v.z));
 	vec3 c = vec3(sin(t), cos(t), sin(t + .25*PI));
 	return 4.*(a + b + c - 5.*p);
-};
-const double t_step = 0.05;
-const double tMax = 6.0;
-const vec3 P0 = vec3(0, 0, 0);
-const vec3 V0 = vec3(0, 0, 0);
+}, 6.0, 0.05, vec3(0), vec3(0));
 
-#endif
+#pragma endregion Projectile, Projectile_R, Projectile_RB, Projectile_RW, Pendulum, Pendulum_S, NBody_1, NBody_2, NBody_m, TimeTest_1, TimeTest_2, TimeTest_3
 
-#pragma endregion
+Test_Case T = Projectile;
 
 
 
@@ -603,7 +395,7 @@ const vec3 V0 = vec3(0, 0, 0);
 
 #pragma region Rasterization functions
 
-auto drawLine = [](vec2 p, vec2 q, COLORREF col) {
+void drawLine(vec2 p, vec2 q, COLORREF col) {
 	vec2 d = q - p;
 	double slope = d.y / d.x;
 	if (abs(slope) <= 1.0) {
@@ -628,49 +420,31 @@ auto drawLine = [](vec2 p, vec2 q, COLORREF col) {
 		}
 	}
 };
-auto drawCross = [&](vec2 p, double r, COLORREF Color = 0xFFFFFF) {
-	drawLine(p - vec2(r, 0), p + vec2(r, 0), Color);
-	drawLine(p - vec2(0, r), p + vec2(0, r), Color);
+void drawCross(vec2 p, double r, COLORREF col = 0xFFFFFF) {
+	drawLine(p - vec2(r, 0), p + vec2(r, 0), col);
+	drawLine(p - vec2(0, r), p + vec2(0, r), col);
 };
-auto drawCircle = [&](vec2 c, double r, COLORREF Color) {
+void drawCircle(vec2 c, double r, COLORREF col) {
 	int s = int(r / sqrt(2) + 0.5);
 	int cx = (int)c.x, cy = (int)c.y;
 	for (int i = 0, im = min(s, max(_WIN_W - cx, cx)) + 1; i < im; i++) {
 		int u = sqrt(r*r - i * i) + 0.5;
-		setColor(cx + i, cy + u, Color); setColor(cx + i, cy - u, Color); setColor(cx - i, cy + u, Color); setColor(cx - i, cy - u, Color);
-		setColor(cx + u, cy + i, Color); setColor(cx + u, cy - i, Color); setColor(cx - u, cy + i, Color); setColor(cx - u, cy - i, Color);
+		setColor(cx + i, cy + u, col); setColor(cx + i, cy - u, col); setColor(cx - i, cy + u, col); setColor(cx - i, cy - u, col);
+		setColor(cx + u, cy + i, col); setColor(cx + u, cy - i, col); setColor(cx - u, cy + i, col); setColor(cx - u, cy - i, col);
 	}
 };
-auto fillCircle = [&](vec2 c, double r, COLORREF Color) {
+void fillCircle(vec2 c, double r, COLORREF col) {
 	int x0 = max(0, int(c.x - r)), x1 = min(_WIN_W - 1, int(c.x + r));
 	int y0 = max(0, int(c.y - r)), y1 = min(_WIN_H - 1, int(c.y + r));
 	int cx = (int)c.x, cy = (int)c.y, r2 = int(r*r);
 	for (int x = x0, dx = x - cx; x <= x1; x++, dx++) {
 		for (int y = y0, dy = y - cy; y <= y1; y++, dy++) {
-			if (dx * dx + dy * dy < r2) Canvas(x, y) = Color;
+			if (dx * dx + dy * dy < r2) Canvas(x, y) = col;
 		}
 	}
 };
-auto drawBox = [](vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
-	drawLine(vec2(Min.x, Min.y), vec2(Max.x, Min.y), col);
-	drawLine(vec2(Max.x, Min.y), vec2(Max.x, Max.y), col);
-	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col);
-	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col);
-};
-auto fillBox = [](vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
-	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, _WIN_W - 1);
-	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, _WIN_H - 1);
-	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) Canvas(x, y) = col;
-};
-auto drawSquare = [](vec2 C, double r, COLORREF col = 0xFFA500) {
-	drawBox(C - vec2(r, r), C + vec2(r, r), col);
-};
-auto fillSquare = [](vec2 C, double r, COLORREF col = 0xFFA500) {
-	fillBox(C - vec2(r, r), C + vec2(r, r), col);
-};
 
-auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
-	//if (col != 0x404040) return;
+void drawLine_F(vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
 	if (u > 0 && v > 0) { drawLine((Tr*A).xy(), (Tr*B).xy(), col); return; }
 	if (u < 0 && v < 0) return;
@@ -679,7 +453,7 @@ auto drawLine_F = [](vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 	B = A + (B - A)*t;
 	drawLine((Tr*A).xy(), (Tr*B).xy(), col);
 };
-auto drawCross3D = [&](vec3 P, double r, COLORREF col = 0xFFFFFF, bool relative = true) {
+void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF, bool relative = true) {
 	return;  // comment this line to make it like barbed wire
 	if (relative) r *= dot(Tr.p, P) + Tr.s;
 	drawLine_F(P - vec3(r, 0, 0), P + vec3(r, 0, 0), col);
@@ -690,109 +464,83 @@ auto drawCross3D = [&](vec3 P, double r, COLORREF col = 0xFFFFFF, bool relative 
 #pragma endregion
 
 
+#pragma region Time
 #include <chrono>
 typedef std::chrono::high_resolution_clock NTime;
 typedef std::chrono::duration<double> fsec;
-
 auto start_time = NTime::now();
 double iTime;
+#pragma endregion hold alt to "freeze"
 
 
-// testcase utility
-bool drawTestcase(double t) {
-#if SIMULATION==NBody_2
-	fillCircle((Tr*vec3(0, 1, 0)).xy(), 4, 0x00A0FF);
-	fillCircle((Tr*vec3(0, -1, 0)).xy(), 4, 0x00A0FF);
-#elif SIMULATION==NBody_m
-	//fillCircle((Tr*vec0).xy(), 5, 0xFF4000);
-	fillCircle((Tr*vec3(cos(3.*t), sin(3.*t), 0)).xy(), 4, 0x00FF00);
-#else
-	return false;
-#endif
-	return true;
-}
-
-
-// reference path
+#pragma region Reference Path
 vec3 *RefPath;
 int RefN;
 #define REFPATH_DT 0.00001
 #define REFPATH_DT_N 100
-void initReferencePath() {   // brute-forcing Euler's method
+void initReferencePath() {
 	const double dt = REFPATH_DT;
 	const int dtN = REFPATH_DT_N;
-	vec3 p0 = P0, v0 = V0, p = p0, v = v0, a;
-	RefN = (int)(tMax / (dtN*dt));
-	int N = (int)(tMax / dt);
+	vec3 p0 = T.P0, v0 = T.V0, p = p0, v = v0, a;
+	RefN = (int)(T.t1 / (dtN*dt));
+	int N = (int)(T.t1 / dt);
 	RefPath = new vec3[RefN + 1];
 	RefPath[RefN] = vec3(NAN);
 	for (int i = 0; i < N; i++) {
 		if (i % dtN == 0) RefPath[i / dtN] = p0;
 		double t = i * dt;
-#if 0
-		a = Acceleration(p, v, t);
-		p += v * dt, v += a * dt;
-#else
-		a = Acceleration(p, v, t);
+		a = T.Acceleration(p, v, t);
 		vec3 _p = p;
 		p += v * dt + a * (.5*dt*dt);
-		v += Acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
-#endif
+		v += T.Acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
 		p0 = p, v0 = v;
 	}
-	if (RefPath[RefN] == vec3(NAN)) RefN--;
+	if (0.0*RefPath[RefN].sqr() != 0.0) RefN--;
 }
+#pragma endregion
 
 
+#pragma region Simulation
 
 #define plotPath(Color) \
 	drawLine_F(p0, p, Color); \
 	drawCross3D(p, 2, Color); \
 	double u = t + dt - iTime; if (u > 0 && u < dt) { u /= dt; fillCircle((Tr*(u*p0 + (1 - u)*p)).xy(), 6, Color); }
 
-// orange red
-void EulersMethod(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/2 h² p"(t0); v: 1/2 h² v"(t0)
+// orange
+template<typename Fun>
+void EulersMethod(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/2 h² v"(t0)
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
-		a = acceleration(p, v, t);
-		p += v * dt;
+		a = acc(p, v, t);
+		p += v * dt + a * (.5*dt*dt);
 		v += a * dt;
 		plotPath(0xFF8000);
 		p0 = p, v0 = v;
 	}
 }
 
-// orange, a little better than simple Euler's method
-void EulersMethod_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/2 h² v"(t0)
-	vec3 p = p0, v = v0, a;
-	for (double t = 0.0; t < tMax; t += dt) {
-		a = acceleration(p, v, t);
-		p += v * dt + a * (.5*dt*dt);
-		v += a * dt;
-		plotPath(0xFFA000);
-		p0 = p, v0 = v;
-	}
-}
-
 // yellow
-void Euler_Midpoint(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/24 h³ v³(t0) ??
+template<typename Fun>
+void Euler_Midpoint(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/24 h³ v³(t0) ??
 	dt *= 2.0;  // to be fair
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
-		a = acceleration(p, v, t);
+		a = acc(p, v, t);
 		vec3 _p = p;
 		p += v * dt + a * (.5*dt*dt);
-		v += acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
+		v += acc(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
 		plotPath(0xFFFF00);
 		p0 = p, v0 = v;
 	}
 }
 
 // yellow green, accuracy similar to Euler_Midpoint
-void Midpoint_1(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
-	vec3 p = p0, v = v0, a0, a = a0 = acceleration(p0, v0, 0);
+template<typename Fun>
+void Midpoint_1(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
+	vec3 p = p0, v = v0, a0, a = a0 = acc(p0, v0, 0);
 	for (double t = 0.0; t < tMax; t += dt) {
-		a = acceleration(p, v, t);
+		a = acc(p, v, t);
 		p += v * dt + a * (.5*dt*dt);
 		v += (1.5*a - 0.5*a0) * dt;
 		plotPath(0xA0FF00);
@@ -801,12 +549,13 @@ void Midpoint_1(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), doubl
 }
 
 // sky blue, works best when acceleration only depend on the position
-void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
-	vec3 a = acceleration(p0, v0, 0);
+template<typename Fun>
+void Verlet_Modified(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
+	vec3 a = acc(p0, v0, 0);
 	vec3 v = v0 + a * dt, p = p0 + v0 * dt + a * (.5*dt*dt);
-	vec3 a0 = acceleration(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
+	vec3 a0 = acc(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
 	for (double t = 0.; t < tMax; t += dt) {
-		a = acceleration(p, v, t);
+		a = acc(p, v, t);
 		vec3 p1 = 2.*p - p0 + a * (dt*dt);
 		v += (1.5*a - 0.5*a0) * dt;
 		plotPath(0x0080FF);
@@ -814,61 +563,9 @@ void Verlet_Modified(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), 
 	}
 }
 
-// Bruteforce Taylor expansion - numerical differentiation - bad and unstable - DO NOT USE!
-#if 0
-void Numerical_Dif2(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {
-	dt *= 3.0;
-	vec3 p = p0, v = v0;
-	const double e = 0.0001;
-	const double _6 = 1. / 6, _24 = 1. / 24;
-	for (double t = 0.; t < tMax; t += dt) {
-		vec3 a = acceleration(p, v, t);
-		vec3 a1 = acceleration((.5*a*e + v)*e + p, v + a * e, t + e);
-		vec3 a0 = acceleration((.5*a*e - v)*e + p, v - a * e, t - e);
-		vec3 da = (a1 - a0) / (2.*e);
-		vec3 d2a = (a1 + a0 - 2.*a) / (e*e);
-		p = (((d2a*dt*_24 + _6 * da)*dt + .5*a)*dt + v)*dt + p;
-		v = ((d2a*dt*_6 + .5*da)*dt + a)*dt + v;
-		plotPath(0x00FFFF);
-		p0 = p, v0 = v;
-	}
-}
-void Numerical_Dif4(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {
-	dt *= 5.0;
-	vec3 p = p0, v = v0;
-	const double e = 0.0001, f = 2.*e;
-	const double _6 = 1. / 6, _24 = 1. / 24, _120 = 1. / 120, _720 = 1. / 720;
-	for (double t = 0.; t < tMax; t += dt) {
-		vec3 a = acceleration(p, v, t);
-		vec3 a1 = acceleration((.5*a*e + v)*e + p, v + a * e, t + e);
-		vec3 a0 = acceleration((.5*a*e - v)*e + p, v - a * e, t - e);
-		vec3 da = (a1 - a0) / (2.*e);
-		vec3 d2a = (a1 + a0 - 2.*a) / (e*e);
-		vec3 b1 = acceleration((((d2a*f*_24 + da * _6)*f + .5*a)*f + v)*f + p, ((d2a*f*_6 + .5*da)*f + a)*f + v, t + f);
-		vec3 b0 = acceleration((((d2a*f*_24 - da * _6)*f + .5*a)*f - v)*f + p, ((-d2a * f*_6 + .5*da)*f - a)*f + v, t - f);
-		vec3 d3a = ((b1 - b0) - 2.*(a1 - a0)) / (2.*e*e*e);
-		vec3 d4a = ((b1 + b0) - 4.*(a1 + a0) + 6.*a) / (e*e*e*e);
-		p = p + dt * (v + dt * (.5*a + dt * (_6*da + dt * (_24*d2a + dt * (_120*d3a + dt * _720*d4a)))));
-		v = v + dt * (a + dt * (.5*da + dt * (_6*d2a + dt * (_24*d3a + dt * _120*d4a))));
-		plotPath(0x00FF80);
-		p0 = p, v0 = v;
-	}
-}
-#endif
 
-// magenta
-void Runge_Kutta(vec3 p0, vec3 v0, vec3(*acceleration)(vec3, vec3, double), double dt, double tMax) {  // still mathing...
-	//dt *= 4.0;  // to be fair
-	vec3 p = p0, v = v0, a;
-	for (double t = 0.0; t < tMax; t += dt) {
+#pragma endregion
 
-		// Numerical Recipes page 734
-		// http://lampx.tugraz.at/~hadley/num/ch8/rk4ode2.php works bad
-
-		plotPath(0xFF00FF);
-		p0 = p, v0 = v;
-	}
-}
 
 
 void render() {
@@ -896,7 +593,7 @@ void render() {
 
 
 	// simulation
-	if (!Alt) iTime = fmod(fsec(NTime::now() - start_time).count(), tMax);
+	if (!Alt) iTime = fmod(fsec(NTime::now() - start_time).count(), T.t1);
 
 	// reference path
 	for (int i = 0; i < RefN; i++) {
@@ -905,22 +602,21 @@ void render() {
 	fillCircle((Tr*RefPath[(int)(iTime / (REFPATH_DT*REFPATH_DT_N))]).xy(), 6, 0x606080);
 
 	// simulation paths with large step
-	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
-	//EulersMethod_Modified(P0, V0, Acceleration, t_step, tMax);
+	vec3 P0 = T.P0, V0 = T.V0;
+	double t_step = T.dt, tMax = T.t1;
+	auto Acceleration = T.Acceleration;
+	EulersMethod(P0, V0, Acceleration, t_step, tMax);
 	Euler_Midpoint(P0, V0, Acceleration, t_step, tMax);
 	Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
-	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);  // not implemented yet
 
-	drawTestcase(iTime);
+	T.additional_render(iTime);
 
 	double t = fsec(NTime::now() - t0).count();
 	sprintf(text, "[%d×%d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*t, 1. / t);
 	SetWindowTextA(_HWND, text);
 }
 
-
-// ============================================== User ==============================================
 
 
 #include <thread>
@@ -933,6 +629,9 @@ void Init() {
 		Sleep(20);
 	}}, 5);
 }
+
+
+// ============================================== User ==============================================
 
 
 void keyDownShared(WPARAM _KEY) {
@@ -957,15 +656,9 @@ void WindowClose() {
 }
 
 void MouseWheel(int _DELTA) {
-	if (Ctrl) {
-		Center.z += 0.1 * _DELTA / Unit;
-	}
-	else if (Shift) {
-		double s = exp(-0.001*_DELTA);
-		dist *= s;
-	}
+	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
+	else if (Shift) dist *= exp(-0.001*_DELTA);
 	else {
-		// zoom
 		double s = exp(0.001*_DELTA);
 		Unit *= s, dist /= s;
 	}
@@ -1001,22 +694,12 @@ void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	bool moved = (int)length(clickCursor - Cursor) != 0;   // be careful: coincidence
 	mouse_down = false;
-
-#if _USE_CONSOLE
-	vec3 d = scrDir(Cursor);
-	Triangle* obj = 0; double t = INFINITY;
-	rayIntersectBVH(BVH_R, CamP, d, vec3(1.0) / d, t, obj);
-	if (obj) printf("%d\n", obj - STL);
-	else printf("-1\n");
-	//if (obj) *obj = Triangle{ vec3(0),vec3(0),vec3(0),vec3(0) };
-#endif
 }
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 }
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
-
 #ifdef _DEBUG
 	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
 	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
