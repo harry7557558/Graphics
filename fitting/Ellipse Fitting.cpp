@@ -392,7 +392,7 @@ void randomTest_eigen() {
 	{
 		_IDUM = i;
 		vec2 P[10];
-		for (int i = 0; i < 10; i++) P[i] = randv(1.0);
+		for (int i = 0; i < 10; i++) P[i] = rand2(1.0);
 		generateMatrix(M, P, 10);
 
 #if 0
@@ -427,12 +427,12 @@ void randomPointData(vec2 *P, int N) {
 	c[1] = 2. * sa * ca * (1. / ry2 - 1. / rx2);
 	c[3] = c[4] = 0, c[5] = -1;
 	// parameters of random number generator
-	vec2 g = randv_n(5.0);
+	vec2 g = rand2_n(5.0);
 	double v = randf_n(2.0); v = v * v + 2.0;
 	double f = randf_n(0.4); f = f * f + 0.1;
 	// generating random points
 	for (int i = 0; i < N; i++) {
-		vec2 p = g + randv_n(v);
+		vec2 p = g + rand2_n(v);
 		// using iteration to make points close to the ellipse
 		for (int t = 0; t < 6; t++) {
 			double x = p.x, y = p.y;
@@ -441,7 +441,7 @@ void randomPointData(vec2 *P, int N) {
 			p = p - dz * (z / dot(dz, dz));
 		}
 		// add noise
-		P[i] = p + randv_n(f);
+		P[i] = p + rand2_n(f);
 	}
 }
 
@@ -567,7 +567,7 @@ void randomTest_transform(void fitEllipse(const vec2*, int, double[])) {
 		double vs[6]; fitEllipse(PS, 100, vs);
 		vs[0] *= sc * sc, vs[1] *= sc * sc, vs[2] *= sc * sc, vs[3] *= sc, vs[4] *= sc; normalize(vs);
 		double e = 0; for (int i = 0; i < 6; i++) e += v0[i] * vs[i]; sse += (e - 1)*(e - 1);
-		vec2 tr = randv_n(20);
+		vec2 tr = rand2_n(20);
 		vec2 PT[100]; for (int i = 0; i < 100; i++) PT[i] = P[i] + tr;
 		double vt[6]; fitEllipse(PT, 100, vt);
 		normalizef(v0); normalizef(vt);

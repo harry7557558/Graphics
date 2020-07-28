@@ -329,7 +329,7 @@ typedef std::chrono::duration<double> fsec;
 // generate point data in the pattern of a circle
 void randomPointData(vec2 *P, int N) {
 	// parameters of the line
-	vec2 c = randv_n(2.0);
+	vec2 c = rand2_n(2.0);
 	double r = randf(1.0, 4.0);
 	// parameters of random number generator
 	double u = randf(0, 2.*PI), v = 0.5 + abs(randf_n(0.8));
@@ -338,7 +338,7 @@ void randomPointData(vec2 *P, int N) {
 	for (int i = 0; i < N; i++) {
 		double t = u + randf_n(v);
 		vec2 p = c + r * vec2(cos(t), sin(t));
-		P[i] = p + randv_n(f);
+		P[i] = p + rand2_n(f);
 	}
 }
 

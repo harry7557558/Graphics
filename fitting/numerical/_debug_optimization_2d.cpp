@@ -253,7 +253,7 @@ void test_ad() {
 	freopen("tests\\test.txt", "w", stdout);
 	for (int i = 0; i < 100; i++) {
 		_SRAND(i);
-		vec2 p0 = randv_n(5.0);
+		vec2 p0 = rand2_n(5.0);
 		printf("%d\t%lf %lf\t", i, p0.x, p0.y);
 		F_count = 0;
 		vec2 p = Newton_Iteration_2d_ad(F_ad, p0);

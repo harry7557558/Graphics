@@ -62,10 +62,12 @@ double erfinv(double x) {
 }
 
 double randf(double a, double b) { return a + (randu() / 4294967296.)*(b - a); }  // uniform distribution in [a,b)
-vec2 randv(double r) { double m = randf(0, r), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // default distribution in |v|<r
-vec2 randv_u(double r) { double m = sqrt(randf(0, r*r)), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // uniform distribution in |v|<r
 double randf_n(double a) { return sqrt(2.) * a * erfinv(2. * randf(0., 1.) - 1.); }  // normal distribution by standard deviation
-vec2 randv_n(double a) { return vec2(randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
+vec2 rand2(double r) { double m = randf(0, r), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // default distribution in |v|<r
+vec2 rand2_u(double r) { double m = sqrt(randf(0, r*r)), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // uniform distribution in |v|<r
+vec2 rand2_n(double a) { return vec2(randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
+vec3 rand3() { double u = randf(0, 2.*PI), v = randf(-1, 1); return vec3(vec2(cos(u), sin(u))*sqrt(1 - v * v), v); }  // uniform distributed unit vector
+vec3 rand3(double r) { return rand3()*randf(0, r); }  // default distribution in |v|<r
 
 
 #endif

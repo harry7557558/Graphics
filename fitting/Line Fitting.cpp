@@ -145,7 +145,7 @@ void randomPointData(vec2 *P, int N) {
 	// parameters of the line
 	double t = randf(0, 2 * PI);
 	vec2 d = vec2(cos(t), sin(t));
-	vec2 p0 = randv_n(2.0);
+	vec2 p0 = rand2_n(2.0);
 	// parameters of random number generator
 	double v = randf(1.0, 3.0);
 	double f = randf(0.0, 0.8); f = f * f + 0.2;
@@ -153,7 +153,7 @@ void randomPointData(vec2 *P, int N) {
 	for (int i = 0; i < N; i++) {
 		double t = randf_n(v);
 		vec2 p = p0 + d * t;
-		P[i] = p + randv_n(f);
+		P[i] = p + rand2_n(f);
 	}
 }
 
