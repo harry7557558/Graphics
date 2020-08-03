@@ -1046,7 +1046,7 @@ auto t0 = NTime::now();
 vec3 light_pos = CPs[Hand::Light].P();
 
 // http://people.csail.mit.edu/wojciech/BRDFDatabase/
-#include "D:\BRDFDatabase\code\BRDFRead.cpp"
+#include "D:\Coding\GUI\Test\libraries\BRDFDatabase\code\BRDFRead.cpp"
 double* _archer_brdf = NULL;
 
 // rotate the vectors and make n (0,0,1)
@@ -1375,7 +1375,7 @@ void WriteImage() {
 // It will also be called after a file is opened
 // Only use to initialize variables
 void Init() {
-	if (!_archer_brdf) read_brdf("D:\\BRDFDatabase\\brdfs\\alum-bronze.binary", _archer_brdf);
+	if (!_archer_brdf) read_brdf("D:\\Coding\\GUI\\Test\\libraries\\BRDFDatabase\\brdfs\\alum-bronze.binary", _archer_brdf);
 	for (int i = 0; i < NCtrPs; i++) pointOnMove[i] = -1;
 	for (int i = 0; i < NCtrPs; i++) CPs[i].sortFrames();
 	fixPointLocation();

@@ -19,7 +19,7 @@ unsigned hashu(unsigned x) {
 	return x = (x >> 16) ^ x;
 }
 double hashf(double x, double y) {
-	return fmod(sin(12.9898*x + 78.233*y + 1.) * 43758.5453, 1.);  // infamous; [-1,1] in C++
+	return fmod(sin(12.9898*x + 78.233*y + 1.) * 43758.5453, 1.);  // a hash function for GLSL; [-1,1] in C++
 };
 
 
@@ -63,11 +63,16 @@ double erfinv(double x) {
 
 double randf(double a, double b) { return a + (randu() / 4294967296.)*(b - a); }  // uniform distribution in [a,b)
 double randf_n(double a) { return sqrt(2.) * a * erfinv(2. * randf(0., 1.) - 1.); }  // normal distribution by standard deviation
+int randi(int a, int b) { return int(randf(a, b)); }  // uniform pseudorandom integer in [a,b)
+vec2 rand2() { double a = randf(0, 2.*PI); return vec2(cos(a), sin(a)); }  // uniform distributed unit vector
 vec2 rand2(double r) { double m = randf(0, r), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // default distribution in |v|<r
 vec2 rand2_u(double r) { double m = sqrt(randf(0, r*r)), a = randf(0, 2.*PI); return vec2(m*cos(a), m*sin(a)); }  // uniform distribution in |v|<r
 vec2 rand2_n(double a) { return vec2(randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
 vec3 rand3() { double u = randf(0, 2.*PI), v = randf(-1, 1); return vec3(vec2(cos(u), sin(u))*sqrt(1 - v * v), v); }  // uniform distributed unit vector
 vec3 rand3(double r) { return rand3()*randf(0, r); }  // default distribution in |v|<r
+vec3 rand3_u(double r) { double m = r * pow(randf(0, 1), 1. / 3.), u = randf(0, 2.*PI), v = randf(-1, 1); return m * vec3(vec2(cos(u), sin(u))*sqrt(1 - v * v), v); }  // uniform distribution in |v|<r
+vec3 rand3_n(double a) { return vec3(randf_n(a), randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
+vec3 rand3_c() { double u = randf(0, 2 * PI), v = randf(0, 1); return vec3(sqrt(v)*vec2(cos(u), sin(u)), sqrt(1 - v)); }  // cosine-weighted random hemisphere
 
 
 #endif

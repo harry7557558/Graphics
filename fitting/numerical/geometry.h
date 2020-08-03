@@ -9,8 +9,12 @@
 #include <stdlib.h>
 
 #define PI 3.1415926535897932384626
+#ifndef max
 #define max(x,y) ((x)>(y)?(x):(y))
+#endif
+#ifndef min
 #define min(x,y) ((x)<(y)?(x):(y))
+#endif
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
 
 #define invsqrt(x) (1.0/sqrt(x))
@@ -71,7 +75,7 @@ public:
 	vec3() {}
 	explicit vec3(double a) :x(a), y(a), z(a) {}
 	explicit vec3(double x, double y, double z) :x(x), y(y), z(z) {}
-	explicit vec3(vec2 p, double z) :x(p.x), y(p.y), z(z) {}
+	explicit vec3(vec2 p, double z = 0) :x(p.x), y(p.y), z(z) {}
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
@@ -92,15 +96,31 @@ public:
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
 
 	vec2 xy() { return vec2(x, y); }
+	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
+	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
+	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
+	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 };
 
 class mat3 {
 public:
 	double v[3][3];
 	mat3() {}
-	explicit mat3(double k) { for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) v[i][j] = k * (i == j); }
-	explicit mat3(vec3 lambda) { for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) v[i][j] = i == j ? ((double*)&lambda)[i] : 0; }
-	explicit mat3(vec3 i, vec3 j, vec3 k) { for (int u = 0; u < 3; u++) v[u][0] = ((double*)&i)[u], v[u][1] = ((double*)&j)[u], v[u][2] = ((double*)&k)[u]; }
+	explicit mat3(double k) {  // diagonal matrix
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+			v[i][j] = k * (i == j);
+	}
+	explicit mat3(vec3 lambda) {  // diagonal matrix
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+			v[i][j] = i == j ? ((double*)&lambda)[i] : 0;
+	}
+	explicit mat3(vec3 lambda, double xy, double xz, double yz) {  // symmetric matrix
+		v[0][0] = lambda.x, v[1][1] = lambda.y, v[2][2] = lambda.z;
+		v[0][1] = v[1][0] = xy, v[0][2] = v[2][0] = xz, v[1][2] = v[2][1] = yz;
+	}
+	explicit mat3(vec3 i, vec3 j, vec3 k) {  // matrix by column vectors
+		for (int u = 0; u < 3; u++) v[u][0] = ((double*)&i)[u], v[u][1] = ((double*)&j)[u], v[u][2] = ((double*)&k)[u];
+	}
 	mat3 operator += (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; return *this; }
 	mat3 operator -= (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; return *this; }
 	mat3 operator + (const mat3 &m) const { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] + (&m.v[0][0])[i]; return r; }
@@ -114,6 +134,15 @@ public:
 
 mat3 tensor(vec3 u, vec3 v) { return mat3(u*v.x, u*v.y, u*v.z); }
 
+
+
+// typedef can be useful
+template<typename vec> struct _geometry_segment {
+	vec p, q;
+};
+template<typename vec> struct _geometry_triangle {
+	vec a, b, c;
+};
 
 
 

@@ -15,19 +15,34 @@ void printmat3(const mat3 &m, const char* end = "\n") { printf("\\begin{bmatrix}
 void printmat3v(const mat3 &m, const char* end = "\n") { for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) printfloatv(m.v[i][j], j == 2 ? "\n" : "\t"); printf(end); }
 
 
-#pragma warning(disable:4010)
 
-
-// numerical integral in one dimension (not used)
-template<typename Fun, typename T> T Integral(Fun f, double a, double b, int n) {
+// numerical integral in one dimension
+// s: type specifier for function template, should be initialized to zero
+template<typename Fun, typename T> T Integral(Fun f, double a, double b, int n, T s) {
 	n *= 2;
 	double u = (b - a) / n;
-	T s = 0;
 	for (int i = 1; i < n; i += 2) s += f(a + u * i);
 	s *= 2;
 	for (int i = 2; i < n; i += 2) s += f(a + u * i);
 	s = 2 * s + f(a) + f(b);
-	return s * u / 3;
+	return s * (u / 3);
+}
+void testIntegral(int N = 100){
+    // check single variable analytical integrals numerically
+	for (int i = 0; i < N; i++) {
+		_SRAND(i);
+		double r = randf(0,5);
+		double a = randf(-r,r);
+		double x0 = a;
+		double x1 = r;
+		auto F = [&](double x) ->double {
+			//return 2*(x*x*sqrt(r*r-x*x)+1./3.*pow(r*r-x*x,1.5));
+			return 2*(x*x*sqrt(r*r-x*x));
+		};
+		double I0 = 1./4.*r*r*r*r*(acos(a/r)+1./4.*sin(4*asin(a/r)));
+		double I = Integral(F, x0, x1, 1000, 0.0);
+		printf("%4d\t", i + 1); printf("%lf\n", I/I0);
+	}
 }
 
 
@@ -36,8 +51,6 @@ template<typename Fun, typename T> T Integral(Fun f, double a, double b, int n) 
 // test inertia calculation of basic primitives
 
 mat3 segmentInertia(vec3 a, vec3 b) {
-	//return mat3(dot(a, b)) - 0.5*(tensor(a, b) + tensor(b, a)) + \
-		(1. / 3)*(mat3(dot(a - b, a - b)) - tensor(a - b, a - b));
 	return (1. / 3) * (mat3(dot(a, a) + dot(b, b) + dot(a, b)) \
 		- ((tensor(a, a) + tensor(b, b)) + 0.5*(tensor(a, b) + tensor(b, a))));
 }
@@ -68,9 +81,6 @@ void testSegmentInertia(int N = 100) {
 }
 
 mat3 triangleInertia(vec3 a, vec3 b) {
-	//return 0.5*(mat3(dot(a, a)) - tensor(a, a)) + \
-		(1. / 6)*(mat3(dot(b - a, b - a)) - tensor(b - a, b - a)) + \
-		0.25*(2.*mat3(dot(a, b - a)) - (tensor(a, b) + tensor(b, a) - 2 * tensor(a, a)));
 	return 0.5*segmentInertia(a, b);
 }
 mat3 triangleInertiaN(vec3 a, vec3 b) {
@@ -202,27 +212,26 @@ struct object {
 	mat3 I = mat3(0);  // inertia tensor
 };
 void printDifference(object a, object b) {
-#if 0
-	printf("%lf ", abs(b.m - a.m));
-	printf("%lf ", length(b.c - a.c));
-	printf("%lf\n", sqrt(sumsqr(b.I - a.I)));
-#else
-	double E = b.m / a.m - 1;
-	printf("%lf ", abs(E));
-	int C = 0; E = 0; for (int i = 0; i < 3; i++) if (((double*)&a.c)[i] != 0) E += ((double*)&b.c)[i] / ((double*)&a.c)[i], C++;
-	printf("%lf ", C ? abs(E / C - 1) : length(b.c));
-	C = 0; E = 0; for (int i = 0; i < 9; i++) if ((&a.I.v[0][0])[i] != 0) E += (&b.I.v[0][0])[i] / (&a.I.v[0][0])[i], C++;
-	printf("%lf\n", abs(E / C - 1.0));
-#endif
+    // b divide by a element-wise
+	printf("%lf    ", b.m / a.m);
+	for (int i = 0; i < 3; i++) {
+		double ai = ((double*)&a.c)[i], bi = ((double*)&b.c)[i];
+		if (ai != 0.0 && bi != 0.0) printf("%lf ", bi / ai);
+		else printf("' ");
+		//printf("%lf %lf ", ai, bi);
+	}
+	if (a.c.sqr()==0.0) printf("%lf", length(b.c-a.c));
+	printf("   ");
+	for (int i = 0; i < 3; i++) for (int j = i; j < 3; j++) {  // assume symmetric matrix
+		double ai = a.I.v[i][j], bi = b.I.v[i][j];
+		if (ai != 0.0 && bi != 0.0) printf("%lf ", bi / ai);
+		else printf("' ");
+	}
+	printf("\n");
 }
 
-struct segment {
-	vec3 p, q;
-};
-struct triangle {
-	vec3 a, b, c;
-};
-
+typedef _geometry_segment<vec3> segment;
+typedef _geometry_triangle<vec3> triangle;
 
 // L: line integral
 // A: surface integral
@@ -267,6 +276,21 @@ object calcObject_As(const triangle *s, int N) {
 	R.c /= R.m;
 	return R;
 }
+void testObject_As(int N = 100) {
+	triangle T[1024];
+	for (int i = 0; i < N; i++) {
+		_SRAND(i);
+		double r = randf(0, 5);
+		int n = randi(3, 10);
+		object O0;
+		O0.m = .5*r*r*sin(2*PI/n)*n;
+		O0.c = vec3(0,0,0);
+		O0.I = O0.m * (r*r/12.*(2+cos(2*PI/n))) * mat3(vec3(1,1,2));
+		for (int i=0;i<n;i++) T[i] = triangle{vec3(0),r*vec3(cos(i*2*PI/n),sin(i*2*PI/n),0),r*vec3(cos((i+1)*2*PI/n),sin((i+1)*2*PI/n),0)};
+		object O = calcObject_As(T, n);
+		printf("%4d\t", i + 1); printDifference(O0, O);
+	}
+}
 
 object calcTetrahedron(triangle s) {
 	vec3 a = s.a, b = s.b, c = s.c;
@@ -304,17 +328,18 @@ void testObject_L(int N = 100) {
 	for (int i = 0; i < N; i++) {
 		_SRAND(i);
 		double r = randf(0, 5);
-		double t0 = 0;
-		double t1 = 2*PI;
+		double a = randf(0,PI);
+		double t0 = -a;
+		double t1 = a;
 		auto F = [&](double t) {
 			return vec3(r*cos(t),r*sin(t),0);
 		};
 		object O0;
-		O0.m = 2*PI*r;
-		O0.c = vec3(0, 0, 0);
-		O0.I = O0.m*(1) * mat3(vec3(.5*r*r,.5*r*r,r*r));
+		O0.m = 2*a*r;
+		O0.c = vec3(r*sin(a)/a, 0, 0);
+		O0.I = O0.m*(.5*r*r) * mat3(vec3(1-sin(2*a)/(2.*a),1+sin(2*a)/(2.*a),2));
 		object O = calcObject_L(F, t0, t1);
-		printDifference(O0, O);
+		printf("%4d\t", i + 1); printDifference(O0, O);
 	}
 }
 
@@ -330,7 +355,7 @@ template<typename Fun> object calcObject_A(Fun F, double u0, double u1, double v
 			vec3 p10 = F(u + du, v);
 			vec3 p11 = F(u + du, v + dv);
 			S[sD++] = triangle{ p00, p01, p10 };
-			S[sD++] = triangle{ p11, p01, p10 };
+			S[sD++] = triangle{ p00, p11, p01 };
 		}
 	}
 	object r = calcObject_As(S, sD);
@@ -340,19 +365,20 @@ template<typename Fun> object calcObject_A(Fun F, double u0, double u1, double v
 void testObject_A(int N = 100) {
 	for (int i = 0; i < N; i++) {
 		_SRAND(i);
-		double r1 = randf(0, 5);
-		double r0 = randf(0,r1);
+		vec3 a = rand3(5);
+		vec3 b = rand3(5);
+		vec3 p = rand3(5);
 		double u0 = 0;
-		double u1 = 2*PI;
-		double v0 = r0;
-		double v1 = r1;
+		double u1 = 1;
+		double v0 = 0;
+		double v1 = 1;
 		auto F = [&](double u, double v) {
-			return vec3(v*cos(u),v*sin(u),0);
+			return p+u*a+v*b;
 		};
 		object O0;
-		O0.m = PI*(r1*r1-r0*r0);
-		O0.c = vec3(0, 0, 0);
-		O0.I = O0.m*(1./4.*(r0*r0+r1*r1)) * mat3(vec3(1,1,2));
+		O0.m = length(cross(a,b));
+		O0.c = p+.5*a+.5*b;
+		O0.I = O0.m*(mat3(1./3.*(dot(a,a)+dot(b,b)+3*dot(p,p))+dot(a,p)+dot(b,p)+.5*dot(a,b))-(1./3.*(tensor(a,a)+tensor(b,b)+3*tensor(p,p))+.5*(tensor(a,p)+tensor(p,a)+tensor(b,p)+tensor(p,b)+.5*(tensor(a,b)+tensor(b,a)))));
 		object O = calcObject_A(F, u0, u1, v0, v1);
 		printf("%4d\t", i + 1); printDifference(O0, O);
 	}
@@ -434,21 +460,23 @@ template<typename Fun> object calcObject_V(Fun F, double u0, double u1, double v
 void testObject_V(int N = 100) {
 	for (int i = 0; i < N; i++) {
 		_SRAND(i);
-		double r = randf(0,5);
-		double h = randf(0,5);
+		double R = randf(0,5);
+		double r1 = randf(0,R);
+		double r0 = randf(0,r1);
+		double r_ = r1*r1+r0*r0;
 		double u0 = 0;
-		double u1 = 2 * PI;
+		double u1 = 2*PI;
 		double v0 = 0;
-		double v1 = 1;
-		double w0 = 0;
-		double w1 = r;
+		double v1 = 2*PI;
+		double w0 = r0;
+		double w1 = r1;
 		auto F = [&](double u, double v, double w) {
-			return vec3(w*v*cos(u),w*v*sin(u),h*v)-vec3(0,0,3./4.*h);
+			return vec3(cos(u)*(R+w*cos(v)),sin(u)*(R+w*cos(v)),w*sin(v));
 		};
 		object O0;
-		O0.m = 1./3.*PI*r*r*h;
+		O0.m = 2*PI*PI*R*(r1*r1-r0*r0);
 		O0.c = vec3(0,0,0);
-		O0.I = O0.m*(3./80.)*mat3(vec3(4*r*r+h*h,4*r*r+h*h,8*r*r));
+		O0.I = O0.m*(1)*mat3(vec3(1./2.*R*R+5./8.*r_,1./2.*R*R+5./8.*r_,R*R+3./4.*r_));
 		object O = calcObject_V(F, u0, u1, v0, v1, w0, w1);
 		printf("%4d\t", i + 1); printDifference(O0, O);
 	}
@@ -457,7 +485,7 @@ void testObject_V(int N = 100) {
 
 int main() {
 	auto t0 = std::chrono::high_resolution_clock::now();
-	testObject_V(100);
+	testObject_As(100);
 	printf("%lfs elapsed\n", std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count());
 	//system("pause");
 	return 0;

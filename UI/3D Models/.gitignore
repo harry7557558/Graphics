@@ -1,0 +1,25 @@
+# This folder includes 3d test models
+# Some of these files are quite large, especially those for performance test (exceed 1GB)
+
+# Common test models sorted by file size
+# Utah_Teapot.stl and Stanford_Bunny.stl are downloaded from Wikipedia
+# The_Thinker.stl is downloaded from somewhere on the internet
+# Some are exported by Blender
+# The rest are from Stanford 3D scanning database (some are modified)
+Blender_Cube.stl
+Blender_Isosphere.stl
+Blender_Suzanne.stl
+Utah_Teapot.stl
+Blender_Suzanne3.stl
+Stanford_Bunny.stl
+Stanford_Armadillo.stl
+The_Thinker.stl
+Stanford_Dragon.stl
+Stanford_Happy_Buddha.stl
+Blender_Pipe.stl
+Stanford_Asian_Dragon.stl
+Stanford_Thai.stl
+Stanford_Lucy.stl
+
+# Abstract art from somewhere on the internet
+ascii.stl
