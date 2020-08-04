@@ -242,7 +242,7 @@ void EigenPairs_Jacobi(int N, const double *M, double *eigv, double *eigvec) {
 			// calculate the rotation matrix
 			double a = A[j*N + j], b = A[i*N + i], d = A[i*N + j];
 			auto atan2 = [](double y, double x) { return atan(y / x) + (x > 0 ? 0. : y < 0 ? -PI : PI); };  // idk why this makes it 1.4x faster on my machine
-			double t = .5*atan2(2.*d, a - b);
+			double t = .5*atan2(2.*d, a - b);  // WARNING: atan2(0,0)
 			double c = cos(t), s = sin(t);
 			// apply inverse rotation to the left side of A
 			for (int k = 0; k < N; k++) {

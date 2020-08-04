@@ -1,6 +1,12 @@
 # This folder includes 3d test models
 # Some of these files are quite large, especially those for performance test (exceed 1GB)
 
+*.stl
+*.ply
+*.blend
+*.exe
+*.zip
+
 # Common test models sorted by file size
 # Utah_Teapot.stl and Stanford_Bunny.stl are downloaded from Wikipedia
 # The_Thinker.stl is downloaded from somewhere on the internet

@@ -8,7 +8,9 @@
 #include <math.h>
 #include <stdlib.h>
 
+#ifndef PI
 #define PI 3.1415926535897932384626
+#endif
 #ifndef max
 #define max(x,y) ((x)>(y)?(x):(y))
 #endif
@@ -16,6 +18,7 @@
 #define min(x,y) ((x)<(y)?(x):(y))
 #endif
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
+#define mix(x,y,a) ((x)*(1-a)+(y)*(a))
 
 #define invsqrt(x) (1.0/sqrt(x))
 
@@ -79,6 +82,7 @@ public:
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
+	vec3 operator * (const vec3 &v) const { return vec3(x*v.x, y*v.y, z*v.z); }  // element wise
 	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
 	double sqr() { return x * x + y * y + z * z; }
 	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
@@ -121,8 +125,15 @@ public:
 	explicit mat3(vec3 i, vec3 j, vec3 k) {  // matrix by column vectors
 		for (int u = 0; u < 3; u++) v[u][0] = ((double*)&i)[u], v[u][1] = ((double*)&j)[u], v[u][2] = ((double*)&k)[u];
 	}
-	mat3 operator += (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; return *this; }
-	mat3 operator -= (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; return *this; }
+	explicit mat3(double _00, double _01, double _02, double _10, double _11, double _12, double _20, double _21, double _22) {  // ordered in row-wise
+		v[0][0] = _00, v[0][1] = _01, v[0][2] = _02, v[1][0] = _10, v[1][1] = _11, v[1][2] = _12, v[2][0] = _20, v[2][1] = _21, v[2][2] = _22;
+	}
+	vec3 row(int i) const { return vec3(v[i][0], v[i][1], v[i][2]); }
+	vec3 column(int i) const { return vec3(v[0][i], v[1][i], v[2][i]); }
+	vec3 diag() const { return vec3(v[0][0], v[1][1], v[2][2]); }
+	void operator += (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; }
+	void operator -= (const mat3 &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; }
+	void operator *= (double m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] *= m; }
 	mat3 operator + (const mat3 &m) const { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] + (&m.v[0][0])[i]; return r; }
 	mat3 operator - (const mat3 &m) const { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] - (&m.v[0][0])[i]; return r; }
 	mat3 operator * (double m) const { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] * m; return r; }
@@ -130,9 +141,19 @@ public:
 	friend double determinant(const mat3 &m) { return m.v[0][0] * (m.v[1][1] * m.v[2][2] - m.v[1][2] * m.v[2][1]) - m.v[0][1] * (m.v[1][0] * m.v[2][2] - m.v[1][2] * m.v[2][0]) + m.v[0][2] * (m.v[1][0] * m.v[2][1] - m.v[1][1] * m.v[2][0]); }
 	friend double trace(const mat3 &m) { return m.v[0][0] + m.v[1][1] + m.v[2][2]; }
 	friend double sumsqr(const mat3 &m) { double r = 0; for (int i = 0; i < 9; i++) r += (&m.v[0][0])[i] * (&m.v[0][0])[i]; return r; }  // sum of square of elements
+
+	vec3 operator * (const vec3 &a) const { return vec3(v[0][0] * a.x + v[0][1] * a.y + v[0][2] * a.z, v[1][0] * a.x + v[1][1] * a.y + v[1][2] * a.z, v[2][0] * a.x + v[2][1] * a.y + v[2][2] * a.z); }
 };
 
 mat3 tensor(vec3 u, vec3 v) { return mat3(u*v.x, u*v.y, u*v.z); }
+mat3 axis_angle(vec3 n, double a) {
+	n = normalize(n); double ct = cos(a), st = sin(a);
+	return mat3(
+		ct + n.x*n.x*(1 - ct), n.x*n.y*(1 - ct) - n.z*st, n.x*n.z*(1 - ct) + n.y*st,
+		n.y*n.x*(1 - ct) + n.z*st, ct + n.y*n.y*(1 - ct), n.y*n.z*(1 - ct) - n.x*st,
+		n.z*n.x*(1 - ct) - n.y*st, n.z*n.y*(1 - ct) + n.x*st, ct + n.z*n.z*(1 - ct)
+	);
+}
 
 
 

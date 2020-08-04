@@ -57,7 +57,7 @@ wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 #define WinW_Max 3840
 #define WinH_Max 2160
 
-void Init();  // only use this function to initialize variables (or test)
+void Init();  // called before window is created
 void render();
 void WindowResize(int _oldW, int _oldH, int _W, int _H);
 void WindowClose();
@@ -77,6 +77,8 @@ HBITMAP _HIMG; COLORREF *_WINIMG;
 
 double _DEPTHBUF[WinW_Max][WinH_Max];  // how you use this depends on you
 
+bool Render_Needed = true;
+
 #pragma endregion  // Windows global variables and forward declarations
 
 
@@ -84,7 +86,7 @@ double _DEPTHBUF[WinW_Max][WinH_Max];  // how you use this depends on you
 // Compress these code to save space because I don't understand any of them
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-#define _RDBK { HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); break; }
+#define _RDBK { if (!Render_Needed) break; HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); Render_Needed = false; break; }
 	switch (message) {
 	case WM_CREATE: { if (!_HWND) Init(); break; } case WM_CLOSE: { WindowClose(); DestroyWindow(hWnd); return 0; } case WM_DESTROY: { PostQuitMessage(0); return 0; }
 	case WM_MOVE:; case WM_SIZE: { RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom; BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0; if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK }
@@ -662,7 +664,7 @@ void drawTriangle_F(vec3 A, vec3 B, vec3 C, COLORREF col) {
 	// debug
 }
 void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF) {
-	r /= Unit;
+	r *= dot(Tr.p, P) + Tr.s;
 	drawLine_F(P - vec3(r, 0, 0), P + vec3(r, 0, 0), col);
 	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
 	drawLine_F(P - vec3(0, 0, r), P + vec3(0, 0, r), col);
@@ -799,11 +801,13 @@ void WindowResize(int _oldW, int _oldH, int _W, int _H) {
 	double pw = _oldW, ph = _oldH, w = _W, h = _H;
 	double s = sqrt((w * h) / (pw * ph));
 	Unit *= s, dist /= s;
+	Render_Needed = true;
 }
 void WindowClose() {
 }
 
 void MouseWheel(int _DELTA) {
+	Render_Needed = true;
 	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
 	else if (Shift) dist *= exp(-0.001*_DELTA);
 	else {
@@ -816,6 +820,7 @@ void MouseWheel(int _DELTA) {
 void MouseDownL(int _X, int _Y) {
 	clickCursor = Cursor = vec2(_X, _Y);
 	mouse_down = true;
+	Render_Needed = true;
 
 }
 void MouseMove(int _X, int _Y) {
@@ -824,6 +829,7 @@ void MouseMove(int _X, int _Y) {
 
 	// drag to rotate scene
 	if (mouse_down) {
+		Render_Needed = true;
 		if (Ctrl) {
 			vec3 d = scrDir(P0);
 			vec3 p = CamP.z / d.z * d;
@@ -846,24 +852,28 @@ void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	bool moved = (int)length(clickCursor - Cursor) != 0;   // be careful about coincidence
 	mouse_down = false;
+	Render_Needed = true;
 }
 void MouseDownR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+	Render_Needed = true;
 }
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
 	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+	Render_Needed = true;
 }
 void KeyDown(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = true;
-	else if (_KEY == VK_SHIFT) Shift = true;
-	else if (_KEY == VK_MENU) Alt = true;
+	if (_KEY == VK_CONTROL) Render_Needed = !Ctrl, Ctrl = true;
+	else if (_KEY == VK_SHIFT) Render_Needed = !Shift, Shift = true;
+	else if (_KEY == VK_MENU) Render_Needed = !Alt, Alt = true;
 }
 void KeyUp(WPARAM _KEY) {
 	if (_KEY == VK_CONTROL) Ctrl = false;
 	else if (_KEY == VK_SHIFT) Shift = false;
 	else if (_KEY == VK_MENU) Alt = false;
+	Render_Needed = true;
 
 	if (_KEY == VK_HOME || (Ctrl && (_KEY == '0' || _KEY == VK_NUMPAD0))) {
 		Center = vec3(0.0, 0.0, 0.0);
