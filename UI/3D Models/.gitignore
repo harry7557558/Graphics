@@ -4,8 +4,6 @@
 *.stl
 *.ply
 *.blend
-*.exe
-*.zip
 
 # Common test models sorted by file size
 # Utah_Teapot.stl and Stanford_Bunny.stl are downloaded from Wikipedia

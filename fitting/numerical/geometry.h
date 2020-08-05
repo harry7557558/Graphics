@@ -11,6 +11,8 @@
 #ifndef PI
 #define PI 3.1415926535897932384626
 #endif
+
+// for macros, do not use rand() because it will be called multiple times
 #ifndef max
 #define max(x,y) ((x)>(y)?(x):(y))
 #endif
@@ -157,14 +159,9 @@ mat3 axis_angle(vec3 n, double a) {
 
 
 
-// typedef can be useful
-template<typename vec> struct _geometry_segment {
-	vec p, q;
-};
-template<typename vec> struct _geometry_triangle {
-	vec a, b, c;
-};
-
+double degree(double rad) {
+	return rad * (180. / PI);
+}
 
 
 #endif // __INC_GEOMETRY_H

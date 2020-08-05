@@ -1,63 +1,92 @@
-// A binary STL file viewer for Windows
+// A binary STL 3D model viewer for Windows
 // Some features are inspired by Blender 3D and ModuleWorks FreeSTLView
 
-// Mostly used for viewing STL files exported by my own programs.
+// Most STL viewers I found on the internet don't match my personal preference exactly
+// So I developed one for myself
 
 // Features:
-// Powerful viewport adjustments
-// Multiply coloring/shading modes
+// Powerful viewport navigations
+// Multiple coloring and rendering modes
 // Visualization of physical properties
 // Edit and export
+// Small and portable binary executable
 
 // Flaws:
-// Single-thread software rasterization, which can be slow for models with >500k triangles
+// Single-thread software rasterization that can be slow for models with >500k triangles
 // Not support colored STL
+// Code isn't very readable
 
 
 // VIEWPORT / NAVIGATION:
 // A viewport center highlighted in magenta is visible when dragging/holding control keys
-// There is a small model of x,y,z axises (rgb) on the top-right corner
-// Click and drag to rotate scene around viewport center (raw/patch)
+// There is a small model of x,y,z axes (RGB) on the top-right of the window
+// Click and drag to rotate the scene around viewport center (raw/patch)
 // Scroll to zoom in/out
 // Shift+Drag to adjust camera roll
 // Shift+Scroll to adjust camera distance (perspective)
-// Ctrl+Drag to move viewport center on xOy plane (may not work well when camera angle is too small)
+// Ctrl+Drag to move viewport center on xOy plane (may not work well when the camera is too close to the plane)
 // Ctrl+Scroll to move viewport center along z-axis
-// Alt+Click object to move viewport center to the clicked point on the object
-// Press Numpad decimal key to move viewport center to the center of the object (center of bounding box)
-// The function of a single press of numpad keys is same as that in Blender 2.80
-// WSAD keys are supported but not recommended to use
+// Alt+Click object to move viewport center to the clicked point on the object (recommend)
+// Press Numpad decimal key to move viewport center to the center of the object (center of its bounding box)
+// The function of a single press of Numpad keys is the same as that in Blender 2.80
+//   - Numpad0: Move camera to negative y direction (look at positive y)
+//   - Numpad3: Move camera to positive x direction (look at negative x)
+//   - Numpad7: Move camera to positive z direction (look down, x-axis at right)
+//   - Numpad9: Move camera to negative z direction (look up, x-axis at right)
+//   - Numpad5: Dolly zoom, move camera extremly far away to simulate orthographic projection
+//   - Numpad4: Rotate camera position horizontally around viewport center for 15 degrees (clockwise)
+//   - Numpad6: Rotate camera position horizontally for 15 degrees (counterclockwise)
+//   - Numpad8: Increase camera position vertical angle for 15 degrees
+//   - Numpad2: Decrease camera position vertical angle for 15 degrees
+//       (I may not use the right terminology)
+// WSAD keys are supported but not recommended (may be used along with Alt+Click)
 // Press Home key or Ctrl+0 to reset viewport to default
+// To-do list:
+//   - Rotation and zooming that changes the position of viewport center but not camera
+//   - Moving camera along xOy plane
+//   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
+//   - Dynamic translation and zooming based on the position of the camera and viewport center
+//   - Free rotation when grid is hidden
 
 // VISUALIZATION OPTIONS:
-// Press C to switch between normal color and Phong illumination model
-//   - Normal color: the color is based on the normal of the triangle;
-//   - Phong lighting (default): the color of the triangles should be silver-white; if the normal faces backward, the color is brown or black
-// Press Tab to switch to next polygon mode or Shift+Tab to the previous
+// Press C to switch coloring mode (normal color vs. Phong)
+//   - Normal color: the color of the triangles are based on their normals (independent to the viewport)
+//   - Phong (default): the color of the triangles should look silver-white; if a triangle's normal faces backward from view, its color is dark brown
+// Press Tab or Shift+Tab to switch to next/previous polygon rendering mode
 //   - Default: fill the faces by color mentioned above
-//   - Stroke: Triangles with black strokes
-//   - Polygon: no fill, stroke the triangle using default fill color
-//   - Point cloud: no fill or stroke, plot vertexes of the triangles using default fill color
+//   - Stroke: shaded faces with black strokes
+//   - Polygon: no fill, stroke the triangle using filling color
+//   - Point cloud: no fill or stroke, use filling color to plot vertexes
 // Press X to hide/show axis
 // Press G to hide/show grid
 // Press B to switch to/out dark background
-// Press M to show/hide center of mass highlighting (orange)
-// Press I to show/hide inertia tensor highlighting
-//    - The inertia tensor is calculated at the center of mass and visualized as three yellow principle axises with length equal to the principle radius
-//    - If one or more axises get NAN, there will be a dark green cross at the center of mass
-// By default, the center of mass and inertia tensor calculator assume the object is a solid. Press P to switch to shell/surface mode or switch back
+// Press M to show/hide highlighting of the object's center of mass (orange)
+// Press I to show/hide highlighting of the object's inertia tensor
+//   - The inertia tensor (calculated at the center of mass) is visualized as three yellow principle axes with lengths equal to the principle radiuses
+//   - If one or more calculations get NAN, there will be a dark green cross at the center of mass
+// By default, the center of mass and inertia tensor calculator assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
+// To-do list:
+//   - Visualization of the objects' bounding box
+//   - Visualization of the volume of the object
+//   - Rendering with normal loaded from file
+//   - Semi-transparent shading
 
 // FILE AND EDITING:
-// Press Ctrl+O to open Windows file explorer to open a file
-// Press Ctrl+S to save object
-// Press F5 to reload object from file
-// Right-click window to set window to topmost (or cancle)
-// All the following require holding Alt key:
-// Press Numpad . to place the object on the center of xOy plane
-// Press Numpad 4/6/2/8 to rotate object left/right/up/down about its center of mass
-// Press arrow keys to move object left/right/up/down
-// Press Numpad5 to translate object so that its center of mass coincident with the origin
-// Press plus/minus keys to scale the object about its center of mass
+// Press Ctrl+O to open Windows file explorer to browse and open a file
+// Press Ctrl+S to save edited object
+// Press F5 to reload object (there will not be warning about unsaved changes)
+// Right-click window to set window to topmost or non-topmost
+// Hold Alt key to modify object:
+//   - Press Numpad . to place the object on the center of xOy plane
+//   - Press Numpad 4/6/2/8 to rotate object left/right/up/down about its center of mass
+//   - Press arrow keys to move object left/right/up/down
+//   - Press Numpad5 to translate object so that its center of mass coincident with the origin
+//   - Press plus/minus keys to scale the object about its center of mass
+// To-do list:
+//   - Shortcuts to rotate object to make its principle axes axis-oriented
+//   - Non-linear transforms
+//   - Reflection
+//   - Mouse-involved editings (eg. dragging, scrolling)
 
 
 
@@ -152,6 +181,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma region Vector & Matrix
 
+// https://github.com/Harry7557558/Graphics/tree/master/fitting/numerical
 #include "D:\\Coding\Github\Graphics\fitting\numerical\geometry.h"  // vec2, vec3, mat3
 #include "D:\\Coding\Github\Graphics\fitting\numerical\eigensystem.h"  // EigenPairs_Jacobi
 typedef _geometry_triangle<vec3> triangle;
@@ -259,10 +289,9 @@ bool DarkBackground = false;
 WCHAR filename[MAX_PATH] = L"";
 int N; triangle *T = 0;
 vec3 BMin, BMax;  // bounding box
-double V; vec3 COM;  // volume(area?) & center of mass
+double V; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
 
-// require surface to be closed and normal face outside
 void calcBoundingBox() {
 	BMin = vec3(INFINITY), BMax = -BMin;
 	for (int i = 0; i < N; i++) {
@@ -270,7 +299,9 @@ void calcBoundingBox() {
 		BMax = pMax(pMax(BMax, T[i].a), pMax(T[i].b, T[i].c));
 	}
 }
-void calcVolumeCenterInertia() {  // physics stuff
+// physics, requires surface to be closed with outward normals
+void calcVolumeCenterInertia() {
+	// Assume the object to be uniform density
 	// I might have a bug
 	V = 0; COM = vec3(0.0); Inertia = mat3(0.0);
 	for (int i = 0; i < N; i++) {
@@ -735,7 +766,7 @@ void KeyUp(WPARAM _KEY) {
 			MessageBeep(MB_ICONSTOP);
 			SetWindowText(_HWND, L"Error loading file");
 		}
-		calcBoundingBox(); calcVolumeCenterInertia();
+		setDefaultView();
 	}
 
 	if (Ctrl) {
