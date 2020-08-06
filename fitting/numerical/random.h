@@ -74,6 +74,27 @@ vec3 rand3_u(double r) { double m = r * pow(randf(0, 1), 1. / 3.), u = randf(0, 
 vec3 rand3_n(double a) { return vec3(randf_n(a), randf_n(a), randf_n(a)); }  // normal distribution by standard deviation
 vec3 rand3_c() { double u = randf(0, 2 * PI), v = randf(0, 1); return vec3(sqrt(v)*vec2(cos(u), sin(u)), sqrt(1 - v)); }  // cosine-weighted random hemisphere
 
+vec2 rand2_f(double a, double b) { return vec2(randf(a, b), randf(a, b)); }
+vec3 rand3_f(double a, double b) { return vec3(randf(a, b), randf(a, b), randf(a, b)); }
+
+mat3 randRotation() {
+	return axis_angle(rand3(), randf(0, 2 * PI));
+}
+
+// from Numerical Recipes, not accurate for small xm
+double poisson(double xm) {
+	while (1) {
+		double em, y;
+		double sq = sqrt(2.*xm), alxm = log(xm), g = xm * alxm - lgamma(xm + 1.);
+		do {
+			y = tan(randf(0, PI));
+			em = sq * y + xm;
+		} while (em < 0.);
+		double t = 0.9*(1. + y * y)*exp(em*alxm - lgamma(em + 1.) - g);
+		if (randf(0, 1) < t) return em;
+	}
+}
+
 
 #endif
 

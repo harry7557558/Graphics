@@ -47,6 +47,8 @@
 //   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
 //   - Dynamic translation and zooming based on the position of the camera and viewport center
 //   - Free rotation when grid is hidden
+//   - Numpad0 to move viewport center to origin
+//   - A key to move viewport center to center of mass
 
 // VISUALIZATION OPTIONS:
 // Press C to switch coloring mode (normal color vs. Phong)
@@ -66,10 +68,12 @@
 //   - If one or more calculations get NAN, there will be a dark green cross at the center of mass
 // By default, the center of mass and inertia tensor calculator assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
 // To-do list:
+//   - Clamp the outline depth to eliminate black "dashes"
 //   - Visualization of the objects' bounding box
 //   - Visualization of the volume of the object
 //   - Rendering with normal loaded from file
 //   - Semi-transparent shading
+//   - Hide/unhide part of object
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
@@ -87,6 +91,7 @@
 //   - Non-linear transforms
 //   - Reflection
 //   - Mouse-involved editings (eg. dragging, scrolling)
+//   - Shift+F5 to reload without updating viewport
 
 
 
