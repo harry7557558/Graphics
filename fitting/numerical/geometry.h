@@ -27,8 +27,7 @@
 
 // a sketchy planar vector template
 
-class vec2 {
-public:
+struct vec2 {
 	double x, y;
 	explicit vec2() {}
 	explicit vec2(const double &a) :x(a), y(a) {}
@@ -74,8 +73,7 @@ public:
 
 // a more sketchy 3d vector template
 
-class vec3 {
-public:
+struct vec3 {
 	double x, y, z;
 	vec3() {}
 	explicit vec3(double a) :x(a), y(a), z(a) {}

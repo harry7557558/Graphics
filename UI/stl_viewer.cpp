@@ -46,9 +46,11 @@
 //   - Moving camera along xOy plane
 //   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
 //   - Dynamic translation and zooming based on the position of the camera and viewport center
+//   - Arrow keys to go up/dow (help with WSAD)
 //   - Free rotation when grid is hidden
 //   - Numpad0 to move viewport center to origin
 //   - A key to move viewport center to center of mass
+//   - Optional: "crawling" on the surface
 
 // VISUALIZATION OPTIONS:
 // Press C to switch coloring mode (normal color vs. Phong)
@@ -69,11 +71,15 @@
 // By default, the center of mass and inertia tensor calculator assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
 // To-do list:
 //   - Clamp the outline depth to eliminate black "dashes"
+//   - Fix bug: top-right axis distortion under high perspective and zooming
+//   - An option to always show viewport center
+//   - Hide/unhide part of object
 //   - Visualization of the objects' bounding box
 //   - Visualization of the volume of the object
 //   - Rendering with normal loaded from file
 //   - Semi-transparent shading
-//   - Hide/unhide part of object
+//   - Outline rendering based on geometry
+//   - Smoothed shading (interpolation)
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
@@ -92,6 +98,7 @@
 //   - Reflection
 //   - Mouse-involved editings (eg. dragging, scrolling)
 //   - Shift+F5 to reload without updating viewport
+//   - Shortcut to view next/previous model in directory
 
 
 

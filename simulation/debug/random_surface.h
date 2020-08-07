@@ -613,9 +613,9 @@ bool writeSTL(triangle* T, int N, const char* filename) {
 	fclose(fp); return true;
 }
 
-#include <ctime>
 int main() {
 	std::vector<triangle> STL;
+#if 0
 	//const int NI = 5, NJ = 5, NK = 5;
 	const int NI = 1, NJ = 1, NK = 1;
 	for (int I = 0; I < NI; I++) {
@@ -630,6 +630,16 @@ int main() {
 		}
 	}
 	writeSTL(&STL[0], STL.size(), "D:\\test.stl");
+#else
+	for (int i = 0; i < 100; i++) {
+		_SRAND(i);
+		std::vector<triangle> T;
+		randomStone(T);
+		char filename[64];
+		sprintf(filename, "D:\\test%d%d.stl", i / 10, i % 10);
+		writeSTL(&T[0], T.size(), filename);
+	}
+#endif
 	return 0;
 }
 

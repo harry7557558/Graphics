@@ -1,7 +1,7 @@
 // Test numerical integration of ODEs: x"(t) = a
 // In this experiment, integration variables are 3d vectors
 
-// Compilable with Microsoft Visual Studio
+// Win32 GUI
 // 2kb simulation code and 30kb debugging code?! oh no...
 
 
@@ -74,37 +74,24 @@ double _DEPTHBUF[WinW_Max][WinH_Max];
 // Win32 Entry
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-#define _RDBK { HDC hdc = GetDC(_HWND), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); } break;
+#define _RDBK { HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); break; }
 	switch (message) {
-	case WM_NULL: {_RDBK}
-	case WM_CREATE: { if (!_HWND) Init(); break; }
-	case WM_CLOSE: { WindowClose(); DestroyWindow(hWnd); return 0; }
-	case WM_DESTROY: { PostQuitMessage(0); return 0; }
-	case WM_MOVE:; case WM_SIZE: {
-		RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom;
-		BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0;
-		if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK
-	}
+	case WM_NULL: { _RDBK }
+	case WM_CREATE: { if (!_HWND) Init(); break; } case WM_CLOSE: { WindowClose(); DestroyWindow(hWnd); return 0; } case WM_DESTROY: { PostQuitMessage(0); return 0; }
+	case WM_MOVE:; case WM_SIZE: { RECT Client; GetClientRect(hWnd, &Client); WindowResize(_WIN_W, _WIN_H, Client.right, Client.bottom); _WIN_W = Client.right, _WIN_H = Client.bottom; BITMAPINFO bmi; bmi.bmiHeader.biSize = sizeof(BITMAPINFO), bmi.bmiHeader.biWidth = Client.right, bmi.bmiHeader.biHeight = Client.bottom, bmi.bmiHeader.biPlanes = 1, bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB, bmi.bmiHeader.biSizeImage = 0, bmi.bmiHeader.biXPelsPerMeter = bmi.bmiHeader.biYPelsPerMeter = 0, bmi.bmiHeader.biClrUsed = bmi.bmiHeader.biClrImportant = 0; bmi.bmiColors[0].rgbBlue = bmi.bmiColors[0].rgbGreen = bmi.bmiColors[0].rgbRed = bmi.bmiColors[0].rgbReserved = 0; if (_HIMG != NULL) DeleteObject(_HIMG); HDC hdc = GetDC(hWnd); _HIMG = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&_WINIMG, NULL, 0); DeleteDC(hdc); _RDBK }
 	case WM_GETMINMAXINFO: { LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam; lpMMI->ptMinTrackSize.x = WinW_Min, lpMMI->ptMinTrackSize.y = WinH_Min, lpMMI->ptMaxTrackSize.x = WinW_Max, lpMMI->ptMaxTrackSize.y = WinH_Max; break; }
 	case WM_PAINT: { PAINTSTRUCT ps; HDC hdc = BeginPaint(hWnd, &ps), HMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HMem, _HIMG); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HMem, 0, 0, SRCCOPY); SelectObject(HMem, hbmOld); EndPaint(hWnd, &ps); DeleteDC(HMem), DeleteDC(hdc); break; }
 #define _USER_FUNC_PARAMS GET_X_LPARAM(lParam), _WIN_H - 1 - GET_Y_LPARAM(lParam)
-	case WM_MOUSEMOVE: { MouseMove(_USER_FUNC_PARAMS); _RDBK }
-	case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
-	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK }
-	case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
-	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK }
-	case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
-	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) KeyDown(wParam); _RDBK }
-	case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) KeyUp(wParam); _RDBK }
+	case WM_MOUSEMOVE: { MouseMove(_USER_FUNC_PARAMS); _RDBK } case WM_MOUSEWHEEL: { MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam)); _RDBK }
+	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK } case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
+	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK } case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
+	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) KeyDown(wParam); _RDBK } case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) KeyUp(wParam); _RDBK }
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
-
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
-	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME);
-	if (!RegisterClassEx(&wc)) return -1;
-	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, WinW_Padding, WinH_Padding, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL);
-	ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
+	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME); if (!RegisterClassEx(&wc)) return -1;
+	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, WinW_Padding, WinH_Padding, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL); ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
 	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
 }
 
@@ -115,61 +102,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma region Vector & Matrix
 
-#define PI 3.1415926535897932384626
-#define mix(x,y,a) ((x)*(1.0-(a))+(y)*(a))
-#define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
-double mod(double x, double m) { return x - m * floor(x / m); }
-
-// vector templates - huge!
-struct vec2 {
-	double x, y;
-	explicit vec2() {}
-	explicit vec2(const double &a) :x(a), y(a) {}
-	explicit vec2(const double &x, const double &y) :x(x), y(y) {}
-	vec2 operator - () const { return vec2(-x, -y); }
-	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
-	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
-	vec2 operator * (const vec2 &v) const { return vec2(x * v.x, y * v.y); }
-	vec2 operator * (const double &a) const { return vec2(x*a, y*a); }
-	double sqr() const { return x * x + y * y; }
-	friend double length(const vec2 &v) { return sqrt(v.x*v.x + v.y*v.y); }
-	friend vec2 normalize(const vec2 &v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y)); }
-	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
-	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; }
-	void operator += (const vec2 &v) { x += v.x, y += v.y; }
-	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }
-	void operator *= (const vec2 &v) { x *= v.x, y *= v.y; }
-	friend vec2 operator * (const double &a, const vec2 &v) { return vec2(a*v.x, a*v.y); }
-	void operator *= (const double &a) { x *= a, y *= a; }
-	vec2 operator / (const double &a) const { return vec2(x / a, y / a); }
-	void operator /= (const double &a) { x /= a, y /= a; }
-	vec2 rot() const { return vec2(-y, x); }
-};
-struct vec3 {
-	double x, y, z;
-	explicit vec3() {}
-	explicit vec3(const double &a) :x(a), y(a), z(a) {}
-	explicit vec3(const double &x, const double &y, const double &z) :x(x), y(y), z(z) {}
-	explicit vec3(const vec2 &v, const double &z) :x(v.x), y(v.y), z(z) {}
-	vec3 operator - () const { return vec3(-x, -y, -z); }
-	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
-	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
-	vec3 operator * (const vec3 &v) const { return vec3(x * v.x, y * v.y, z * v.z); }
-	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
-	double sqr() const { return x * x + y * y + z * z; } 	// non-standard
-	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-	friend vec3 normalize(vec3 v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y + v.z*v.z)); }
-	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
-	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
-	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
-	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
-	void operator *= (const vec3 &v) { x *= v.x, y *= v.y, z *= v.z; }
-	friend vec3 operator * (const double &a, const vec3 &v) { return vec3(a*v.x, a*v.y, a*v.z); }
-	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
-	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
-	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
-	vec2 xy() const { return vec2(x, y); }
-};
+#include "D:\\Coding\Github\Graphics\fitting\numerical\geometry.h"
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
@@ -196,7 +129,6 @@ Affine operator * (const Affine &A, const Affine &B) {
 	R.s = dot(A.p, B.t) + A.s*B.s;
 	return R;
 }
-
 
 #pragma endregion
 
@@ -262,7 +194,7 @@ void fillCircle(vec2 c, double r, COLORREF col);
 void drawLine_F(vec3 A, vec3 B, COLORREF col);
 void drawCross3D(vec3 P, double r, COLORREF col, bool relative);
 
-#pragma endregion
+#pragma endregion 3D graphics
 
 
 #pragma region Simulation Test Cases
@@ -286,7 +218,7 @@ public:
 };
 
 // Gravitational Acceleration
-vec3 g = vec3(0, 0, -9.81);
+const vec3 g = vec3(0, 0, -9.81);
 
 // Acceleration due to gravity
 Test_Case Projectile([](vec3 p, vec3 v, double t)->vec3 {
@@ -316,7 +248,7 @@ Test_Case Projectile_RW([](vec3 p, vec3 v, double t)->vec3 {
 // On a one-meter-long non-deformable rod
 // An accurate solution should not deviate the unit sphere
 Test_Case Pendulum([](vec3 p, vec3 v, double t)->vec3 {
-	vec3 u = normalize(cross(p, cross(p, veck))) * (g * length(p.xy()) / length(p));
+	vec3 u = normalize(cross(p, cross(p, veck))) * (length(g) * length(p.xy()) / length(p));
 	vec3 w = -p * dot(v, v);
 	return u + w;
 }, 6.0, 0.02, vec3(0, 1, 0), vec3(1, 0, 0));
@@ -358,6 +290,7 @@ Test_Case NBody_m([](vec3 p, vec3 v, double t)->vec3 {
 	m = length(p);
 	return F - p / (m*m*m);
 }, 2.*PI, 0.02, vec3(2, 2, 0), vec3(1, -.5, -.2), [](double t) {
+	fillCircle((Tr*vec3(0.0)).xy(), 6, 0xC08000);
 	fillCircle((Tr*vec3(cos(3.*t), sin(3.*t), 0)).xy(), 4, 0x00FF00);
 });
 
@@ -385,9 +318,23 @@ Test_Case TimeTest_3([](vec3 p, vec3 v, double t)->vec3 {
 	return 4.*(a + b + c - 5.*p);
 }, 6.0, 0.05, vec3(0), vec3(0));
 
-#pragma endregion Projectile, Projectile_R, Projectile_RB, Projectile_RW, Pendulum, Pendulum_S, NBody_1, NBody_2, NBody_m, TimeTest_1, TimeTest_2, TimeTest_3
+// `Artifical equation #4
+Test_Case TimeTest_4([](vec3 p, vec3 v, double t)->vec3 {
+	p.z -= 2.0;
+	vec3 N = -(2.0*exp(sin(t + 0.5)) + 4.0)*(length(p) - cos(t)*cos(t))*p;
+	vec3 r = 0.05*(sin(t) + 1.0)*dot(v, v)*v;
+	return N - r + vec3(0, 0, -4);
+}, 6.0, 0.05, vec3(0, 1, 0), vec3(4, -1, 4));
 
-Test_Case T = Projectile;
+// `Artifical equation #5
+Test_Case TimeTest_5([](vec3 p, vec3 v, double t)->vec3 {
+	return vec3(-p.xy()*(exp(cos(2.0*t)) + 1.0) - 0.4*p.z*v.xy(), -2.0*length(v)*p.z + 0.5* exp(sin(2.0*t)));
+}, 8.0, 0.1, vec3(1, 1, 1), vec3(-1, 1, 0));
+
+
+#pragma endregion Projectile, Projectile_R, Projectile_RB, Projectile_RW, Pendulum, Pendulum_S, NBody_1, NBody_2, NBody_m, TimeTest_[1-5]
+
+Test_Case T = TimeTest_3;
 
 
 
@@ -496,20 +443,53 @@ void initReferencePath() {
 		p0 = p, v0 = v;
 	}
 	if (0.0*RefPath[RefN].sqr() != 0.0) RefN--;
+#if 0
+	vec3 ctr(0.0); double L(0.0);
+	for (int i = 0; i < RefN; i++) {
+		double dL = length(RefPath[i + 1] - RefPath[i]);
+		//dL = 1.0;
+		L += dL, ctr += dL * RefPath[i];
+	}
+	Center = ctr / L;
+#else
+	vec3 Min(INFINITY), Max = -Min;
+	for (int i = 0; i <= RefN; i++) {
+		Min = pMin(Min, RefPath[i]), Max = pMax(Max, RefPath[i]);
+	}
+	Center = 0.5*(Min + Max);
+#endif
+	if (isnan(Center.sqr())) Center = vec3(0.0);
 }
-#pragma endregion
+#pragma endregion // reference path
 
 
 #pragma region Simulation
+
+// p(t+h) = p(t) + p'(t) h + p"(t) h²/2 + p"'(t) h³/6 + p""(t) h⁴/24 + O(h⁵)
+// v(t+h) = p'(t) + p"(t) h + p"'(t) h²/2 + p""(t) h³/6 + O(h⁴)
+// p(t) = p
+// p'(t) = v
+// p"(t) = a(p,v,t)
+// p‴(t) = ∂a/∂p v + ∂a/∂v a + ∂a/∂t
+// p⁗(t) = [ ∂²a/∂p² v v + ∂²a/∂v² a a + 2 ∂²a/∂p∂v v a ] + [ 2 ∂²a/∂p∂t v + 2 ∂²a/∂v∂t a + ∂a/∂v ∂a/∂p v + (∂a/∂v)² a ] + ∂a/∂v ∂a/∂t + ∂a/∂p a + ∂²a/∂t²
+
+// t, h: scalar
+// p, v, a, ∂a/∂t, ∂²a/∂t²: column vector
+// ∂a/∂p, ∂a/∂v, ∂²a/∂p∂t, ∂²a/∂v∂t: 3x3 matrix
+// ∂²a/∂p², ∂²a/∂v², ∂²a/∂p∂v: 3x3x3 cube matrix??
+// Is (∂²a/∂v∂p a v) equal to (∂²a/∂p∂v v a) ?  - Yes.
+// Is (∂²a/∂p∂v a v) equal to (∂²a/∂p∂v v a) ?  - Maybe not.
+// hope my math isn't wrong... (I swear I don't know anything about tensor)
+
 
 #define plotPath(Color) \
 	drawLine_F(p0, p, Color); \
 	drawCross3D(p, 2, Color); \
 	double u = t + dt - iTime; if (u > 0 && u < dt) { u /= dt; fillCircle((Tr*(u*p0 + (1 - u)*p)).xy(), 6, Color); }
 
-// orange
+// orange; p: 1/6 h³ p³(t0); v: 1/2 h² p³(t0)
 template<typename Fun>
-void EulersMethod(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/2 h² v"(t0)
+void EulersMethod(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	vec3 p = p0, v = v0, a;
 	for (double t = 0.0; t < tMax; t += dt) {
 		a = acc(p, v, t);
@@ -520,24 +500,48 @@ void EulersMethod(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/
 	}
 }
 
-// yellow
+// yellow; p: 1/6 h³ p³(t0); v: h³ p⁴(t0) missing some terms
 template<typename Fun>
-void Euler_Midpoint(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 1/24 h³ v³(t0) ??
+void Midpoint_Method(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	dt *= 2.0;  // to be fair
-	vec3 p = p0, v = v0, a;
+	vec3 p = p0, v = v0, a, am;
 	for (double t = 0.0; t < tMax; t += dt) {
 		a = acc(p, v, t);
-		vec3 _p = p;
-		p += v * dt + a * (.5*dt*dt);
-		v += acc(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
+		// am: a + h/2 da/dt + (h/2)² [ ∂²a/∂p² v v + ∂²a/∂v² a a + ∂²a/∂p∂v v a + ∂²a/∂v∂t a + ∂a/∂p a + ∂²a/∂t² ]
+		am = acc(p + v * (.5*dt) + a * (.25*dt*dt), v + a * (.5*dt), t + .5*dt);
+		//p += v * dt + a * (0.5*dt*dt);
+		p += v * dt + (a / 6. + am / 3.)*(dt*dt);
+		v += am * dt;
 		plotPath(0xFFFF00);
 		p0 = p, v0 = v;
 	}
 }
 
-// yellow green, accuracy similar to Euler_Midpoint
+// red; standard Rough Kutta methods
 template<typename Fun>
-void Midpoint_1(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
+void Rouge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
+	dt *= 4.0;  // to be fair
+	vec3 p = p0, v = v0;
+	for (double t = 0.0; t < tMax; t += dt) {
+		vec3 p1 = v * dt;
+		vec3 v1 = acc(p, v, t) * dt;
+		vec3 p2 = (v + 0.5*v1) * dt;
+		vec3 v2 = acc(p + 0.5*p1, v + 0.5*v1, t + 0.5*dt) * dt;
+		vec3 p3 = (v + 0.5*v2) * dt;
+		vec3 v3 = acc(p + 0.5*p2, v + 0.5*v2, t + 0.5*dt) * dt;
+		vec3 p4 = (v + v3) * dt;
+		vec3 v4 = acc(p + p3, v + v3, t + dt) * dt;
+		p += (p1 + 2.*p2 + 2.*p3 + p4) / 6.;
+		v += (v1 + 2.*v2 + 2.*v3 + v4) / 6.;
+		plotPath(0xFF0000);
+		p0 = p, v0 = v;
+	}
+}
+
+// yellow green; p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
+// obtains derivative from the previous calculation, accuracy similar to Euler_Midpoint
+template<typename Fun>
+void Midpoint_1(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	vec3 p = p0, v = v0, a0, a = a0 = acc(p0, v0, 0);
 	for (double t = 0.0; t < tMax; t += dt) {
 		a = acc(p, v, t);
@@ -548,9 +552,10 @@ void Midpoint_1(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/6 
 	}
 }
 
-// sky blue, works best when acceleration only depend on the position
+// sky blue; p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
+// works best when acceleration only depend on the position (eg. static gravity field)
 template<typename Fun>
-void Verlet_Modified(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {  // p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
+void Verlet_Modified(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	vec3 a = acc(p0, v0, 0);
 	vec3 v = v0 + a * dt, p = p0 + v0 * dt + a * (.5*dt*dt);
 	vec3 a0 = acc(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
@@ -605,10 +610,12 @@ void render() {
 	vec3 P0 = T.P0, V0 = T.V0;
 	double t_step = T.dt, tMax = T.t1;
 	auto Acceleration = T.Acceleration;
-	EulersMethod(P0, V0, Acceleration, t_step, tMax);
-	Euler_Midpoint(P0, V0, Acceleration, t_step, tMax);
-	Midpoint_1(P0, V0, Acceleration, t_step, tMax);
+	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
+	Midpoint_Method(P0, V0, Acceleration, t_step, tMax);
+	Rouge_Kutta(P0, V0, Acceleration, t_step, tMax);
+	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
+
 
 	T.additional_render(iTime);
 
