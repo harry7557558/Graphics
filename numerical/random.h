@@ -1,9 +1,9 @@
 // define _RANDOM_H_BETTER_QUALITY before including this file for better random number quality
 
 
-#ifndef _INC_RANDOM_H
+#ifndef __INC_RANDOM_H
 
-#define _INC_RANDOM_H
+#define __INC_RANDOM_H
 
 
 #ifndef __INC_GEOMETRY_H
@@ -96,5 +96,5 @@ double poisson(double xm) {
 }
 
 
-#endif
+#endif // __INC_RANDOM_H
 

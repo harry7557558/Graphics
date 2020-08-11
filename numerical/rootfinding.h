@@ -1,3 +1,17 @@
+// currently only implemented solutions for cubic and quartic equations
+
+// To-do:
+// Polynomial solver
+// Newton's iteration in one dimension
+// Multivariable numerical root-finding
+// Add solution for a*cos(x)+b*sin(x)+c=0
+
+
+
+#ifndef __INC_ROOTFINDING_H
+
+#define __INC_ROOTFINDING_H
+
 
 #include <cmath>
 
@@ -106,4 +120,8 @@ double refineRoot_quartic(double c4, double c3, double c2, double c1, double c0,
 	if (dx*dx < 1e-4) x -= dx;
 	return x;
 }
+
+
+
+#endif // __INC_ROOTFINDING_H
 

@@ -157,6 +157,7 @@ mat3 axis_angle(vec3 n, double a) {
 
 
 
+// mostly used for debug output
 double degree(double rad) {
 	return rad * (180. / PI);
 }

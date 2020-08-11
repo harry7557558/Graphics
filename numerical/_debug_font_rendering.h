@@ -9,8 +9,8 @@
 #include "libraries\stb_image.h"
 void getHardCodedFontData() {
 	// Shadertoy font texture: https://www.shadertoy.com/media/a/08b42b43ae9d3c0605da11d0eac86618ea888e62cdd9518ee8b9097488b31560.png
-	freopen("D:\\Coding\\Github\\Graphics\\fitting\\numerical\\font.cpp", "w", stdout);
-	int w, h; byte *img = stbi_load("D:\\Coding\\Github\\Graphics\\fitting\\numerical\\font.png", &w, &h, 0, 4);
+	freopen("font.cpp", "w", stdout);
+	int w, h; byte *img = stbi_load("font.png", &w, &h, 0, 4);
 	for (byte c = 32; c < 128; c++) {
 		int y = 64 * int(c / 16), x = 64 * int(c % 16);
 		byte k[64][64];

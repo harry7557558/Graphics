@@ -6,7 +6,7 @@
 #include <chrono>
 
 // vector/matrix, random
-#include "D:\Coding\Github\Graphics\fitting\numerical\random.h"
+#include "numerical\random.h"
 
 void printfloatv(double x, const char* end = "\n") { if (x*x < 1e-8) printf("0"); else printf("%.4lg", x); printf(end); }
 void printvec3(vec3 p, const char* end = "\n") { printf("(%lf,%lf,%lf)%s", p.x, p.y, p.z, end); }
@@ -230,8 +230,8 @@ void printDifference(object a, object b) {
 	printf("\n");
 }
 
-typedef _geometry_segment<vec3> segment;
-typedef _geometry_triangle<vec3> triangle;
+typedef struct { vec3 p, q; } segment;
+typedef struct { vec3 a, b, c; } triangle;
 
 // L: line integral
 // A: surface integral

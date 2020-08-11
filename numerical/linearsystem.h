@@ -1,5 +1,8 @@
-// organized from "Ellipse Fitting.cpp"
-// currently all matrixes are 6x6 unpacked
+// seems like hard-coding matrixes as static 2d arrays can be 1.2x faster
+// do dirty things when performance really matter
+
+// To-do:
+// conjugate gradient linear system solution
 
 
 #ifndef __INC_LINEARSYSTEM_H
@@ -102,7 +105,7 @@ void transpose(int N, double *A) {
 	}
 }
 
-// solve linear system
+// solve linear system, assume the matrix is invertible
 void solveLinear(int N, const double *M, double *x) {
 	double *A = new double[N*N]; for (int i = 0; i < N*N; i++) A[i] = M[i];
 	for (int i = 0; i < N; i++) {

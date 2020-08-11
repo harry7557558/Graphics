@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <algorithm>
 #include <vector>
-#include "D:\Coding\Github\Graphics\fitting\numerical\random.h"
+#include "numerical\random.h"
 
 
 

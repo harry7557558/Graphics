@@ -6,7 +6,6 @@
 
 
 // To-do:
-// * Runge-Kutta method
 // * Adaptive step size
 
 
@@ -102,7 +101,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma region Vector & Matrix
 
-#include "D:\\Coding\Github\Graphics\fitting\numerical\geometry.h"
+#include "numerical\geometry.h"
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
@@ -289,7 +288,7 @@ Test_Case NBody_m([](vec3 p, vec3 v, double t)->vec3 {
 	p -= vec3(cos(3.*t), sin(3.*t), 0);
 	m = length(p);
 	return F - p / (m*m*m);
-}, 2.*PI, 0.02, vec3(2, 2, 0), vec3(1, -.5, -.2), [](double t) {
+}, 4.0, 0.02, vec3(2, 2, 0), vec3(1, -.5, -.2), [](double t) {
 	fillCircle((Tr*vec3(0.0)).xy(), 6, 0xC08000);
 	fillCircle((Tr*vec3(cos(3.*t), sin(3.*t), 0)).xy(), 4, 0x00FF00);
 });
@@ -334,7 +333,7 @@ Test_Case TimeTest_5([](vec3 p, vec3 v, double t)->vec3 {
 
 #pragma endregion Projectile, Projectile_R, Projectile_RB, Projectile_RW, Pendulum, Pendulum_S, NBody_1, NBody_2, NBody_m, TimeTest_[1-5]
 
-Test_Case T = TimeTest_3;
+Test_Case T = TimeTest_5;
 
 
 
@@ -465,6 +464,20 @@ void initReferencePath() {
 
 #pragma region Simulation
 
+// For a first order ODE with one variable x = x(t):
+// x(t+h) = x(t) + x'(t) h + x"(t) h²/2 + x"'(t) h³/6 + x""(t) h⁴/24 + x""'(t) h⁵/120 + O(h⁶)
+// x'(t) = v(x,t)
+// x"(t) = dv/dx v + dv/dt
+// x‴(t) = dv/dx x" + [ d²v/dx² x' + 2 d²v/dxdt ] x' + d²v/dt²
+//       = d²v/dx² v² + 2 d²v/dxdt v + (dv/dx)² v + dv/dx dv/dt + d²v/dt²
+// x⁗(t) = dv/dx x‴ + 3 d²v/dxdt x" + d³v/dx³ x'³ + 3 d³v/dx²dt x'² + 3 d³v/dxdt² x' + 3 d²v/dx² x'x" + d³v/dt³
+// x⁵(t) = dv/dx x⁗ + 4 d²v/dxdt x‴ + 6 d³v/dxdt² x" + 3 d²v/dx² x"² + d⁴v/dx⁴ x'⁴ + 4 d⁴v/dx³dt x'³ + 6 d⁴v/dx²dt² x'² + 4 d⁴v/dxdt³ x' + 4 d²v/dx² x'x‴ + 6 d³v/dx³ x"x'² + 12 d³v/dx²dt x'x" + d⁴v/dt⁴
+
+// Standard Euler method: x + v h; Error: x"(t) h²/2 + O(h³), O(h²)
+// Standard midpoint method: x + v h + x"(t) h²/2 + (d²v/dx² v² + 2 d²v/dxdt v + d²v/dt²) h³/8 + O(h⁴); Error: O(h³)
+// 4th order Runge-Kutta method: 
+
+
 // p(t+h) = p(t) + p'(t) h + p"(t) h²/2 + p"'(t) h³/6 + p""(t) h⁴/24 + O(h⁵)
 // v(t+h) = p'(t) + p"(t) h + p"'(t) h²/2 + p""(t) h³/6 + O(h⁴)
 // p(t) = p
@@ -518,8 +531,9 @@ void Midpoint_Method(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 }
 
 // red; standard Rough Kutta methods
+// relies on continuous derivative; better when step size is small
 template<typename Fun>
-void Rouge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
+void Ronge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	dt *= 4.0;  // to be fair
 	vec3 p = p0, v = v0;
 	for (double t = 0.0; t < tMax; t += dt) {
@@ -612,7 +626,7 @@ void render() {
 	auto Acceleration = T.Acceleration;
 	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
 	Midpoint_Method(P0, V0, Acceleration, t_step, tMax);
-	Rouge_Kutta(P0, V0, Acceleration, t_step, tMax);
+	Ronge_Kutta(P0, V0, Acceleration, t_step, tMax);
 	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
 

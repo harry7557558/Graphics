@@ -80,6 +80,7 @@
 //   - Semi-transparent shading
 //   - Outline rendering based on geometry
 //   - Smoothed shading (interpolation)
+//   - Optimization for software rasterization
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
@@ -194,8 +195,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #pragma region Vector & Matrix
 
 // https://github.com/Harry7557558/Graphics/tree/master/fitting/numerical
-#include "D:\\Coding\Github\Graphics\fitting\numerical\geometry.h"  // vec2, vec3, mat3
-#include "D:\\Coding\Github\Graphics\fitting\numerical\eigensystem.h"  // EigenPairs_Jacobi
+#include "numerical\geometry.h"  // vec2, vec3, mat3
+#include "numerical\eigensystem.h"  // EigenPairs_Jacobi
 typedef _geometry_triangle<vec3> triangle;
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);

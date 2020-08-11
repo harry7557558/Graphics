@@ -2,6 +2,17 @@
 // function minimization experiment
 // macro _DEBUG_OPTIMIZATION is defined in _debug_optimization_2d.cpp
 
+// To-do:
+// Bracket minimum in one dimension
+// Conjugate gradient
+// Downhill simplex
+// Simulated annealing
+
+
+#ifndef __INC_OPTIMIZATION_H
+
+#define __INC_OPTIMIZATION_H
+
 
 
 // One-dimensional optimization
@@ -294,4 +305,7 @@ template<typename Fun> bool Newton_Iteration_Minimize(int N, Fun F, const double
 	return false;
 }
 
+
+
+#endif // __INC_OPTIMIZATION_H
 
