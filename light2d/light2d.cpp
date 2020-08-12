@@ -183,8 +183,8 @@ double sample(vec2 p) {
 		//double a = 2.0 * PI * double(i) / SAMPLE;    // stratified
 		double a = 2.0 * PI * double(i + rand() / double(RAND_MAX)) / SAMPLE;    // jittered
 		vec2 d = vec2(cos(a), sin(a));
-		//c += traceRay(p, d, 0);    // without anti-alising
-		c += traceRay(p + vec2(s * rand() + h, s * rand() + h), d, 0, 1.0);		// anti-alising may fail if the light is too bright
+		//c += traceRay(p, d, 0);    // without anti-aliasing
+		c += traceRay(p + vec2(s * rand() + h, s * rand() + h), d, 0, 1.0);		// anti-aliasing may fail if the light is too bright
 	}
 	return c / SAMPLE;
 }

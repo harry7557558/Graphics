@@ -33,7 +33,7 @@
 //   - Numpad3: Move camera to positive x direction (look at negative x)
 //   - Numpad7: Move camera to positive z direction (look down, x-axis at right)
 //   - Numpad9: Move camera to negative z direction (look up, x-axis at right)
-//   - Numpad5: Dolly zoom, move camera extremly far away to simulate orthographic projection
+//   - Numpad5: Dolly zoom, move camera extremely far away to simulate orthographic projection
 //   - Numpad4: Rotate camera position horizontally around viewport center for 15 degrees (clockwise)
 //   - Numpad6: Rotate camera position horizontally for 15 degrees (counterclockwise)
 //   - Numpad8: Increase camera position vertical angle for 15 degrees
@@ -60,7 +60,7 @@
 //   - Default: fill the faces by color mentioned above
 //   - Stroke: shaded faces with black strokes
 //   - Polygon: no fill, stroke the triangle using filling color
-//   - Point cloud: no fill or stroke, use filling color to plot vertexes
+//   - Point cloud: no fill or stroke, use filling color to plot vertices
 // Press X to hide/show axis
 // Press G to hide/show grid
 // Press B to switch to/out dark background
@@ -95,7 +95,7 @@
 //   - Press plus/minus keys to scale the object about its center of mass
 // To-do list:
 //   - Shortcuts to rotate object to make its principle axes axis-oriented
-//   - Non-linear transforms
+//   - Nonlinear transforms
 //   - Reflection
 //   - Mouse-involved editings (eg. dragging, scrolling)
 //   - Shift+F5 to reload without updating viewport
@@ -576,7 +576,7 @@ void render() {
 	// highlight center
 	if (Ctrl || Shift || Alt || mouse_down) drawCross3D(Center, 6, 0xFF00FF);
 
-	// topright coordinate
+	// top-right coordinate
 	vec2 xi = (Tr*vec3(Tr.s, 0, 0)).xy(), yi = (Tr*vec3(0, Tr.s, 0)).xy(), zi = (Tr*vec3(0, 0, Tr.s)).xy();
 	vec2 ci = (Tr*vec3(0)).xy();
 	double pd = 0.1 * sqrt(_WIN_W*_WIN_H);
@@ -815,7 +815,7 @@ void KeyUp(WPARAM _KEY) {
 		if (_KEY == 'P') TreatAsSolid ^= 1, calcVolumeCenterInertia();
 		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(BMax + BMin);
 
-		// not recommand
+		// not recommend
 		if (_KEY == 'W') { vec3 d = 0.08*(Center - CamP); Center += d; }
 		if (_KEY == 'S') { vec3 d = 0.08*(Center - CamP); Center -= d; }
 		if (_KEY == 'A') { vec3 d = 0.05*dist * normalize(cross(veck, Center - CamP)); Center += d; }

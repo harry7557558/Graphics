@@ -18,7 +18,7 @@ Files started with an underscore are used to debug header files.
 
 [linearsystem.h](linearsystem.h): matrixes as 1d arrays of length N×N; Gaussian elimination;
 
-[eigensystem.h](eigensystem.h): find the eigenvalues/eigenpairs of real symmetric matrixes;
+[eigensystem.h](eigensystem.h): find the eigenvalues/eigenpairs of real symmetric matrices;
 
 [ode.h](ode.h): numerical ordinary differential equation solutions;
 

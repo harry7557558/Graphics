@@ -1,6 +1,6 @@
 // Use to debug "eigensystem.h"
 
-// To-do: random matrix generator that generates non-invertible matrixes
+// To-do: random matrix generator that generates non-invertible matrices
 
 
 

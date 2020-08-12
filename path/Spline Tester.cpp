@@ -1,5 +1,5 @@
 // Test Different Splines and Interpolation Methods
-// Imcompleted, still updating
+// Incomplete, still updating
 
 
 /* ==================== User Instructions ====================
@@ -595,7 +595,7 @@ void MouseUpR(int _X, int _Y) {
 	vec2 p = fromInt(Cursor);
 	if (!showControl) return;
 
-	// #3 rightclick: remove a control point
+	// #3 right click: remove a control point
 	if (CP.size() > 3) {
 		float r2 = CPR / Unit; r2 *= r2;
 		for (unsigned i = 0; i < CP.size(); i++) {

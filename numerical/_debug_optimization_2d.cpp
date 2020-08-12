@@ -306,7 +306,7 @@ void drawDot(vec2 c, double r, COLOR col) {
 	for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
 		vec2 p = fromScreen(i, j);
 		double d = length(p - c) * Scale - r;
-		canvas[j*W + i] = mix(canvas[j*W + i], col, clamp(1. - d, 0., 1.));  // shade by distance to anti-aliase
+		canvas[j*W + i] = mix(canvas[j*W + i], col, clamp(1. - d, 0., 1.));  // shade by distance to anti-alias
 	}
 }
 void drawLine(vec2 p, vec2 q, COLOR col) {  // naive DDA, no anti-aliasing

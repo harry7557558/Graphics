@@ -25,7 +25,7 @@ double hashf(double x, double y) {
 
 
 // random number generators
-// use to generate floatpoint random number
+// use to generate float point random number
 
 #ifndef _RANDOM_H_BETTER_QUALITY
 

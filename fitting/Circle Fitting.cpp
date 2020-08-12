@@ -72,7 +72,7 @@ void fitCircle_Numerical(const vec2* P, int N, vec2 &C, double &R) {
 	};
 	C = Newton_Gradient_2d(E, vec2(Sx, Sy) / N);
 	R = sqrt(((C.x*C.x*N - 2 * C.x*Sx + Sx2) + (C.y*C.y*N - 2 * C.y*Sy + Sy2)) / N);
-	//printf("%d\n", Calls);  // this varies from 20+ to 150+; Newton_Iteration_2d only 9x3=27 (theorically 9 or 18)
+	//printf("%d\n", Calls);  // this varies from 20+ to 150+; Newton_Iteration_2d only 9x3=27 (theoretically 9 or 18)
 }
 
 
@@ -123,7 +123,7 @@ void fitCircle_O(const vec2* P, int N, vec2 &C, double &R) {
 		return Err;
 	};
 	// start from the result of the previous function
-	// this significantly reduces the chance of failture
+	// this significantly reduces the chance of failure
 	fitCircle(P, N, C, R);
 	//C = Newton_Gradient_2d(E, C);  // slower
 	C = Newton_Iteration_2d_(E, C);  // faster but less stable
@@ -137,7 +137,7 @@ void fitCircle_O(const vec2* P, int N, vec2 &C, double &R) {
 // Same as previous except it uses analytical gradients, more than 3 times faster
 void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 	int Calls = 0;
-	// calculating the analytical gradient of this function is truely a nightmare......
+	// calculating the analytical gradient of this function is truly a nightmare......
 	auto E = [&](vec2 p, vec2 *grad, vec2 *grad2, double *dxy) ->double {
 		Calls++;
 		vec2 Su(0.), Sd(0.);
@@ -169,13 +169,13 @@ void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 	printf("%d\t%.3lf %.3lf\t%.3lf\n", Calls, C.x, C.y, R);  // 3-6 calls
 	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
 	// In the test, this function fails 6 cases in 10000 cases.
-	// All failtures are caused by the gradient information leading it to infinity.
-	// Try to detect failture and restart iteration from a new startpoint when fails.
+	// All failures are caused by the gradient information leading it to infinity.
+	// Try to detect failure and restart iteration from a new startpoint when fails.
 }
 
 
 // [blue] Minimize Σ[x²+y²+ax+by+c]²/Σ[(2x+a)²+(2y+b)²], numerically
-// This formula gives a better estimate of the Euclidian distance
+// This formula gives a better estimate of the Euclidean distance
 void fitCircle_LN(const vec2* P, int N, vec2 &C, double &R) {
 	auto F = [&](double* coe) {
 		double a = coe[0], b = coe[1], c = coe[2];
@@ -357,9 +357,9 @@ void randomTest_image() {
 		fitCircle_Numerical(P, N, c, r); drawCircle(c, r, 8, COLOR{ 192,192,192 });
 		fitCircle(P, N, c, r); drawCircle(c, r, 5, COLOR{ 192,255,128 });
 		fitCircle_E(P, N, c, r); drawCircle(c, r, 3, COLOR{ 160,232,255 });
-		// minimize Euclidian distance
+		// minimize Euclidean distance
 		fitCircle_O_ad(P, N, c, r); drawCircle(c, r, 5, COLOR{ 255,232,160 });
-		// minimize approximated Euclidian distance
+		// minimize approximated Euclidean distance
 		fitCircle_LS(P, N, c, r); drawCircle(c, r, 3, COLOR{ 255,128,128 }, true);
 		fitCircle_LN(P, N, c, r); drawCircle(c, r, 3, COLOR{ 128,128,255 }, true);
 		fitCircle_LNS(P, N, c, r); drawCircle(c, r, 3, COLOR{ 128,255,128 }, true);
@@ -398,7 +398,7 @@ void randomTest_numerical() {
 		fitCircle_LNS(P, N, c, r);  // 0.29s, 2 fails
 		//fitCircle_LS(P, N, c, r);  // 10.66s, 81 fails
 
-		if (!(r < 10) && N > 3) {  // (possible) failture
+		if (!(r < 10) && N > 3) {  // (possible) failure
 			fprintf(stderr, "%d\t%d\t%lf\t%lf\t%lf\t\n", i, N, c.x, c.y, r);
 		}
 		delete P;

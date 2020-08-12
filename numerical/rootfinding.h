@@ -21,10 +21,10 @@
 
 
 
-// In practical use, it is recommand to write the cubic and quartic solvers inline
+// In practical use, it is recommended to write the cubic and quartic solvers inline
 // and do simplifications according to particular circumstance, instead of calling the solver with coefficients.
 
-// Also, it is recommand to perform one Newton iteration for analytical solution when accuracy is required.
+// Also, it is recommended to perform one Newton iteration for analytical solution when accuracy is required.
 
 
 // Solve equation ax^3+bx^2+cx+d=0

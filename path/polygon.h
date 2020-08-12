@@ -106,7 +106,7 @@ auto& forceAntiClockwiseEI = forceCounterClockwiseEI;
 
 
 
-// geometrical transformations
+// geometric transformations
 
 void translatePolygon(polygon &S, vec2 p) {
 	for (unsigned i = 0; i < S.size(); i++) S[i] = S[i] + p;
@@ -126,7 +126,7 @@ void scalePolygon(polygon &S, vec2 C, double s) {
 
 
 
-// It should be guarenteed that the number of vertexes of a polygon is at least 3.
+// It should be guaranteed arenteed that the number of vertices of a polygon is at least 3.
 
 // # require no self-intersection
 // @ require convexity
@@ -173,7 +173,7 @@ double calcPerimeter(const polygon &p) {
 	return P;
 }
 
-// # return the area of a polygon, negative when vertexes ordered clockwise
+// # return the area of a polygon, negative when vertices ordered clockwise
 double calcArea(const polygon &p) {
 	double A = 0;
 	for (int i = 0, n = p.size(); i < n; i++) {
@@ -184,7 +184,7 @@ double calcArea(const polygon &p) {
 
 
 
-// return the average of all vertexes
+// return the average of all vertices
 vec2 calcCenter(const polygon &p) {
 	vec2 C(0.0);
 	for (int i = 0, n = p.size(); i < n; i++) C = C + p[i];

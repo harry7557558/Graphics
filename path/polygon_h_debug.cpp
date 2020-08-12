@@ -13,7 +13,7 @@
  *  Delete Vertex:              right click
  *  Shift Vertex Order:         left / right
  *  Reverse Vertex Order:       space
- *  Hide/Unhide Vertexes:       c
+ *  Hide/Unhide Vertices:       c
  *  Show/Hide Center:           m
  *  Show/Hide AABB:             b
  *  Show/Hide Convex Hull:      h
@@ -214,7 +214,7 @@ void render() {
 			}
 		}
 	};
-	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // reveives polygon in world coordinate
+	auto drawPolygon = [&](const polygon &p, COLORREF Stroke, COLORREF Fill) {  // receives polygon in world coordinate
 		int n = p.size(), y0 = _WIN_H - 1, y1 = 0;
 		polygon P = p; for (int i = 0; i < n; i++) P[i] = fromFloat(p[i]);
 		for (int i = 0; i < n; i++) {
@@ -322,7 +322,7 @@ void render() {
 void WindowCreate(int _W, int _H) {
 	Center = vec2(_W, _H) * 0.5;
 
-	// test perfermance
+	// test performance
 	/*{
 		vec2 a[21] = { vec2(0.285528,0.441513),vec2(-0.120229,-0.827634),vec2(0.362113,-0.659311),vec2(-0.418880,-0.131927),vec2(-0.011258,0.239604),vec2(0.046156,-0.084705),vec2(0.251175,0.175976),vec2(-0.109171,-0.075648),vec2(-0.021327,0.036144),vec2(-0.084662,-0.028716),vec2(-0.036200,-0.025998),vec2(0.081147,-0.067187),vec2(0.041652,-0.070299),vec2(0.073204,-0.015663),vec2(-0.012340,-0.029848),vec2(-0.075957,0.008711),vec2(-0.043883,-0.027078),vec2(0.043032,-0.074274),vec2(-0.028872,-0.046507),vec2(-0.029267,-0.010998),vec2(0.018142,-0.073762) },
 			b[21] = { vec2(0.000000,0.000000),vec2(0.895598,0.180168),vec2(0.373547,0.372804),vec2(0.088225,0.004491),vec2(-0.049367,-0.524011),vec2(-0.211382,0.153020),vec2(0.042170,-0.053641),vec2(-0.120638,-0.029826),vec2(0.108581,0.017927),vec2(0.043941,0.001481),vec2(0.034297,0.046155),vec2(0.014269,0.052746),vec2(0.001654,0.079682),vec2(-0.073158,0.020828),vec2(-0.021989,0.080393),vec2(0.010579,0.023657),vec2(0.086257,-0.018580),vec2(0.074851,0.002612),vec2(-0.054539,0.001691),vec2(0.008488,-0.007624),vec2(0.000000,0.000000) };
@@ -457,7 +457,7 @@ void MouseUpR(int _X, int _Y) {
 	vec2 p = fromInt(Cursor);
 	if (!showControl) return;
 
-	// #3 rightclick: remove a control point
+	// #3 right click: remove a control point
 	if (CP1_DistE < CP2_DistE && CP1.size() > 3) {
 		double r2 = CPR / Unit; r2 *= r2;
 		for (unsigned i = 0; i < CP1.size(); i++) {

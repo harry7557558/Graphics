@@ -16,7 +16,7 @@
 
 
 // One-dimensional optimization
-// These functions reveive parameters as reference instead of returning a number
+// These functions receive parameters as reference instead of returning a number
 // because they are often used in multivariable optimizations and the functions may be expensive to evaluate.
 
 // before calling this function: evaluate y0=F(x0) and y1=F(x1) and make sure y1<y0
@@ -224,7 +224,7 @@ template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, d
 }
 
 // grad2: standard Hessian matrix
-// 2N²+1 samples - analytical derivative is highly recommand
+// 2N²+1 samples - analytical derivative is highly recommend
 template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, double *grad, double *grad2, double e = .0001) {
 	double *p = new double[N];
 	for (int i = 0; i < N; i++) p[i] = x[i];

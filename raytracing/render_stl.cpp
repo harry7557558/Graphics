@@ -1,4 +1,4 @@
-// Rasteriation vs. Ray-Casting
+// Rasterization vs. Ray-Casting
 // Rasterization: mostly depends on the number of triangles
 // Ray-casting: mostly depends on the screen dimension (requires a O(nlogn) initialization)
 // In a 640x360 window, Ray-Casting wins when the # of triangles exceeds about 500,000
@@ -304,12 +304,12 @@ double intCircle(vec3 n, vec3 c, double r, vec3 ro, vec3 rd) {
 	return dot(q, q) < r*r ? t : NAN;
 }
 
-// raytracing special
+// ray-tracing special
 #define _RAY_HIT_STATISTICS 0
 #if _RAY_HIT_STATISTICS
 uint64_t Triangle_Hit_Count;
 uint64_t Box_Hit_Count;
-#define _RPP(x) x++  // WARNIING: perfermance
+#define _RPP(x) x++  // WARNING: performance
 #else
 #define _RPP(x)
 #endif

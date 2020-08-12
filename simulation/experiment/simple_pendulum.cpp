@@ -1,6 +1,6 @@
 // test ODE solver
 // physics: a 2d simple pendulum with unit length and unit mass
-// start with zero velosity, last 10 seconds
+// start with zero velocity, last 10 seconds
 
 // Compare Euler's method, Midpoint method, and Runge-Kutta method
 // To be fair, Euler's method is called 4 times per step, Midpoint 2 times, and Runge-Kutta one time

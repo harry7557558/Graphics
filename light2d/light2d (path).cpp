@@ -397,7 +397,7 @@ bool intersect(const spline3 &Sp, vec2 P, vec2 D, double &mt, double &tp) {
 
 
 
-//============== Convertion between SVG Path Data and Spline Lists ==============//
+//============== Conversion between SVG Path Data and Spline Lists ==============//
 
 #include <string>
 bool fromPath(const string &S, vector<spline3> &V) {

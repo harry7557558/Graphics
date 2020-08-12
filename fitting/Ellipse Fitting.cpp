@@ -51,7 +51,7 @@ void generateMatrix(double M[6][6], const vec2 *P, int N) {
 void fitEllipse0(const vec2 *P, int N, double v[6]) {
 	double M[6][6]; generateMatrix(M, P, N);
 	double lambda; EigenPair_invIter(6, &M[0][0], &lambda, v);
-	// if not ellipse, check other eivenvalues
+	// if not ellipse, check other eigenvalues
 	if (4.*v[0] * v[2] <= v[1] * v[1]) {
 		double eigv[6], eigvec[6][6];
 		EigenPairs_expand(6, &M[0][0], eigv, &eigvec[0][0]);
@@ -185,7 +185,7 @@ void fitEllipse_f1(const vec2 *P, int N, double v[6]) {
 
 
 
-// Fitting quadratic curves by minimizing the sum of the square of the exact Euclidian distance
+// Fitting quadratic curves by minimizing the sum of the square of the exact Euclidean distance
 // As a reference, doesn't seem to be practical
 
 // calculate the exact distance to a quadratic curve (slow)
@@ -229,7 +229,7 @@ double distanceToQuadratic(const double v[6], vec2 p) {
 	return length(vec2(u0 + ml * (u1 + ml * u2), v0 + ml * (v1 + ml * v2)) / (w0 + ml * (w1 + ml * w2)) - p);
 }
 
-// Ellipse fitting using the Euclidian distance
+// Ellipse fitting using the Euclidean distance
 void fitEllipse_Euclidian(const vec2 *P, int N, double v[6]) {
 	// hope this curve doesn't go through the origin...
 	auto E = [&](double c[5]) {
@@ -462,7 +462,7 @@ void randomTest_image() {
 		double cg[6]; fitEllipse_grad(P, N, cg);
 		double d0[6]; fitEllipse_ac1(P, N, d0);
 		double d1[6]; fitEllipse_f1(P, N, d1);
-		double ec[6]; fitEllipse_Euclidian(P, N, ec);  // EXTREMLY SLOW!!!!!!
+		double ec[6]; fitEllipse_Euclidian(P, N, ec);  // EXTREMELY SLOW!!!!!!
 		// write result to stdout
 		auto printc = [](double *c) {
 			printf("%c %lfx^2%+lfxy%+lfy^2%+lfx%+lfy%+lf=0\n", 4.*c[0] * c[2] > c[1] * c[1] ? 'E' : 'H',
@@ -478,7 +478,7 @@ void randomTest_image() {
 		// visualize fitting result
 		init();
 		drawAxis(2, COLOR{ 232,232,232 });
-		drawQuadraticCurve(ec, 8, COLOR{ 232,232,232 });  // reference; one should be able to identify failtures visually (#97 is pretty obvious)
+		drawQuadraticCurve(ec, 8, COLOR{ 232,232,232 });  // reference; one should be able to identify failures visually (#97 is pretty obvious)
 		drawQuadraticCurve(c0, 4, COLOR{ 192,255,128 });  // v² : light green
 		drawQuadraticCurve(c1, 4, COLOR{ 232,232,128 });  // 4ac-b² : khaki color
 		drawQuadraticCurve(c2, 4, COLOR{ 255,192, 64 });  // a²+c² :  orange

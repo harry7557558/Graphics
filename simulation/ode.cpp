@@ -309,7 +309,7 @@ Test_Case TimeTest_2([](vec3 p, vec3 v, double t)->vec3 {
 	return cross(v, w) - (length(w) + 2.) * p + 0.2*w;
 }, 6.0, 0.05, vec3(1, 1, 1), vec3(-1, 0, 0));
 
-// `Artifical equation #3 (continuous)
+// `Artificial equation #3 (continuous)
 Test_Case TimeTest_3([](vec3 p, vec3 v, double t)->vec3 {
 	vec3 a = vec3(cos(p.x + t), sin(v.y - t), sin(p.z + t));
 	vec3 b = vec3(cos(v.x + t), exp(p.y), cos(v.z));
@@ -317,7 +317,7 @@ Test_Case TimeTest_3([](vec3 p, vec3 v, double t)->vec3 {
 	return 4.*(a + b + c - 5.*p);
 }, 6.0, 0.05, vec3(0), vec3(0));
 
-// `Artifical equation #4
+// `Artificial equation #4
 Test_Case TimeTest_4([](vec3 p, vec3 v, double t)->vec3 {
 	p.z -= 2.0;
 	vec3 N = -(2.0*exp(sin(t + 0.5)) + 4.0)*(length(p) - cos(t)*cos(t))*p;
@@ -325,7 +325,7 @@ Test_Case TimeTest_4([](vec3 p, vec3 v, double t)->vec3 {
 	return N - r + vec3(0, 0, -4);
 }, 6.0, 0.05, vec3(0, 1, 0), vec3(4, -1, 4));
 
-// `Artifical equation #5
+// `Artificial equation #5
 Test_Case TimeTest_5([](vec3 p, vec3 v, double t)->vec3 {
 	return vec3(-p.xy()*(exp(cos(2.0*t)) + 1.0) - 0.4*p.z*v.xy(), -2.0*length(v)*p.z + 0.5* exp(sin(2.0*t)));
 }, 8.0, 0.1, vec3(1, 1, 1), vec3(-1, 1, 0));
@@ -530,10 +530,10 @@ void Midpoint_Method(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	}
 }
 
-// red; standard Rough Kutta methods
+// red; standard Runge Kutta methods
 // relies on continuous derivative; better when step size is small
 template<typename Fun>
-void Ronge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
+void Runge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
 	dt *= 4.0;  // to be fair
 	vec3 p = p0, v = v0;
 	for (double t = 0.0; t < tMax; t += dt) {
@@ -626,7 +626,7 @@ void render() {
 	auto Acceleration = T.Acceleration;
 	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
 	Midpoint_Method(P0, V0, Acceleration, t_step, tMax);
-	Ronge_Kutta(P0, V0, Acceleration, t_step, tMax);
+	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);
 	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
 	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
 

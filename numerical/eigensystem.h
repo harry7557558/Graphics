@@ -1,5 +1,5 @@
 // organized from "Ellipse Fitting.cpp"
-// assume all matrixes are positive definite
+// assume all matrices are positive definite
 
 // To-do: implement more eigenvalue algorithms
 
@@ -55,12 +55,12 @@ bool _check_eigenpair_correctness(int N, const double *M, double eigv, double *e
 
 // find the all eigenpairs of a matrix by solving its characteristic equation
 // eigvec: a matrix of row vectors
-// due to the O(N⁴) complexity and error accumlation in Gaussian elimination, it is not recommand for N>6
+// due to the O(N⁴) complexity and error accumulation in Gaussian elimination, it is not recommend for N>6
 void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
 	double *A = new double[N*N]; matcpy(N, M, A);
 	double msc = 1.0;
 #if 0
-	// avoid overflow/precison error
+	// avoid overflow/precision error
 	msc = 1. / pow(determinant(N, A), 1. / N);
 	if (0.0*msc == 0.0) {
 		for (int i = 0; i < N*N; i++) A[i] *= msc;
@@ -88,7 +88,7 @@ void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
 	double *v = new double[N];
 	for (int R = N; R > 0; R--) {
 		// Newton's iteration method starting at x=0
-		// this should success because the matrix is positive difinite
+		// this should success because the matrix is positive definite
 		double x = 0;
 		for (int i = 0; i < 64; i++) {
 			double y = 0, dy = 0;
@@ -178,7 +178,7 @@ void EigenPair_powIter(int N, const double *M, double *eigv, double *eigvec) {
 	double *A = new double[N*N]; matcpy(N, M, A);
 #if 1
 	// use power of matrix to make it converge faster
-	// sometimes the numbers can get extremly large and cause precision/overflow error
+	// sometimes the numbers can get extremely large and cause precision/overflow error
 	double m = 1. / pow(determinant(N, A), 1. / N);
 	if (0.*m == 0.) {
 		for (int i = 0; i < N*N; i++) A[i] *= m;
@@ -204,7 +204,7 @@ void EigenPair_powIter(int N, const double *M, double *eigv, double *eigvec) {
 			eigvec[j] = v[j];
 		}
 		if (abs(abs(err) - 1) < 1e-12) break;
-		// warning: floatpoint precision
+		// warning: float-point precision
 	}
 	// calculate eigenvalue from eigenvector
 	matvecmul(N, M, eigvec, v);
@@ -227,7 +227,7 @@ void EigenPair_invIter(int N, const double *M, double *eigv, double *eigvec) {
 
 
 
-// zero off-diagonal elements of a symmetric matrix using given rotation matrixes
+// zero off-diagonal elements of a symmetric matrix using given rotation matrices
 // eigvec is an orthogonal matrix of row eigenvectors
 // keep result eigenvalues and eigenvectors as diagonalized form (unsorted)
 void EigenPairs_Jacobi(int N, const double *M, double *eigv, double *eigvec) {

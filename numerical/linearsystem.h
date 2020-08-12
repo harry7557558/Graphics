@@ -1,4 +1,4 @@
-// seems like hard-coding matrixes as static 2d arrays can be 1.2x faster
+// seems like hard-coding matrices as static 2d arrays can be 1.2x faster
 // do dirty things when performance really matter
 
 // To-do:

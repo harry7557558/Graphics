@@ -285,7 +285,7 @@ double intSphere(vec3 O, double r, vec3 p, vec3 d) {
 	return sqrt(dot(p, p) - rd2) - sqrt(r*r - rd2);
 #else
 	// works when p is inside the sphere (and its slightly faster)
-	double b = -dot(p, d), c = dot(p, p) - r * r;  // require d to be normalized
+	double b = -dot(p, d), c = dot(p, p) - r * r;  // required to be normalized
 	double delta = b * b - c;
 	if (delta < 0.0) return NAN;
 	delta = sqrt(delta);

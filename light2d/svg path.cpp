@@ -105,7 +105,7 @@ spline3 fromBezier3(vec2 A, vec2 B, vec2 C, vec2 D) {
 }
 
 // unit arc from angle 0 to theta, 0 < theta < pi, least square fitting
-spline3 fromArc(double theta, mat2x3 T) {	// recommand theta < 2
+spline3 fromArc(double theta, mat2x3 T) {	// recommend theta < 2
 	double s1 = sin(theta), s2 = s1 * s1, s3 = s2 * s1, s4 = s3 * s1,
 		c1 = cos(theta), c2 = c1 * c1, c3 = c2 * c1, c4 = c3 * c1;
 	double a = 756 * s4 + (1512 * c2 - 1890 * c1 + 810)*s2 + 756 * c4 - 1890 * c3 + 2430 * c2 - 1890 * c1 + 756,

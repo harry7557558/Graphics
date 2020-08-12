@@ -239,7 +239,7 @@ vec2 calcCenter(const vector<vector<spline3>> &v) {
 
 
 
-//===================== Convertion between SVG Path and Spline Lists =====================//
+//===================== Conversion between SVG Path and Spline Lists =====================//
 
 #include <iostream>
 #include <fstream>

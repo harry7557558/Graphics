@@ -71,7 +71,7 @@ struct mesh {
 		void setP(vec3 p) { x = p.x, y = p.y, z = p.z; }
 	};
 	struct edge {
-		int v[2] = { -1, -1 };  // index of vertexes in increasing order
+		int v[2] = { -1, -1 };  // index of vertices in increasing order
 		int f[2] = { -1, -1 };  // index of triangular faces; order matters
 		// The first face should have the same vertex order and the second one has reversed order
 		// Eg. if v is {0,1}, then {0,1,2} should be the first face and {1,0,3} should be the second one
@@ -89,7 +89,7 @@ struct mesh {
 		void replaceFace(int f0, int f1) { for (int i = 0; i < 2; i++) if (f[i] == f0) f[i] = f1; }
 	};
 	struct face {
-		int v[3] = { -1, -1, -1 };  // index of vertexes
+		int v[3] = { -1, -1, -1 };  // index of vertices
 		int e[3] = { -1, -1, -1 };  // index of edges
 		int f[3] = { -1, -1, -1 };  // index of triangular faces
 		// cross(f0-f1,f2-f1) should face outward
@@ -185,7 +185,7 @@ struct mesh {
 		// check Euler formula
 		int Vn = Vs.size(), En = Es.size(), Fn = Fs.size();
 		if (Vn - En + Fn != 2) printError("V-E+F = %d-%d+%d = %d\n", Vn, En, Fn, Vn - En + Fn);
-		// check vertexes
+		// check vertices
 		for (int v = 0; v < Vn; v++) {
 			if (Vs[v].e < 0 || Vs[v].e >= En) printError("Vs[%d].e==%d\n", v, Vs[v].e);  // invalid index number
 			else if (!Es[Vs[v].e].existVertex(v)) {  // indexed segment do not have this vertex
@@ -196,7 +196,7 @@ struct mesh {
 		for (int e = 0; e < En; e++) {
 			edge Ei = Es[e];
 			int count0 = ErrorCount;
-			if (Ei.v[0] >= Ei.v[1]) {  // make sure the vertexes of edges is in increasing order
+			if (Ei.v[0] >= Ei.v[1]) {  // make sure the vertices of edges is in increasing order
 				printError("E[%d].v=={%d,%d}\n", e, Ei.v[0], Ei.v[1]);
 			}
 			for (int d = 0; d < 2; d++) {
@@ -230,7 +230,7 @@ struct mesh {
 				else if (!Es[Fi.e[d]].existFace(f)) {  // mentioned edge do not connect to face
 					printError("!Es[Fs[%d].e[%d]].existFace(%d)\n", f, d, f);
 				}
-				else if (!Es[Fi.e[d]].existVertex(Fi.v[d])) {  // edges do not correstpond to vertex; check the order of parameters in setFaceEdges() and addFace()
+				else if (!Es[Fi.e[d]].existVertex(Fi.v[d])) {  // edges do not correspond to vertex; check the order of parameters in setFaceEdges() and addFace()
 					printError("!Es[Fs[%d].e[%d]].existVertex(Fs[%d].v[%d])\n", f, d, f, d);
 				}
 				else if (!Es[Fi.e[d]].existVertex(Fi.v[(d + 2) % 3])) {  // vertex/edge shifting (reference the ascii diagram above)
@@ -241,7 +241,7 @@ struct mesh {
 				else if (!Fs[Fi.f[d]].existFace(f)) {  // mentioned face do not connect to face
 					printError("!Fs[Fs[%d].f[%d]].existFace(%d)\n", f, d, f);
 				}
-				else if (!Fs[Fi.f[d]].existVertex(Fi.v[d])) {  // faces do not correstpond to vertex; order error
+				else if (!Fs[Fi.f[d]].existVertex(Fi.v[d])) {  // faces do not correspond to vertex; order error
 					printError("!Fs[Fs[%d].f[%d]].existVertex(Fs[%d].v[%d])\n", f, d, f, d);
 				}
 				else checkRepetition(Fi.f);
@@ -324,7 +324,7 @@ struct mesh {
 
 	// loop subdivision
 	void listNeighborVertices(int vid, std::vector<int> &cvs) {
-		// list index of vertexes directly connected to the given vertex
+		// list index of vertices directly connected to the given vertex
 		int ei0 = Vs[vid].e, ei = ei0;
 		edge e;
 		do {

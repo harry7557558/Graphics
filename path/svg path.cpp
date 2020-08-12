@@ -309,7 +309,7 @@ int intersections(const spline3 &S, const vec2 &P) {
 
 
 
-//===================== Convertion between SVG Path and Spline Lists =====================//
+//===================== Conversion between SVG Path and Spline Lists =====================//
 
 bool fromPath(const string &S, vector<spline3> &V) {
 #define isFloat(c) ((c >= '0' && c <= '9') || c == '-' || c == '.')
