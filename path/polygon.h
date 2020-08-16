@@ -126,7 +126,7 @@ void scalePolygon(polygon &S, vec2 C, double s) {
 
 
 
-// It should be guaranteed arenteed that the number of vertices of a polygon is at least 3.
+// It should be guaranteed that the number of vertices of a polygon is at least 3.
 
 // # require no self-intersection
 // @ require convexity

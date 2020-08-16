@@ -22,7 +22,25 @@
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
 #define mix(x,y,a) ((x)*(1-a)+(y)*(a))
 
+#if 1
 #define invsqrt(x) (1.0/sqrt(x))
+#else
+// test: faster in debug mode but not release mode
+#include <stdint.h>
+double invsqrt(double x) {
+	// https://cs.uwaterloo.ca/~m32rober/rsqrt.pdf#page=49
+	uint64_t i;
+	double x2, y;
+	x2 = x * 0.5;
+	y = x;
+	i = *(uint64_t*)&y;
+	i = 0x5fe6eb50c7b537a9 - (i >> 1);
+	y = *(double*)&i;
+	y = y * (1.5 - (x2*y*y));
+	y = y * (1.5 - (x2*y*y));
+	return y;
+}
+#endif
 
 
 // a sketchy planar vector template
@@ -39,7 +57,7 @@ struct vec2 {
 	vec2 operator * (const double &a) const { return vec2(x*a, y*a); }
 	double sqr() const { return x * x + y * y; }
 	friend double length(const vec2 &v) { return sqrt(v.x*v.x + v.y*v.y); }
-	friend vec2 normalize(const vec2 &v) { return v * invsqrt(v.x*v.x + v.y*v.y); }
+	friend vec2 normalize(const vec2 &v) { double m = invsqrt(v.x*v.x + v.y*v.y); return vec2(v.x*m, v.y*m); }
 	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
 	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; }
 
@@ -86,7 +104,7 @@ struct vec3 {
 	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
 	double sqr() { return x * x + y * y + z * z; }
 	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-	friend vec3 normalize(vec3 v) { return v * invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
+	friend vec3 normalize(vec3 v) { double m = invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); return vec3(v.x*m, v.y*m, v.z*m); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
 	friend double det(vec3 a, vec3 b, vec3 c) { return dot(a, cross(b, c)); }
