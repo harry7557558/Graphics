@@ -86,6 +86,8 @@ struct vec2 {
 	friend vec2 sin(const vec2 &a) { return vec2(sin(a.x), sin(a.y)); }
 	friend vec2 cos(const vec2 &a) { return vec2(cos(a.x), cos(a.y)); }
 	friend vec2 atan(const vec2 &a) { return vec2(atan(a.x), atan(a.y)); }
+	friend vec2 exp(const vec2 &a) { return vec2(exp(a.x), exp(a.y)); }
+	friend vec2 log(const vec2 &a) { return vec2(log(a.x), log(a.y)); }
 };
 
 
