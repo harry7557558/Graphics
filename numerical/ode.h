@@ -1,6 +1,6 @@
 
 // dxdt: given vector and time, calculate the derivative
-//       void dxdt(const double* f, double t, double* df_dt);
+//       void dxdt(const double* x, double t, double* dx_dt);
 // x: given vector at time t0, update it to time t1
 // N: length of vector
 // t0: start time
