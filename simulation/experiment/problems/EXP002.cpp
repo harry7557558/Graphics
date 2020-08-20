@@ -21,7 +21,7 @@
 double vf = 1.26;
 double v = 3.24;
 double L = 1.5;
-double r = vf / v;  // γ ??
+double r = vf / v;  // γ
 
 // simulation parameters
 double dt = 0.01;
@@ -55,7 +55,7 @@ void simulate() {
 	double t = 0.0;
 	vec2 emle(0), maxe(-INFINITY); int count = 0;  // hehe
 
-	t_max = L / (v*(1 - r * r));
+	t_max = L / (v*(1 - r * r)) - 1e-8;
 	while (t < t_max) {
 		//for (int i = 0; i < 4; i++) EulersMethod(dxdt, (double*)&s, 2, t, .25*dt, temp0), t += .25*dt;
 		//for (int i = 0; i < 2; i++) MidpointMethod(dxdt, (double*)&s, 2, t, .5*dt, temp0, temp1), t += .5*dt;
@@ -65,7 +65,7 @@ void simulate() {
 
 		// check
 		vec2 e = log(abs(yt / ayt - vec2(1)));  // compare size, log scale
-		emle += e, maxe = pMax(maxe, e); count++;
+		if (e.x > -100 && e.y > -100) emle += e, maxe = pMax(maxe, e); count++;  // might have a bug
 		if (!(e.x < 16 && e.y < 16)) break;
 #if !BatchTest
 		printf("<tr><td>%lf</td><td>%lf, %lf</td><td>%lf, %lf</td><td>%.3le, %.3le</td></tr>", s.x, ayt.x, ayt.y, yt.x, yt.y, exp(e.x), exp(e.y));
