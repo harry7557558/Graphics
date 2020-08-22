@@ -101,7 +101,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma region Vector & Matrix
 
-#include "numerical\geometry.h"
+#include "numerical/geometry.h"
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
@@ -265,7 +265,7 @@ Test_Case Pendulum_S([](vec3 p, vec3 v, double t)->vec3 {
 Test_Case NBody_1([](vec3 p, vec3 v, double t)->vec3 {
 	double m = length(p);
 	return -20.0*p / (m*m*m);
-}, 3.0, 0.05, vec3(2, 2, 0), vec3(1, -1, -0.02));
+}, 3.0, 0.02, vec3(2, 2, 0), vec3(1, -1, -0.02));
 
 // `Two "suns" with equal mass
 Test_Case NBody_2([](vec3 p, vec3 v, double t)->vec3 {
@@ -333,7 +333,7 @@ Test_Case TimeTest_5([](vec3 p, vec3 v, double t)->vec3 {
 
 #pragma endregion Projectile, Projectile_R, Projectile_RB, Projectile_RW, Pendulum, Pendulum_S, NBody_1, NBody_2, NBody_m, TimeTest_[1-5]
 
-Test_Case T = TimeTest_5;
+Test_Case T = NBody_1;
 
 
 
@@ -399,8 +399,10 @@ void drawLine_F(vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 	B = A + (B - A)*t;
 	drawLine((Tr*A).xy(), (Tr*B).xy(), col);
 };
+void fillCircle_F(vec3 P, double r, COLORREF col) {
+	fillCircle((Tr*P).xy(), r, col);
+}
 void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF, bool relative = true) {
-	return;  // comment this line to make it like barbed wire
 	if (relative) r *= dot(Tr.p, P) + Tr.s;
 	drawLine_F(P - vec3(r, 0, 0), P + vec3(r, 0, 0), col);
 	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
@@ -419,51 +421,35 @@ double iTime;
 #pragma endregion hold alt to "freeze"
 
 
-#pragma region Reference Path
-vec3 *RefPath;
-int RefN;
-#define REFPATH_DT 0.00001
-#define REFPATH_DT_N 100
-void initReferencePath() {
-	const double dt = REFPATH_DT;
-	const int dtN = REFPATH_DT_N;
-	vec3 p0 = T.P0, v0 = T.V0, p = p0, v = v0, a;
-	RefN = (int)(T.t1 / (dtN*dt));
-	int N = (int)(T.t1 / dt);
-	RefPath = new vec3[RefN + 1];
-	RefPath[RefN] = vec3(NAN);
-	for (int i = 0; i < N; i++) {
-		if (i % dtN == 0) RefPath[i / dtN] = p0;
-		double t = i * dt;
-		a = T.Acceleration(p, v, t);
-		vec3 _p = p;
-		p += v * dt + a * (.5*dt*dt);
-		v += T.Acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
-		p0 = p, v0 = v;
-	}
-	if (0.0*RefPath[RefN].sqr() != 0.0) RefN--;
-#if 0
-	vec3 ctr(0.0); double L(0.0);
-	for (int i = 0; i < RefN; i++) {
-		double dL = length(RefPath[i + 1] - RefPath[i]);
-		//dL = 1.0;
-		L += dL, ctr += dL * RefPath[i];
-	}
-	Center = ctr / L;
-#else
-	vec3 Min(INFINITY), Max = -Min;
-	for (int i = 0; i <= RefN; i++) {
-		Min = pMin(Min, RefPath[i]), Max = pMax(Max, RefPath[i]);
-	}
-	Center = 0.5*(Min + Max);
-#endif
-	if (isnan(Center.sqr())) Center = vec3(0.0);
+#include <vector>
+#include "numerical/interpolation.h"
+struct keyFrame {
+	double t;  // time
+	vec3 p;  // position
+	vec3 v;  // derivative of position
+};
+typedef std::vector<keyFrame> Path;
+vec3 eval(const Path &P, double t) {  // P should have enough keyframes
+	int N = P.size();
+	auto s = std::lower_bound(P.begin(), P.end(), t, [](keyFrame f, double t) {return f.t < t; });
+	if (s == P.begin()) s++;
+	else if (s == P.end()) s--;
+	//return lerp((s - 1)->p, s->p, (t - (s - 1)->t) / (s->t - (s - 1)->t));  // linear interpolation
+	return intp_d((s - 1)->p, s->p, (s - 1)->v, s->v, (t - (s - 1)->t) / (s->t - (s - 1)->t));  // derivative-based cubic interpolation
 }
-#pragma endregion // reference path
+void plotPath(const Path &P, double t, COLORREF col, bool highlight = false) {
+	for (int i = 1, N = P.size(); i < N; i++) {
+		if (highlight) drawCross3D(P[i].p, 2, col);
+		drawLine_F(P[i - 1].p, P[i].p, col);
+	}
+	fillCircle_F(eval(P, t), 6, col);
+}
+
 
 
 #pragma region Simulation
 
+/*
 // For a first order ODE with one variable x = x(t):
 // x(t+h) = x(t) + x'(t) h + x"(t) h²/2 + x"'(t) h³/6 + x""(t) h⁴/24 + x""'(t) h⁵/120 + O(h⁶)
 // x'(t) = v(x,t)
@@ -475,7 +461,7 @@ void initReferencePath() {
 
 // Standard Euler method: x + v h; Error: x"(t) h²/2 + O(h³), O(h²)
 // Standard midpoint method: x + v h + x"(t) h²/2 + (d²v/dx² v² + 2 d²v/dxdt v + d²v/dt²) h³/8 + O(h⁴); Error: O(h³)
-// 4th order Runge-Kutta method: 
+// 4th order Runge-Kutta method:
 
 
 // p(t+h) = p(t) + p'(t) h + p"(t) h²/2 + p"'(t) h³/6 + p""(t) h⁴/24 + O(h⁵)
@@ -493,95 +479,173 @@ void initReferencePath() {
 // Is (∂²a/∂v∂p a v) equal to (∂²a/∂p∂v v a) ?  - Yes.
 // Is (∂²a/∂p∂v a v) equal to (∂²a/∂p∂v v a) ?  - Maybe not.
 // hope my math isn't wrong... (I swear I don't know anything about tensor)
+*/
 
-
-#define plotPath(Color) \
-	drawLine_F(p0, p, Color); \
-	drawCross3D(p, 2, Color); \
-	double u = t + dt - iTime; if (u > 0 && u < dt) { u /= dt; fillCircle((Tr*(u*p0 + (1 - u)*p)).xy(), 6, Color); }
-
-// orange; p: 1/6 h³ p³(t0); v: 1/2 h² p³(t0)
-template<typename Fun>
-void EulersMethod(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
-	vec3 p = p0, v = v0, a;
-	for (double t = 0.0; t < tMax; t += dt) {
-		a = acc(p, v, t);
+Path RefPath;
+void initReferencePath() {
+	const double dt = 0.00001;
+	const int dtN = 1000;
+	vec3 p0 = T.P0, v0 = T.V0, p = p0, v = v0, a;
+	int N = (int)(T.t1 / dt);
+	for (int i = 0; i <= N; i++) {
+		double t = i * dt;
+		a = T.Acceleration(p, v, t);
+		vec3 _p = p;
 		p += v * dt + a * (.5*dt*dt);
-		v += a * dt;
-		plotPath(0xFF8000);
+		v += T.Acceleration(.5*(_p + p), v + a * (.5*dt), t + .5*dt) * dt;
+		if (i % dtN == 0) RefPath.push_back(keyFrame{ t, p0, v0 * (dt*dtN) });
 		p0 = p, v0 = v;
 	}
+	vec3 Min(INFINITY), Max = -Min;
+	for (int i = 0, l = RefPath.size(); i < l; i++) {
+		Min = pMin(Min, RefPath[i].p), Max = pMax(Max, RefPath[i].p);
+	}
+	Center = 0.5*(Min + Max);
+	if (isnan(Center.sqr())) Center = vec3(0.0);
+}
+
+// orange; p: 1/6 h³ p³(t0); v: 1/2 h² p³(t0)
+Path EulersMethodPath;
+void EulersMethodInit() {
+	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0, a;
+	double t_max = T.t1, dt = T.dt, t;
+	for (t = 0.0; t < t_max; t += dt) {
+		a = T.Acceleration(p, v, t);
+#if 1
+		p += v * dt;
+#else
+		p += v * dt + a * (.5*dt*dt);
+#endif
+		v += a * dt;
+		EulersMethodPath.push_back(keyFrame{ t, p0, v0*dt });
+		p0 = p, v0 = v;
+	}
+	EulersMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 }
 
 // yellow; p: 1/6 h³ p³(t0); v: h³ p⁴(t0) missing some terms
-template<typename Fun>
-void Midpoint_Method(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
-	dt *= 2.0;  // to be fair
-	vec3 p = p0, v = v0, a, am;
-	for (double t = 0.0; t < tMax; t += dt) {
-		a = acc(p, v, t);
+Path MidpointMethodPath;
+void MidpointMethodInit() {
+	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0, a, am;
+	double t_max = T.t1, dt = 2.0*T.dt, t;
+	for (t = 0.0; t < t_max; t += dt) {
+		a = T.Acceleration(p, v, t);
+#if 1
+		am = T.Acceleration(p + v * (.5*dt), v + a * (.5*dt), t + .5*dt);
+		p += (v + a * (.5*dt)) * dt;
+		v += am * dt;
+#else
 		// am: a + h/2 da/dt + (h/2)² [ ∂²a/∂p² v v + ∂²a/∂v² a a + ∂²a/∂p∂v v a + ∂²a/∂v∂t a + ∂a/∂p a + ∂²a/∂t² ]
-		am = acc(p + v * (.5*dt) + a * (.25*dt*dt), v + a * (.5*dt), t + .5*dt);
+		am = T.Acceleration(p + v * (.5*dt) + a * (.25*dt*dt), v + a * (.5*dt), t + .5*dt);
 		//p += v * dt + a * (0.5*dt*dt);
 		p += v * dt + (a / 6. + am / 3.)*(dt*dt);
 		v += am * dt;
-		plotPath(0xFFFF00);
+#endif
+		MidpointMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 		p0 = p, v0 = v;
 	}
+	MidpointMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 }
 
 // red; standard Runge Kutta methods
 // relies on continuous derivative; better when step size is small
-template<typename Fun>
-void Runge_Kutta(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
-	dt *= 4.0;  // to be fair
-	vec3 p = p0, v = v0;
-	for (double t = 0.0; t < tMax; t += dt) {
+Path RungeKuttaMethodPath;
+void RungeKuttaMethodInit() {
+	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0;
+	double t_max = T.t1, dt = 4.0*T.dt, t;
+	for (t = 0.0; t < t_max; t += dt) {
 		vec3 p1 = v * dt;
-		vec3 v1 = acc(p, v, t) * dt;
+		vec3 v1 = T.Acceleration(p, v, t) * dt;
 		vec3 p2 = (v + 0.5*v1) * dt;
-		vec3 v2 = acc(p + 0.5*p1, v + 0.5*v1, t + 0.5*dt) * dt;
+		vec3 v2 = T.Acceleration(p + 0.5*p1, v + 0.5*v1, t + 0.5*dt) * dt;
 		vec3 p3 = (v + 0.5*v2) * dt;
-		vec3 v3 = acc(p + 0.5*p2, v + 0.5*v2, t + 0.5*dt) * dt;
+		vec3 v3 = T.Acceleration(p + 0.5*p2, v + 0.5*v2, t + 0.5*dt) * dt;
 		vec3 p4 = (v + v3) * dt;
-		vec3 v4 = acc(p + p3, v + v3, t + dt) * dt;
+		vec3 v4 = T.Acceleration(p + p3, v + v3, t + dt) * dt;
 		p += (p1 + 2.*p2 + 2.*p3 + p4) / 6.;
 		v += (v1 + 2.*v2 + 2.*v3 + v4) / 6.;
-		plotPath(0xFF0000);
+		RungeKuttaMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 		p0 = p, v0 = v;
 	}
+	RungeKuttaMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 }
 
 // yellow green; p: 1/6 h³ p³(t0); v: 5/12 h³ v³(t0) ??
-// obtains derivative from the previous calculation, accuracy similar to Euler_Midpoint
-template<typename Fun>
-void Midpoint_1(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
-	vec3 p = p0, v = v0, a0, a = a0 = acc(p0, v0, 0);
-	for (double t = 0.0; t < tMax; t += dt) {
-		a = acc(p, v, t);
+// non-standard method, obtains derivative from the previous calculation, accuracy similar to Midpoint method
+Path MultistepMidpointPath;
+void MultistepMidpointInit() {
+	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0;
+	double t_max = T.t1, dt = T.dt, t;
+	vec3 a0, a = a0 = T.Acceleration(p0, v0, 0);
+	for (t = 0.0; t < t_max; t += dt) {
+		a = T.Acceleration(p, v, t);
 		p += v * dt + a * (.5*dt*dt);
 		v += (1.5*a - 0.5*a0) * dt;
-		plotPath(0xA0FF00);
+		MultistepMidpointPath.push_back(keyFrame{ t, p0, v0*dt });
 		p0 = p, v0 = v, a0 = a;
 	}
+	MultistepMidpointPath.push_back(keyFrame{ t, p0, v0*dt });
 }
 
 // sky blue; p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
-// works best when acceleration only depend on the position (eg. static gravity field)
-template<typename Fun>
-void Verlet_Modified(vec3 p0, vec3 v0, Fun acc, double dt, double tMax) {
-	vec3 a = acc(p0, v0, 0);
+// modified, works best when acceleration only depend on the position (eg. static gravity field)
+Path MultistepVerletMethodPath;
+void MultistepVerletMethodInit() {
+	vec3 v0 = T.V0, p0 = T.P0;
+	double t_max = T.t1, dt = T.dt, t;
+	vec3 a = T.Acceleration(p0, v0, 0), a0 = T.Acceleration(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
 	vec3 v = v0 + a * dt, p = p0 + v0 * dt + a * (.5*dt*dt);
-	vec3 a0 = acc(p0 - v0 * dt + a * (.5*dt*dt), v0 - a * dt, -dt);
-	for (double t = 0.; t < tMax; t += dt) {
-		a = acc(p, v, t);
+	for (t = 0.; t < t_max; t += dt) {
+		a = T.Acceleration(p, v, t);
 		vec3 p1 = 2.*p - p0 + a * (dt*dt);
 		v += (1.5*a - 0.5*a0) * dt;
-		plotPath(0x0080FF);
+		MultistepVerletMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 		p0 = p, a0 = a, p = p1;
 	}
+	MultistepVerletMethodPath.push_back(keyFrame{ t, p0, v0*dt });
 }
 
+
+#include "numerical/linearsystem.h"
+#include "numerical/optimization.h"
+
+// as an experiment, may not be practical
+// contains a bug as it sometimes changes direction rapidly
+Path BackwardEulersMethodPath;
+void BackwardEulersMethodInit() {
+	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0, a;
+	double t_max = T.t1, dt = T.dt, t;
+	double M[6][6]; vec3 x[2];
+	for (t = 0.0; t < t_max; t += dt) {
+		a = T.Acceleration(p, v, t);
+
+		// numerical differentiation
+		const double e = .0001;
+		for (int i = 0; i < 36; i++) M[0][i] = 0;
+		for (int i = 0; i < 3; i++) {
+			vec3 d = vec3(i == 0, i == 1, i == 2) * e;
+			*(vec3*)M[i] = (-.5 / e) * (T.Acceleration(p + d, v, t) - T.Acceleration(p - d, v, t));
+			*((vec3*)&M[i + 3][3]) = (-.5 / e) * (T.Acceleration(p, v + d, t) - T.Acceleration(p, v - d, t));
+			M[i][i] += 1. / dt, M[i + 3][i + 3] += 1. / dt;
+		}
+		vec3 dadt = (.5 / e) * (T.Acceleration(p, v, t + e) - T.Acceleration(p, v, t - e));
+
+		// solve linear system
+		x[0] = v + a * dt;
+		x[1] = a + dadt * dt;
+		solveLinear(6, &M[0][0], (double*)x);
+		if (!(x[0].sqr() < 1e20 && x[1].sqr() < 1e20)) {
+			x[0] = v * dt;
+			x[1] = a * dt;
+		}
+		p += x[0];
+		v += x[1];
+
+		BackwardEulersMethodPath.push_back(keyFrame{ t, p0, v0*dt });
+		p0 = p, v0 = v;
+	}
+	BackwardEulersMethodPath.push_back(keyFrame{ t, p0, v0*dt });
+}
 
 #pragma endregion
 
@@ -593,7 +657,6 @@ void render() {
 	auto t0 = NTime::now();
 	// initialize window
 	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
-	for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) _DEPTHBUF[i][j] = INFINITY;
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
 
@@ -615,27 +678,26 @@ void render() {
 	if (!Alt) iTime = fmod(fsec(NTime::now() - start_time).count(), T.t1);
 
 	// reference path
-	for (int i = 0; i < RefN; i++) {
-		if (i % 20 < 10) drawLine_F(RefPath[i], RefPath[i + 1], 0x606080);
-	}
-	fillCircle((Tr*RefPath[(int)(iTime / (REFPATH_DT*REFPATH_DT_N))]).xy(), 6, 0x606080);
+	plotPath(RefPath, iTime, 0x606080);
 
-	// simulation paths with large step
-	vec3 P0 = T.P0, V0 = T.V0;
-	double t_step = T.dt, tMax = T.t1;
-	auto Acceleration = T.Acceleration;
-	//EulersMethod(P0, V0, Acceleration, t_step, tMax);
-	Midpoint_Method(P0, V0, Acceleration, t_step, tMax);
-	Runge_Kutta(P0, V0, Acceleration, t_step, tMax);
-	//Midpoint_1(P0, V0, Acceleration, t_step, tMax);
-	Verlet_Modified(P0, V0, Acceleration, t_step, tMax);
+	// simulation paths
+	bool drawCross = true;  // step highlighting
+	plotPath(EulersMethodPath, iTime, 0xFF8000, drawCross);
+	//plotPath(MidpointMethodPath, iTime, 0xFFFF00, drawCross);
+	//plotPath(RungeKuttaMethodPath, iTime, 0xFF0000, drawCross);
+	//plotPath(MultistepMidpointPath, iTime, 0xA0FF00, drawCross);
+	//plotPath(MultistepVerletMethodPath, iTime, 0x0080FF, drawCross);
+	plotPath(BackwardEulersMethodPath, iTime, 0x00FF00, drawCross);
 
-
+	// additional rendering
 	T.additional_render(iTime);
 
 	double t = fsec(NTime::now() - t0).count();
 	sprintf(text, "[%d×%d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*t, 1. / t);
 	SetWindowTextA(_HWND, text);
+
+	// why
+	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] ^= -1;
 }
 
 
@@ -645,6 +707,12 @@ bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
 	initReferencePath();
+	EulersMethodInit();
+	MidpointMethodInit();
+	RungeKuttaMethodInit();
+	MultistepMidpointInit();
+	MultistepVerletMethodInit();
+	BackwardEulersMethodInit();
 	new std::thread([](int x) {while (1) {
 		SendMessage(_HWND, WM_NULL, NULL, NULL);
 		Sleep(20);
