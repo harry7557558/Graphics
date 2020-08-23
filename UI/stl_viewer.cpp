@@ -81,6 +81,7 @@
 //   - Outline rendering based on geometry
 //   - Smoothed shading (interpolation)
 //   - Optimization for software rasterization
+//   - Option to show xOy plane with rendering for shadow
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
@@ -100,6 +101,7 @@
 //   - Mouse-involved editings (eg. dragging, scrolling)
 //   - Shift+F5 to reload without updating viewport
 //   - Shortcut to view next/previous model in directory
+//   - Support for non-standard animated STL (keyframes for position/orientation)
 
 
 

@@ -6,6 +6,7 @@
 
 
 // To-do:
+// Find and fix bug in backward Euler's method
 // * Adaptive step size
 
 
@@ -634,6 +635,7 @@ void BackwardEulersMethodInit() {
 		x[0] = v + a * dt;
 		x[1] = a + dadt * dt;
 		solveLinear(6, &M[0][0], (double*)x);
+		//solveLinear_ConjugateGradient(6, &M[0][0], (double*)x, (double*)x);
 		if (!(x[0].sqr() < 1e20 && x[1].sqr() < 1e20)) {
 			x[0] = v * dt;
 			x[1] = a * dt;
