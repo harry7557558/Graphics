@@ -1,4 +1,4 @@
-<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' witdh='601' height='601'>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='601' height='601'>
 <circle r='300' cx='300' cy='300' style='fill:white;stroke-width:1;stroke:black'/>
 <circle r='10' cx='100' cy='300' style='fill:rgba(240,220,180,0.6)'>
 <animate attributeType='CSS' attributeName='cx' repeatCount='indefinite'

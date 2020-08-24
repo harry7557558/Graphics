@@ -1,4 +1,4 @@
-<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' witdh='601' height='401'>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='601' height='401'>
 <rect width='600' height='400' style='fill:white;stroke-width:1;stroke:black'/>
 <path stroke-dasharray='3,4' style='fill:none;stroke-width:1;stroke:gray'
  d='M200,150Q395,72 590,292.1Q551.7,335.3 513.5,390Q261.7,30.3 10,167.4Q122.8,228.9 235.5,390Q412.8,136.8 590,129.8Q402.7,122.4 215.5,390Q112.7,243.2 10,179.2Q271.8,16 533.6,390Q561.8,349.7 590,315.6Q300,-34.6 10,274.5Q56.3,323.9 102.6,390Q346.3,41.8 590,159.2Q469.2,217.4 348.4,390Q179.2,148.2 10,130.9Q205.3,111 400.6,390Q480.3,276.1 560,212'/>

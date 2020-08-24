@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
 	};
 
 	// svg header
-	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' witdh='%d' height='%d'>\n",
+	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='%d' height='%d'>\n",
 		int((BMax.x - BMin.x)*SC + 1), int((BMax.y - BMin.y)*SC + 1));
 #if BOUNDARY==0
 	printf("<rect width='%s' height='%s' style='fill:white;stroke-width:1;stroke:black'/>\n", &str(W*SC, 1)[0], &str(H*SC, 1)[0]);
