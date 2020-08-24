@@ -60,7 +60,7 @@ bool solveCubic(double a, double b, double c, double d, double &r, double &u, do
 
 
 // Find all real roots of a quartic equation, return the number of real roots
-// R is not necessary sorted
+// R may not be sorted
 int solveQuartic(double k4, double k3, double k2, double k1, double k0, double R[4]) {
 	// Modified from https://www.shadertoy.com/view/3lj3DW
 	k3 /= (4.*k4), k2 /= (6.*k4), k1 /= (4.*k4), k0 /= k4;

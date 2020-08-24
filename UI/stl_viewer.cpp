@@ -102,6 +102,7 @@
 //   - Shift+F5 to reload without updating viewport
 //   - Shortcut to view next/previous model in directory
 //   - Support for non-standard animated STL (keyframes for position/orientation)
+//   - Recording GIF
 
 
 

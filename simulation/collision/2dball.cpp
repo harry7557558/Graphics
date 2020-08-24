@@ -1,3 +1,6 @@
+// simulating the elastic collision of a perfect ball in 2d
+// perfect ball: no angular motion
+
 #include <stdio.h>
 #include <vector>
 #include <string>
@@ -23,10 +26,11 @@ typedef std::vector<keyFrame> sequence;
 // constants/parameters/conditions
 #if BOUNDARY==0
 const double W = 6.0, H = 4.0;  // width and height of simulation box;  unit: m
-#elif BOUNDARY==1
-const double W = 6.0, H = 4.5;  // W is the diameter of the circle
-#endif
 const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*H);  // bounding box
+#elif BOUNDARY==1
+const double W = 6.0, H = 5.0;  // W is the diameter of the circle
+const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*W);  // bounding box
+#endif
 const double SC = 100.0;  // output scaling
 const double R = 0.1;  // radius of ball
 vec2 P0 = vec2(-1, 0.5), V0 = vec2(5, 2);  // initial state
@@ -128,11 +132,12 @@ int main(int argc, char** argv) {
 	};
 
 	// svg header
-	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n");
+	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' witdh='%d' height='%d'>\n",
+		int((BMax.x - BMin.x)*SC + 1), int((BMax.y - BMin.y)*SC + 1));
 #if BOUNDARY==0
-	printf("<rect width='%s' height='%s' style='fill:none;stroke-width:1;stroke:black'/>\n", &str(W*SC, 1)[0], &str(H*SC, 1)[0]);
+	printf("<rect width='%s' height='%s' style='fill:white;stroke-width:1;stroke:black'/>\n", &str(W*SC, 1)[0], &str(H*SC, 1)[0]);
 #elif BOUNDARY==1
-	printf("<circle r='%s' cx='%s' cy='%s' style='fill:none;stroke-width:1;stroke:black'/>\n", &str(.5*W*SC, 1)[0], &str(.5*W*SC, 1)[0], &str(.5*H*SC, 1)[0]);
+	printf("<circle r='%s' cx='%s' cy='%s' style='fill:white;stroke-width:1;stroke:black'/>\n", &str(.5*W*SC, 1)[0], &str(.5*W*SC, 1)[0], &str(.5*H*SC, 1)[0]);
 #endif
 
 	// path initialization
@@ -156,11 +161,12 @@ int main(int argc, char** argv) {
 
 	// animation
 	auto printPath = [&](const sequence &p, const char* style) {
-		printf("<circle r='%s' cx='0' cy='0' style='%s'>\n", &str(R*SC, 1)[0], style);
+		vec2 q = transform(p[0].p);
+		printf("<circle r='%s' cx='%d' cy='%d' style='%s'>\n", &str(R*SC, 1)[0], int(q.x + .5), int(q.y + .5), style);
 		std::string values_cx, values_cy, keyTimes;
 		int N = p.size();
 		for (int i = 0; i < N; i++) {
-			vec2 q = transform(p[i].p);
+			q = transform(p[i].p);
 			values_cx += str(q.x, 1);
 			values_cy += str(q.y, 1);
 			keyTimes += str(p[i].t / t_max, 4);
@@ -169,12 +175,12 @@ int main(int argc, char** argv) {
 				keyTimes += ';';
 			}
 		}
-		printf("<animate attributeType='CSS' attributeName='cx' repeatCount='indefinite'\n values = '");
+		printf("<animate attributeType='CSS' attributeName='cx' repeatCount='indefinite'\n values='");
 		printf(&values_cx[0]);
 		printf("'\n keyTimes='");
 		printf(&keyTimes[0]);
 		printf("'\n begin='%ss' dur='%ss'/>\n", "0", &str(t_max)[0]);
-		printf("<animate attributeType='CSS' attributeName='cy' repeatCount='indefinite'\n values = '");
+		printf("<animate attributeType='CSS' attributeName='cy' repeatCount='indefinite'\n values='");
 		printf(&values_cy[0]);
 		printf("'\n keyTimes='");
 		printf(&keyTimes[0]);
@@ -185,7 +191,9 @@ int main(int argc, char** argv) {
 	printPath(intPath, "fill:red");
 
 	printf("<text x='20' y='30'>Blue ball: path is calculated using collision law;</text>\n");
-	printf("<text x='20' y='50'>Red ball: calculated by integrating collision force numerically;</text>\n");
+	printf("<text x='20' y='50'>Red ball: path is calculated by integrating collision force numerically;</text>\n");
+	//printf("<text x='20' y='30'>Blue ball: path is calculated using projectile motion and collision law;</text>\n");
+	//printf("<text x='20' y='50'>Red ball: path is calculated by integrating gravitational and collision forces numerically;</text>\n");
 	printf("</svg>");
 	return 0;
 }
