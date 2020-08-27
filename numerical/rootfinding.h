@@ -5,6 +5,7 @@
 // Multivariable numerical root-finding
 
 // Remove debug code in solveTrigPoly() after well-tested
+// Get rid of <algorithm> as it sometimes causes compile error when max and min macros are defined
 
 
 
@@ -12,6 +13,9 @@
 
 #define __INC_ROOTFINDING_H
 
+// :(
+#undef max
+#undef min
 
 #include <cmath>
 #include <algorithm>
@@ -25,10 +29,12 @@
 // These solvers may be accelerated a lot if manually write them inline and do simplifications according to the circumstance.
 // It is recommended to perform one Newton iteration for analytical solutions when accuracy is required.
 
+// In all functions: a multiple root is counted as multiple single roots
+
 
 // Solve equation ax^3+bx^2+cx+d=0
 // return 1: two or three real roots, r, u, v;
-// return 0: one real root r and two complex roots u+vi, u-vi;
+// return 0: one real root r ~and two complex roots u+vi, u-vi~;
 bool solveCubic(double a, double b, double c, double d, double &r, double &u, double &v) {
 	b /= (3.*a), c /= a, d /= a;
 	double p = (1. / 3.) * c - b * b;
@@ -39,8 +45,8 @@ bool solveCubic(double a, double b, double c, double d, double &r, double &u, do
 		u = q + a; u = u > 0. ? pow(u, 1. / 3.) : -pow(-u, 1. / 3.);  // u = cbrt(q + a)
 		v = q - a; v = v > 0. ? pow(v, 1. / 3.) : -pow(-v, 1. / 3.);  // v = cbrt(q - a)
 		r = u + v;
-		v = sqrt(.75)*(u - v);
-		u = -.5 * r - b;
+		//v = sqrt(.75)*(u - v);
+		//u = -.5 * r - b;
 		r -= b;
 		return 0;
 	}
@@ -137,6 +143,20 @@ int solveQuartic_dg(double k4, double k3, double k2, double k1, double k0, doubl
 	return -1;
 }
 
+// what ?!
+int solveQuadratic(double a, double b, double c, double R[2]) {
+	if (a*a < 1e-20) {
+		R[0] = -c / b;
+		return 1;
+	}
+	double d = b * b - 4 * a*c;
+	if (d < 0.) return 0;
+	d = sqrt(d) / (2.*a);
+	b /= -2.*a;
+	R[0] = b - d, R[1] = b + d;
+	return 2;
+}
+
 
 
 // Solve a*cos(x)+b*sin(x)+c=0 in non-degenerated case
@@ -198,15 +218,15 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 #ifdef _DEBUG
 	static int id = 0; id++;
 	printf("{type:'folder',id:'%d',title:'%d',collapsed:false},", id, k4 ? 4 : k3 ? 3 : k2 ? 2 : k1 ? 1 : k0 ? 0 : -1);
-	printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg%+.12lg\\\\cos(%.12lgx)%+.12lg\\\\sin(%.12lgx)',color:'#000'},", id, k4, k3, k2, k1, k0, c1, w, c2, w);
-	printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg%+.12lg\\\\sin(x)',color:'#000'},", id, k[4], k[3], k[2], k[1], k[0], m);
-	printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg',color:'#888',lineStyle:'DASHED'},", id, k[4], k[3], k[2], k[1], k[0]);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf%+.12lf\\\\cos(%.12lfx)%+.12lf\\\\sin(%.12lfx)',color:'#000'},", id, k4, k3, k2, k1, k0, c1, w, c2, w);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf%+.12lf\\\\sin(x)',color:'#000'},", id, k[4], k[3], k[2], k[1], k[0], m);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf',color:'#888',lineStyle:'DASHED'},", id, k[4], k[3], k[2], k[1], k[0]);
 #endif
 
 	// find intervals that possibly have roots
 	// find intervals that the absolute value of the polynomial is no more than m
 #ifdef _DEBUG
-	printf("{type:'expression',folderId:'%d',latex:'\\\\left|y\\\\right|=%lg',color:'#888'},", id, m);
+	printf("{type:'expression',folderId:'%d',latex:'\\\\left|y\\\\right|=%lf',color:'#888'},", id, m);
 #endif
 	double B_[8];
 	int N = solveQuartic_dg(k[4], k[3], k[2], k[1], k[0] - m, B_);
@@ -224,7 +244,7 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 #endif
 	for (int n = 0; n < N; n++) {
 #ifdef _DEBUG
-		printf("{type:'expression',folderId:'%d',latex:'%lg<x<%lg',color:'#a80'},", id, B[n].t0, B[n].t1);
+		printf("{type:'expression',folderId:'%d',latex:'%lf<x<%lf',color:'#a80'},", id, B[n].t0, B[n].t1);
 #endif
 		if (B[n].t1 > u_min) {
 			// search roots between t0 and t1
@@ -247,7 +267,7 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 				};
 				for (int i = 0; i <= 4; i++) q[i] = q[i] * m + k[i];
 #ifdef _DEBUG
-				printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg',color:'#000',hidden:true},", id, q[4], q[3], q[2], q[1], q[0]);
+				printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf',color:'#000',hidden:true},", id, q[4], q[3], q[2], q[1], q[0]);
 #endif
 				// solve the quartic to get an approximation of the root
 				double r[4]; int nr = solveQuartic_dg(q[4], q[3], q[2], q[1], q[0], r);
@@ -300,32 +320,14 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 	double w2 = w * w, w3 = w2 * w, w4 = w2 * w2;
 
 	// splitting [0,2π] into 8 intervals with width π/4 (a more accurate approximation, hope it works)
-	// fact: the first 4 lines of SP_8[] can be used to represent all the numbers as the later 4 lines of SP_8[] is the negative of its beginning lines and CP_8[] is a shifting of SP_8[]
-	const double SP_8[8][5] = {
-		{ 0, 0.9997531243564286396045, 0.0028483114986132009966, -0.177251591139356185196, 0.0158188893387660080116 },
-		{ 0.7071067811865475244008, 0.7069949604196201832864, -0.352215472731225637930, -0.123116519536749247730, 0.0381901771833280581761 },
-		{ 1, 0.0000887371984277537483, -0.500956209912763528027, 0.0031385394583132777973, 0.0381901771833280581761 },
-		{ 0.7071067811865475244008, -0.706869467070116661448, -0.356243593482427661890, 0.1275550846047389923689, 0.0158188893387660080116 },
-		{ 0, -0.999753124356428639604, -0.002848311498613200996, 0.1772515911393561851965, -0.015818889338766008011 },
-		{ -0.707106781186547524400, -0.706994960419620183286, 0.3522154727312256379308, 0.1231165195367492477308, -0.038190177183328058176 },
-		{ -1, -0.000088737198427753748, 0.5009562099127635280279, -0.003138539458313277797, -0.038190177183328058176 },
-		{ -0.707106781186547524400, 0.7068694670701166614489, 0.3562435934824276618900, -0.127555084604738992368, -0.015818889338766008011 },
-	}, CP_8[8][5] = {
-		{ 1, 0.0000887371984277537483, -0.500956209912763528027, 0.0031385394583132777973, 0.0381901771833280581761 },
-		{ 0.7071067811865475244008, -0.706869467070116661448, -0.356243593482427661890, 0.1275550846047389923689, 0.0158188893387660080116 },
-		{ 0, -0.999753124356428639604, -0.002848311498613200996, 0.1772515911393561851965, -0.015818889338766008011 },
-		{ -0.707106781186547524400, -0.706994960419620183286, 0.3522154727312256379308, 0.1231165195367492477308, -0.038190177183328058176 },
-		{ -1, -0.000088737198427753748, 0.5009562099127635280279, -0.003138539458313277797, -0.038190177183328058176 },
-		{ -0.707106781186547524400, 0.7068694670701166614489, 0.3562435934824276618900, -0.127555084604738992368, -0.015818889338766008011 },
-		{ 0, 0.9997531243564286396045, 0.0028483114986132009966, -0.177251591139356185196, 0.0158188893387660080116 },
-		{ 0.7071067811865475244008, 0.7069949604196201832864, -0.352215472731225637930, -0.123116519536749247730, 0.0381901771833280581761 },
-	};
+	const double SP_8[8][5] = { { 0, 0.9997531243564286396045, 0.0028483114986132009966, -0.177251591139356185196, 0.0158188893387660080116 }, { 0.7071067811865475244008, 0.7069949604196201832864, -0.352215472731225637930, -0.123116519536749247730, 0.0381901771833280581761 }, { 1, 0.0000887371984277537483, -0.500956209912763528027, 0.0031385394583132777973, 0.0381901771833280581761 }, { 0.7071067811865475244008, -0.706869467070116661448, -0.356243593482427661890, 0.1275550846047389923689, 0.0158188893387660080116 }, { 0, -0.999753124356428639604, -0.002848311498613200996, 0.1772515911393561851965, -0.015818889338766008011 }, { -0.707106781186547524400, -0.706994960419620183286, 0.3522154727312256379308, 0.1231165195367492477308, -0.038190177183328058176 }, { -1, -0.000088737198427753748, 0.5009562099127635280279, -0.003138539458313277797, -0.038190177183328058176 }, { -0.707106781186547524400, 0.7068694670701166614489, 0.3562435934824276618900, -0.127555084604738992368, -0.015818889338766008011 }, };
+	const double CP_8[8][5] = { { 1, 0.0000887371984277537483, -0.500956209912763528027, 0.0031385394583132777973, 0.0381901771833280581761 }, { 0.7071067811865475244008, -0.706869467070116661448, -0.356243593482427661890, 0.1275550846047389923689, 0.0158188893387660080116 }, { 0, -0.999753124356428639604, -0.002848311498613200996, 0.1772515911393561851965, -0.015818889338766008011 }, { -0.707106781186547524400, -0.706994960419620183286, 0.3522154727312256379308, 0.1231165195367492477308, -0.038190177183328058176 }, { -1, -0.000088737198427753748, 0.5009562099127635280279, -0.003138539458313277797, -0.038190177183328058176 }, { -0.707106781186547524400, 0.7068694670701166614489, 0.3562435934824276618900, -0.127555084604738992368, -0.015818889338766008011 }, { 0, 0.9997531243564286396045, 0.0028483114986132009966, -0.177251591139356185196, 0.0158188893387660080116 }, { 0.7071067811865475244008, 0.7069949604196201832864, -0.352215472731225637930, -0.123116519536749247730, 0.0381901771833280581761 }, };
 
 #ifdef _DEBUG
 	static int id = 0; id++;
 	printf("{type:'folder',id:'%d',title:'%d',collapsed:false},", id, k4 ? 4 : k3 ? 3 : k2 ? 2 : k1 ? 1 : k0 ? 0 : -1);
-	printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg%+.12lg\\\\cos(%.12lgx)%+.12lg\\\\sin(%.12lgx)',color:'#000'},", id, k4, k3, k2, k1, k0, c1, w, c2, w);
-	printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg',color:'#888',lineStyle:'DASHED'},", id, k4, k3, k2, k1, k0);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf%+.12lf\\\\cos(%.12lfx)%+.12lf\\\\sin(%.12lfx)',color:'#000'},", id, k4, k3, k2, k1, k0, c1, w, c2, w);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf',color:'#888',lineStyle:'DASHED'},", id, k4, k3, k2, k1, k0);
 #endif
 
 	// interval finding
@@ -341,11 +343,11 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 	N >>= 1;
 
 #ifdef _DEBUG
-	printf("{type:'expression',folderId:'%d',latex:'\\\\left|y\\\\right|=%lg',color:'#888'},", id, m);
+	printf("{type:'expression',folderId:'%d',latex:'\\\\left|y\\\\right|=%lf',color:'#888'},", id, m);
 #endif
 	for (int n = 0; n < N; n++) {
 #ifdef _DEBUG
-		printf("{type:'expression',folderId:'%d',latex:'%lg<x<%lg',color:'#a80'},", id, B[n].t0, B[n].t1);
+		printf("{type:'expression',folderId:'%d',latex:'%lf<x<%lf',color:'#a80'},", id, B[n].t0, B[n].t1);
 #endif
 		if (B[n].t1 > x_min) {
 			// search roots between t0 and t1
@@ -374,7 +376,7 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 					k4 + ph[4]
 				};
 #ifdef _DEBUG
-				printf("{type:'expression',folderId:'%d',latex:'%.12lgx^4%+.12lgx^3%+.12lgx^2%+.12lgx%+.12lg',color:'#000',hidden:true},", id, q[4], q[3], q[2], q[1], q[0]);
+				printf("{type:'expression',folderId:'%d',latex:'%.12lfx^4%+.12lfx^3%+.12lfx^2%+.12lfx%+.12lf',color:'#000',hidden:true},", id, q[4], q[3], q[2], q[1], q[0]);
 #endif
 				// solve the quartic to get an approximation of the root
 				double r[4]; int nr = solveQuartic_dg(q[4], q[3], q[2], q[1], q[0], r);
@@ -408,7 +410,103 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 	return NAN;
 }
 
+
+// k2*x^2+k1*x+k0 + c1*cos(w*x)+c2*sin(w*x) = 0
+// no substitution, sometimes may miss roots
+double solveTrigQuadratic(double k2, double k1, double k0, double c1, double c2, double w, double x_min) {
+	if (w < 0) w = -w, c2 = -c2;
+	double w2 = w * w;
+	double m = sqrt(c1*c1 + c2 * c2);
+
+	// split [0,2π] into 32 equal intervals
+	const double SP_32[32][3] = { { 0.00000000000000000000, 1.00320083126428648821, -0.04896359868473793220 }, { 0.19509032201612826785, 0.98387634616046915379, -0.14500915241586180911 }, { 0.38268343236508977173, 0.92674204483791664154, -0.23548208574171368088 }, { 0.55557023301960222474, 0.83399356645516932392, -0.31690557457238660565 }, { 0.70710678118654752440, 0.70919518302253026482, -0.38615055989493642802 }, { 0.83146961230254523708, 0.55714282642757604459, -0.44055599575645271203 }, { 0.92387953251128675613, 0.38367978346230678067, -0.47803111176769732600 }, { 0.98078528040323044913, 0.19547214158868254887, -0.49713576023664532142 }, { 1.00000000000000000000, -0.00024738506415482473, -0.49713576023664532142 }, { 0.98078528040323044913, -0.19595740484771187072, -0.47803111176769732600 }, { 0.92387953251128675613, -0.38413689145715004898, -0.44055599575645271203 }, { 0.83146961230254523708, -0.55755421275434054939, -0.38615055989493642802 }, { 0.70710678118654752440, -0.70954503833538655616, -0.31690557457238660565 }, { 0.55557023301960222474, -0.83426844601064545436, -0.23548208574171368088 }, { 0.38268343236508977173, -0.92693138516884989407, -0.14500915241586180911 }, { 0.19509032201612826785, -0.98397287102412504440, -0.04896359868473793220 }, { -0.00000000000000000000, -1.00320083126428648821, 0.04896359868473793220 }, { -0.19509032201612826785, -0.98387634616046915379, 0.14500915241586180911 }, { -0.38268343236508977173, -0.92674204483791664154, 0.23548208574171368088 }, { -0.55557023301960222474, -0.83399356645516932392, 0.31690557457238660565 }, { -0.70710678118654752440, -0.70919518302253026482, 0.38615055989493642802 }, { -0.83146961230254523708, -0.55714282642757604459, 0.44055599575645271203 }, { -0.92387953251128675613, -0.38367978346230678067, 0.47803111176769732600 }, { -0.98078528040323044913, -0.19547214158868254887, 0.49713576023664532142 }, { -1.00000000000000000000, 0.00024738506415482473, 0.49713576023664532142 }, { -0.98078528040323044913, 0.19595740484771187072, 0.47803111176769732600 }, { -0.92387953251128675613, 0.38413689145715004898, 0.44055599575645271203 }, { -0.83146961230254523708, 0.55755421275434054939, 0.38615055989493642802 }, { -0.70710678118654752440, 0.70954503833538655616, 0.31690557457238660565 }, { -0.55557023301960222474, 0.83426844601064545436, 0.23548208574171368088 }, { -0.38268343236508977173, 0.92693138516884989407, 0.14500915241586180911 }, { -0.19509032201612826785, 0.98397287102412504440, 0.04896359868473793220 }, };
+	const double CP_32[32][3] = { { 1.00000000000000000000, -0.00024738506415482473, -0.49713576023664532142 }, { 0.98078528040323044913, -0.19595740484771187072, -0.47803111176769732600 }, { 0.92387953251128675613, -0.38413689145715004898, -0.44055599575645271203 }, { 0.83146961230254523708, -0.55755421275434054939, -0.38615055989493642802 }, { 0.70710678118654752440, -0.70954503833538655616, -0.31690557457238660565 }, { 0.55557023301960222474, -0.83426844601064545436, -0.23548208574171368088 }, { 0.38268343236508977173, -0.92693138516884989407, -0.14500915241586180911 }, { 0.19509032201612826785, -0.98397287102412504440, -0.04896359868473793220 }, { -0.00000000000000000000, -1.00320083126428648821, 0.04896359868473793220 }, { -0.19509032201612826785, -0.98387634616046915379, 0.14500915241586180911 }, { -0.38268343236508977173, -0.92674204483791664154, 0.23548208574171368088 }, { -0.55557023301960222474, -0.83399356645516932392, 0.31690557457238660565 }, { -0.70710678118654752440, -0.70919518302253026482, 0.38615055989493642802 }, { -0.83146961230254523708, -0.55714282642757604459, 0.44055599575645271203 }, { -0.92387953251128675613, -0.38367978346230678067, 0.47803111176769732600 }, { -0.98078528040323044913, -0.19547214158868254887, 0.49713576023664532142 }, { -1.00000000000000000000, 0.00024738506415482473, 0.49713576023664532142 }, { -0.98078528040323044913, 0.19595740484771187072, 0.47803111176769732600 }, { -0.92387953251128675613, 0.38413689145715004898, 0.44055599575645271203 }, { -0.83146961230254523708, 0.55755421275434054939, 0.38615055989493642802 }, { -0.70710678118654752440, 0.70954503833538655616, 0.31690557457238660565 }, { -0.55557023301960222474, 0.83426844601064545436, 0.23548208574171368088 }, { -0.38268343236508977173, 0.92693138516884989407, 0.14500915241586180911 }, { -0.19509032201612826785, 0.98397287102412504440, 0.04896359868473793220 }, { 0.00000000000000000000, 1.00320083126428648821, -0.04896359868473793220 }, { 0.19509032201612826785, 0.98387634616046915379, -0.14500915241586180911 }, { 0.38268343236508977173, 0.92674204483791664154, -0.23548208574171368088 }, { 0.55557023301960222474, 0.83399356645516932392, -0.31690557457238660565 }, { 0.70710678118654752440, 0.70919518302253026482, -0.38615055989493642802 }, { 0.83146961230254523708, 0.55714282642757604459, -0.44055599575645271203 }, { 0.92387953251128675613, 0.38367978346230678067, -0.47803111176769732600 }, { 0.98078528040323044913, 0.19547214158868254887, -0.49713576023664532142 }, };
+
+#ifdef _DEBUG
+	static int id = 0; id++;
+	printf("{type:'folder',id:'%d',title:'%d',collapsed:false},", id, id);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^2%+.12lfx%+.12lf%+.12lf\\\\cos(%.12lfx)%+.12lf\\\\sin(%.12lfx)',color:'#000'},", id, k2, k1, k0, c1, w, c2, w);
+	printf("{type:'expression',folderId:'%d',latex:'%.12lfx^2%+.12lfx%+.12lf',color:'#888',lineStyle:'DASHED'},", id, k2, k1, k0);
+#endif
+
+	// find the interval(s) with roots
+	double _B[4];
+	int N = solveQuadratic(k2, k1, k0 + m, _B);
+	N += solveQuadratic(k2, k1, k0 - m, &_B[N]);
+	if (N < 2) return NAN;
+	std::sort(_B, _B + N);
+	typedef struct { double t0, t1; } interval;
+	interval *B = (interval*)&_B[0];
+	N >>= 1;
+
+	// check these intervals
+	for (int n = 0; n < N; n++) {
+		if (B[n].t1 > x_min) {
+			// search roots between t0 and t1
+			double t0 = B[n].t0; if (t0 < x_min) t0 = x_min;
+			double t1 = B[n].t1;
+			double dt = .0625*PI / w;
+			int i0 = int(floor(t0 / dt)), i1 = int(ceil(t1 / dt));
+			for (int i = i0; i < i1; i++) {
+				// create a quadratic approximation of the trigonometric part
+				const double *sp = SP_32[(unsigned)i % 32], *cp = CP_32[(unsigned)i % 32];
+				double ph[3] = {  // trigonometric coefficients c1*cos(w*x)+c2*sin(w*x)
+					c1 * cp[0] + c2 * sp[0],
+					c1 * w*cp[1] + c2 * w*sp[1],
+					c1 * w2*cp[2] + c2 * w2*sp[2]
+				};
+				// translate trigonometric polynomial and add k
+				double t = i * dt;
+				double q[3] = {
+					k0 + ph[0] - ph[1] * t + ph[2] * t*t,
+					k1 + ph[1] - 2 * ph[2] * t,
+					k2 + ph[2]
+				};
+				// solve the quadratic to get an approximation of the root
+				double r[2]; int nr = solveQuadratic(q[2], q[1], q[0], r);
+				double x = INFINITY;
+				for (int j = 0; j < nr; j++) {
+					// Newton iteration
+					double xt = r[j];
+					double v, dv, dx;
+					for (int iter = 0; iter < 2; iter++) {
+						double wx = w * xt, cwx = cos(wx), swx = sin(wx);
+						v = k0 + xt * (k1 + xt * k2) + c1 * cwx + c2 * swx;
+						dv = k1 + xt * 2.*k2 - c1 * w* swx + c2 * w*cwx;
+						dx = v / dv;
+						if (abs(dx) < dt) xt -= dx;
+						if (dx*dx < 1e-24) break;
+					}
+					// check if the root is legal
+					if (dx*dx < 1e-7) {
+						double xd = xt - t;
+						if (xd > 0. && xd < dt) {
+							if (xt < x && xt > t0 && xt < t1) x = xt;  // this one should work
+						}
+					}
+				}
+				if (x != INFINITY) {
+					return x;
+				}
+			}
+		}
+	}
+	return NAN;
+}
+
 // iter=1 should be enough; default value is 2
+double refineRoot_TrigQuadratic(double k2, double k1, double k0, double c1, double c2, double w, double x, int iter = 2) {
+	if (isnan(x)) return x;
+	while (iter--) {
+		double cx = cos(w*x), sx = sin(w*x);
+		double y = k0 + x * (k1 + x * k2) + c1 * cx + c2 * sx;
+		double dy = k1 + x * 2. * k2 + w * (-c1*sx + c2*cx);
+		double dx = y / dy;
+		if (dx*dx < 1e2) x -= dx;
+		if (dx*dx < 1e-24) break;
+	}
+	return x;
+}
 double refineRoot_TrigPoly(double k4, double k3, double k2, double k1, double k0, double c1, double c2, double w, double x, int iter = 2) {
 	if (isnan(x)) return x;
 	while (iter--) {
@@ -421,6 +519,11 @@ double refineRoot_TrigPoly(double k4, double k3, double k2, double k1, double k0
 	return x;
 }
 
+
+
+// :^(
+#define max(x,y) ((x)>(y)?(x):(y))
+#define min(x,y) ((x)<(y)?(x):(y))
 
 #endif // __INC_ROOTFINDING_H
 

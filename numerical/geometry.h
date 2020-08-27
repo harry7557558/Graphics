@@ -13,12 +13,10 @@
 #endif
 
 // for macros, do not use rand() because it will be called multiple times
-#ifndef max
+#undef max
+#undef min
 #define max(x,y) ((x)>(y)?(x):(y))
-#endif
-#ifndef min
 #define min(x,y) ((x)<(y)?(x):(y))
-#endif
 #define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
 #define mix(x,y,a) ((x)*(1-a)+(y)*(a))
 
