@@ -158,14 +158,3 @@ QuadraticCoefficients(fitCos_c, 32)
 
 
 
-
-
-
-
-
-
-
-
-
-
-

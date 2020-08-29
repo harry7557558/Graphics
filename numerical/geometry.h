@@ -70,6 +70,7 @@ struct vec2 {
 	vec2 yx() const { return vec2(y, x); }
 	vec2 rot() const { return vec2(-y, x); }
 	vec2 rotr() const { return vec2(y, -x); }
+	vec2 rotate(double a) const { double ca = cos(a), sa = sin(a); return vec2(ca*x - sa * y, sa*x + ca * y); }
 
 	bool operator == (const vec2 &v) const { return x == v.x && y == v.y; }
 	bool operator != (const vec2 &v) const { return x != v.x || y != v.y; }

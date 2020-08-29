@@ -1,6 +1,7 @@
-// **INCOMPLETE**
 // simulating the elastic collision of a polygon in 2d
 // polygon: involves both linear and angular motions
+
+// ** I may have a bug **
 
 #include <stdio.h>
 #include <vector>
@@ -8,15 +9,14 @@
 
 #include "numerical/geometry.h"  // vec2
 #include "numerical/ode.h"  // RungeKuttaMethod
-#include "numerical/rootfinding.h"  // solveQuartic
+#include "numerical/rootfinding.h"  // solveTrigQuadratic_refine
 
 // debug output
 #define printerr(s, ...) fprintf(stderr, s, __VA_ARGS__)
 
 
-// simulation boundary and shape
-#define BOUNDARY 0   // 0: rectangle; 1: circle
-const int SHAPE = 2;   // 0-8
+// simulation shape
+int SHAPE = 0;   // 0-8
 
 struct state {
 	double t;  // time
@@ -35,18 +35,14 @@ struct object {
 
 
 // constants/parameters/conditions
-#if BOUNDARY==0
 const double W = 6.0, H = 4.0;  // width and height of simulation box;  unit: m
 const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*H);  // bounding box
-#elif BOUNDARY==1
-const double W = 6.0, H = 6.0;  // W is the diameter of the circle
-const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*W);  // bounding box
-#endif
 const double SC = 100.0;  // output scaling
 object Shape;  // main object
-vec2 X0 = vec2(-1, 0.5), V0 = vec2(5, 2);  // initial state
+vec2 X0 = vec2(-1, 0.5), V0 = vec2(5, 2);  // initial linear state
+double R0 = 2.0, W0 = 0.0;  // initial angular state
 const vec2 g = vec2(0, -9.8);  // gravitational acceleration, zero horizontal component
-const double t_max = 2.0;  // end time
+const double t_max = 10.0;  // end time
 
 void init() {
 	// thanks Adobe Illustrator
@@ -64,7 +60,7 @@ void init() {
 	polygon S = Test_Shapes[SHAPE]; int N = S.size();
 	for (int i = 0; i < N; i++) S[i] *= vec2(1, -1);
 	// calculate mass, center of mass, and moment of inertia
-	// treat the shape as a solid
+	// treat the shape as a solid (divergence theorem)
 	const double density = 1.0;
 	double M(0.0); vec2 C(0.0); double I(0.0);
 	for (int i = 0; i < N; i++) {
@@ -76,33 +72,35 @@ void init() {
 	}
 	C /= M;
 	if (M < 0.) M = -M, I = -I;
-	printerr("<text x='%.1lf' y='%.1lf'>%d</text>\n", C.x, -C.y, SHAPE);
+	printerr("<text x='%.1lf' y='%.1lf'>%d</text>\n", C.x, -C.y, SHAPE);  //
 	// translate the shape to the origin
 	double sc = 0.002;
 	C *= sc, M *= sc * sc, I *= sc * sc * sc * sc;
 	for (int i = 0; i < N; i++) S[i] = S[i] * sc - C;
 	I -= M * C.sqr();
-	// modify global variable
+	// uptate calculation
 	Shape.P = S;
 	Shape.inv_m = 1. / M;
-	Shape.inv_I = 0.1 / I;
+	Shape.inv_I = 1. / I;
 }
 
 
-// path calculated by numerically integrating collision force
+
+// simulating by numerically integrating collision force
 sequence IntPath;
 void calcIntPath() {
 	state st;
-	st.x = X0, st.v = V0, st.r = st.w = st.t = 0;
+	st.x = X0, st.v = V0, st.r = R0, st.w = W0, st.t = 0;
 	const unsigned SL = sizeof(state) / sizeof(double);  // should be 7
 	printerr("%u\n", SL);
+	IntPath.clear();
 	IntPath.push_back(st);
 
 	double temp0[SL], temp1[SL], temp2[SL];
 	double dt = 0.00001, t = 0;
 	for (int i = 0, tN = int(t_max / dt); i < tN; i++) {
 		RungeKuttaMethod([](const double *x, double t, double* dxdt) {
-			const double k = 1e6;  // a large number
+			const double k = 1e8;  // a large number
 			const state* st = (state*)x;
 			state* ds = (state*)dxdt;
 			double a = st->r, sa = sin(a), ca = cos(a);
@@ -113,15 +111,10 @@ void calcIntPath() {
 				pr = vec2(ca * pr.x - sa * pr.y, sa * pr.x + ca * pr.y);
 				vec2 p = st->x + pr;
 				vec2 dF(0.);
-#if BOUNDARY==0
 				if (p.x > BMax.x) dF += vec2(k*(BMax.x - p.x), 0);
 				if (p.x < BMin.x) dF += vec2(k*(BMin.x - p.x), 0);
 				if (p.y > BMax.y) dF += vec2(0, k*(BMax.y - p.y));
 				if (p.y < BMin.y) dF += vec2(0, k*(BMin.y - p.y));
-#elif BOUNDARY==1
-				double d = length(p);
-				if (d > .5*W) dF += k * normalize(p) * (.5*W - d);
-#endif
 				F += dF, T += det(p - st->x, dF);
 			}
 			ds->t = 1;
@@ -131,13 +124,18 @@ void calcIntPath() {
 			ds->w = T * Shape.inv_I;  // angular acceleration
 		}, (double*)&st, SL, t, dt, temp0, temp1, temp2);
 
-		if ((t += dt) >= t_max) break;
-		if (i % (int(0.01 / dt)) == 0) {
-			IntPath.push_back(st);
-			// check energy conservation
+		// check energy conservation
+		if (i % (int(0.1 / dt)) == 0) {
 			double El = (.5*st.v.sqr() - dot(g, st.x)) / Shape.inv_m;
 			double Ea = (.5*st.w*st.w) / Shape.inv_I;
 			//printerr("%lf %lf  %lf\n", El, Ea, El + Ea);
+			printerr("I %lf %lf\n", t, El + Ea);
+		}
+
+		// time update and output
+		if ((t += dt) + 1e-6 >= t_max) break;
+		if (i % (int(0.04 / dt)) == 0) {
+			IntPath.push_back(st);
 		}
 	}
 	st.t = t_max;
@@ -145,48 +143,43 @@ void calcIntPath() {
 }
 
 
-// path calculated using collision law
+// simulating using collision law
 sequence analyticPath;
 std::vector<splineTo> qPath;
 void calcAnalyticPath() {
-	state st = state{ 0, X0, V0, 0, 0 };
-	st.w = 7.0;
+	state st = state{ 0, X0, V0, R0, W0 };
+	analyticPath.clear(); qPath.clear();
 	analyticPath.push_back(st);
 	double t = 0;
 	while (t < t_max) {
 		// calculate the next collision
 		double dt = t_max - t;
 		double a = st.r, sa = sin(a), ca = cos(a);
-		vec2 dp = vec2(0), n;  // change of linear momentum
+		vec2 dv = vec2(0), n;  // change of linear velocity
+		double dw = 0;  // change of angular velocity
 		for (int i = 0, l = Shape.P.size(); i < l; i++) {
 			vec2 r = Shape.P[i]; r = vec2(ca*r.x - sa * r.y, sa*r.x + ca * r.y);
-			vec2 p = st.x + r;
-			vec2 v = st.v;
+			vec2 x = st.x, v = st.v;
+			double w = st.w;
 			n = vec2(0.0);
-#if BOUNDARY==0
-			double tt = (BMax.x - p.x) / v.x;
-			if (tt > 1e-6 && tt < dt) dt = tt, n = vec2(-1, 0);
-			tt = (BMin.x - p.x) / v.x;
-			if (tt > 1e-6 && tt < dt) dt = tt, n = vec2(1, 0);
-			double a = .5*g.y, b = v.y, c = p.y - BMin.y;
-			tt = ((a < 0. ? -1 : 1)*sqrt(b*b - 4 * a*c) - b) / (2.*a);
-			if (tt > 1e-6 && tt < dt) dt = tt, n = vec2(0, 1);
-			c = p.y - BMax.y, tt = ((a > 0. ? -1 : 1)*sqrt(b*b - 4 * a*c) - b) / (2.*a);
-			if (tt > 1e-6 && tt < dt) dt = tt, n = vec2(0, -1);
-#elif BOUNDARY==1
-			double c4 = .25*g.sqr(), c3 = dot(g, v), c2 = dot(g, p) + v.sqr(), c1 = 2.*dot(p, v), c0 = p.sqr() + r.sqr() - .25*W*W;
-			// quartic + 2*r*dot(vec2(cos(w*t),sin(w*t)),p+v*t+g*.5*t*t)=0
-			double rt[4]; int N = solveQuartic(c4, c3, c2, c1, c0, rt);
-			for (int i = 0; i < N; i++) {
-				double tt = refineRoot_quartic(c4, c3, c2, c1, c0, rt[i]);
-				if (tt > 1e-6 && tt < dt) {
-					dt = tt;
-					n = normalize(p + v * dt + g * (.5*dt*dt));
-				}
-			}
-#endif
+
+			// find the intersection
+			const double eps = 1e-6;
+			double tt = solveTrigQuadratic_refine(0, v.x, x.x - BMax.x, r.x, -r.y, w, eps);
+			if (tt < dt) dt = tt, n = vec2(-1, 0);
+			tt = solveTrigQuadratic_refine(.5*g.y, v.y, x.y - BMin.y, r.y, r.x, w, eps);
+			if (tt < dt) dt = tt, n = vec2(0, 1);
+			tt = solveTrigQuadratic_refine(0, v.x, x.x - BMin.x, r.x, -r.y, w, eps);
+			if (tt < dt) dt = tt, n = vec2(1, 0);
+			tt = solveTrigQuadratic_refine(.5*g.y, v.y, x.y - BMax.y, r.y, r.x, w, eps);
+			if (tt < dt) dt = tt, n = vec2(0, -1);
+
+			// calculate collision reaction
 			if (n != vec2(0.0)) {
-				dp = (-2.*dot(v + g * dt, n) / Shape.inv_m)*n;
+				double s = det(r.rotate(w*dt), n);  // unit torque direction maybe
+				double dp = -2 * (dot(v + g * dt, n) + w * s) / (Shape.inv_m + Shape.inv_I*s*s);  // change of linear momentum (scalar)
+				dv = (Shape.inv_m*dp)*n;  // change of linear velocity
+				dw = (Shape.inv_I*dp*s);  // change of angular velocity
 			}
 		}
 		vec2 x1 = st.x + st.v * dt + g * (.5*dt*dt);
@@ -202,26 +195,22 @@ void calcAnalyticPath() {
 		qPath.push_back(splineTo{ st.x + .5*st.v*dt, x1 });
 
 		// collision respond
-		st.x = x1, st.v = v1 + dp * Shape.inv_m;
-		st.r += st.w*dt, st.w = st.w;
+		st.x = x1, st.v = v1 + dv;
+		st.r += st.w*dt, st.w += dw;
 		t += dt;
 
 		// check energy conservation
-		double E = (.5*st.v.sqr() - dot(st.x, g)) / Shape.inv_m;
-		printerr("%lf %lf\n", t, E);
+		double E = (.5*st.v.sqr() - dot(st.x, g)) / Shape.inv_m + (.5*st.w*st.w) / Shape.inv_I;
+		printerr("A %lf %lf\n", t, E);
 	}
 }
 
 
+
 // visualization
 int main(int argc, char** argv) {
-	// export format: animated svg
+	// output format: animated svg
 	freopen(argv[1], "w", stdout);
-
-	// simulation
-	init();
-	calcIntPath();
-	calcAnalyticPath();
 
 	// decimal to string optimized for size
 	auto str = [](double x, int d = 3)->std::string {
@@ -240,49 +229,61 @@ int main(int argc, char** argv) {
 
 	// svg header
 	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='%d' height='%d'>\n",
-		int((BMax.x - BMin.x)*SC + 1), int((BMax.y - BMin.y)*SC + 1));
-	// shape
-	printf("<defs>\n <g id='shape'><polygon points='");
-	for (int i = 0, l = Shape.P.size(); i <= l; i++) {
-		vec2 p = SC * vec2(1, -1) * Shape.P[i%l];
-		printf("%s %s%c", &str(p.x, 1)[0], &str(p.y, 1)[0], i == l ? '\'' : ' ');
-	}
-	printf("/><circle cx='0' cy='0' r='3' style='fill:black' /></g>\n</defs>\n");
-	// boundary
-	if (BOUNDARY == 0)
-		printf("<rect width='%s' height='%s' style='fill:white;stroke-width:1;stroke:black'/>\n", &str(W*SC, 1)[0], &str(H*SC, 1)[0]);
-	else if (BOUNDARY == 1)
-		printf("<circle r='%s' cx='%s' cy='%s' style='fill:white;stroke-width:1;stroke:black'/>\n", &str(.5*W*SC, 1)[0], &str(.5*W*SC, 1)[0], &str(.5*H*SC, 1)[0]);
+		2 * int((BMax.x - BMin.x)*SC + 1), 5 * int((BMax.y - BMin.y)*SC + 1));
 
-	// analytical path
-	printf("<path stroke-dasharray='3,4' style='fill:none;stroke-width:1;stroke:gray'\n d='");
-	vec2 q0 = transform(X0); printf("M%s,%s", &str(q0.x, 1)[0], &str(q0.y, 1)[0]);
-	for (int i = 0, l = qPath.size(); i < l; i++) {
-		vec2 q = transform(qPath[i].c);
-		printf("Q%s,%s", &str(q.x, 1)[0], &str(q.y, 1)[0]);
-		q = transform(qPath[i].d);
-		printf(" %s,%s", &str(q.x, 1)[0], &str(q.y, 1)[0]);
-	}
-	printf("'/>\n");
+	// shapes
+	for (SHAPE = 0; SHAPE < 9; SHAPE++) {
+		init();
 
-	// animation
-	auto printPath = [&](const sequence &p, const char* style) {
-		static int id = 0; id++;
-		printf("<use id='obj%d' xlink:href='#shape' style='%s' />\n", id, style);
-		printf("<style>\n");
-		printf("#obj%d{animation:path%d %ss infinite; animation-timing-function:linear;}\n", id, id, &str(5 * t_max)[0]);
-		printf("@keyframes path%d {\n", id);
-		for (int i = 0, N = p.size(); i < N; i++) {
-			vec2 q = transform(p[i].x);
-			printf(" %s%%{transform:translate(%spx,%spx)rotate(%sdeg)}\n", &str(100 * p[i].t / t_max, 2)[0], &str(q.x, 1)[0], &str(q.y, 1)[0], &str(p[i].r*(-180 / PI), 1)[0]);
+		int IMG_W = int(W * SC + .5), IMG_H = int(H * SC + .5);
+		printf("<g transform='translate(%d,%d)'>", (SHAPE % 2)*IMG_W, (SHAPE / 2)*IMG_H);
+
+		// shape
+		printf("<defs>\n <g id='shape%d'><polygon points='", SHAPE);
+		for (int i = 0, l = Shape.P.size(); i <= l; i++) {
+			vec2 p = SC * vec2(1, -1) * Shape.P[i%l];
+			printf("%s %s%c", &str(p.x, 1)[0], &str(p.y, 1)[0], i == l ? '\'' : ' ');
 		}
-		printf("} </style>\n");
-	};
-	printPath(analyticPath, "fill:blue");
-	printPath(IntPath, "fill:red");
+		printf("/><path d='M5,0L0,0L0,5' style='stroke:black;stroke-width:1px;fill:none' /></g>\n</defs>\n");
 
-	//printf("<text x='20' y='30'>Blue ball: path is calculated using collision law;</text>\n");
-	//printf("<text x='20' y='50'>Red ball: path is calculated by integrating collision force numerically;</text>\n");
+		// boundary
+		printf("<rect width='%d' height='%d' style='fill:white;stroke-width:1;stroke:black'/>\n", IMG_W, IMG_H);
+
+		// simulation
+		calcIntPath();
+		calcAnalyticPath();
+
+		// analytical path
+		printf("<path stroke-dasharray='3,4' style='fill:none;stroke-width:1;stroke:gray'\n d='");
+		vec2 q0 = transform(X0); printf("M%s,%s", &str(q0.x, 1)[0], &str(q0.y, 1)[0]);
+		for (int i = 0, l = qPath.size(); i < l; i++) {
+			vec2 q = transform(qPath[i].c);
+			printf("Q%s,%s", &str(q.x, 1)[0], &str(q.y, 1)[0]);
+			q = transform(qPath[i].d);
+			printf(" %s,%s", &str(q.x, 1)[0], &str(q.y, 1)[0]);
+		}
+		printf("'/>\n");
+
+		// animation
+		auto printPath = [&](const sequence &p, const char* style) {
+			if (p.empty()) return;
+			static int id = 0; id++;
+			printf("<use id='obj%d' xlink:href='#shape%d' style='%s' />\n", id, SHAPE, style);
+			printf("<style>\n");
+			printf("#obj%d{animation:path%d %ss infinite; animation-timing-function:linear;}\n", id, id, &str(1 * t_max)[0]);
+			printf("@keyframes path%d {\n", id);
+			for (int i = 0, N = p.size(); i < N; i++) {
+				vec2 q = transform(p[i].x);
+				printf(" %s%%{transform:translate(%spx,%spx)rotate(%sdeg)}\n", &str(100 * p[i].t / t_max, 2)[0], &str(q.x, 1)[0], &str(q.y, 1)[0], &str(p[i].r*(-180 / PI), 1)[0]);
+			}
+			printf("} </style>\n");
+		};
+		printPath(IntPath, "stroke-width:1px;stroke:black;fill:none;opacity:0.5");
+		printPath(analyticPath, "fill:gray");
+
+		printf("</g>");
+	}
+
 	printf("</svg>");
 	return 0;
 }
