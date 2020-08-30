@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
 			vec2 p = SC * vec2(1, -1) * Shape.P[i%l];
 			printf("%s %s%c", &str(p.x, 1)[0], &str(p.y, 1)[0], i == l ? '\'' : ' ');
 		}
-		printf("/><path d='M5,0L0,0L0,5' style='stroke:black;stroke-width:1px;fill:none' /></g>\n</defs>\n");
+		printf("/><path d='M5,0L0,0L0,-5' style='stroke:black;stroke-width:1px;fill:none' /></g>\n</defs>\n");
 
 		// boundary
 		printf("<rect width='%d' height='%d' style='fill:white;stroke-width:1;stroke:black'/>\n", IMG_W, IMG_H);

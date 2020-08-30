@@ -183,6 +183,8 @@ int solveQuadratic(double a, double b, double c, double R[2]) {  // standard qua
 	return 2;
 }
 double solveTrigQuadratic(double k2, double k1, double k0, double c1, double c2, double w, double x_min) {
+	// degenerated cases
+	if (w < 0) w = -w, c2 = -c2;
 	if (w*w < 1e-16) {
 		double r[2];
 		int nr = solveQuadratic(k2, k1, k0 + c1, r);
@@ -192,8 +194,18 @@ double solveTrigQuadratic(double k2, double k1, double k0, double c1, double c2,
 		}
 		return mt;
 	}
+	if (k2*k2 < 1e-24 && k1*k1 < 1e-24) {
+		double r[2];
+		if (!solveTrigL(c1, c2, k0, r)) return NAN;
+		x_min *= w;
+		double mt = NAN;
+		for (int i = 0; i < 2; i++) {
+			r[i] += (2 * PI)*ceil((.5 / PI)*(x_min - r[i]));
+			if (r[i] > x_min && !(r[i] > mt)) mt = r[i];
+		}
+		return mt / w;
+	}
 
-	if (w < 0) w = -w, c2 = -c2;
 	double w2 = w * w;
 	double m = sqrt(c1*c1 + c2 * c2);
 
