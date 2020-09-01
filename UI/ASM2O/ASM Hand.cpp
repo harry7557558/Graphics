@@ -1,54 +1,54 @@
 /*
 
-	3D GUI editor - Created for a school project
+    3D GUI editor - Created for a school project
 
-	Viewport:
-		Drag to rotate viewpoint;
-		Scroll to zoom; (there is a zooming limit)
-		Shift + drag vertically to roll camera;
-		Shift + scroll to adjust perspective (move camera without scaling the screen)
-		Press . to move view center to the 3D cursor;
+    Viewport:
+        Drag to rotate viewpoint;
+        Scroll to zoom; (there is a zooming limit)
+        Shift + drag vertically to roll camera;
+        Shift + scroll to adjust perspective (move the camera without scaling the screen)
+        Press . to move view center to the 3D cursor;
 
-	Selection:
-		Click to select a point;
-		Shift + Click to select multiple points;
-		You can also click points on time axis window to select/unselect points (no Shift key required);
-		Ctrl + A to select all points;
-		Ctrl + I is for inverse selection;
-		Click empty space on preview window to unselect all points;
+    Selection:
+        Click to select a point;
+        Shift + Click to select multiple points;
+        You can also click points on time axis window to select/unselect points (no Shift key required);
+        Ctrl + A to select all points;
+        Ctrl + I is for inverse selection;
+        Click empty space on the preview window to unselect all points;
 
-	3D Cursor:
-		The position of 3D cursor is the average of all selected points;
-		Drag axis to translate points (default)
-		[not implemented] Press T to enter translation mode;
-		[not implemented] Press R to enter rotation mode;
-		[not implemented] Press S to enter scaling mode;
+    3D Cursor:
+        The position of the 3D cursor is the average of all selected points;
+        Drag axis to translate points (default)
+        [not implemented] Press T to enter translation mode;
+        [not implemented] Press R to enter rotation mode;
+        [not implemented] Press S to enter scaling mode;
 
-	Time Axis (separated window):
-		Vertical lines indicate frame, the lighter one indicates integer second;
-		Right click to pin/unpin window (set/unset window to topmost);
-		Simple mouse scroll is vertical;
-		Ctrl + Scroll to zoom the height of control points;
-		Shift + Scroll to zoom the scale of time axis;
-		Alt + Scroll to move view along time axis;
-		Use left/right key to navigate to the previous/next frame;
-		Select a time and move a point to add a keyframe;
-		Press Delete/Backspace to delete all selected keyframes;
-		Drag selected points along time axis to switch key frame;
-		Press tab to insert keyframes identical to the previous keyframe;
+    Time Axis (separated window):
+        Vertical lines indicate frame, the lighter one indicates integer second;
+        Right-click to pin/unpin window (set/unset window to topmost);
+        Simple mouse scroll is vertical;
+        Ctrl + Scroll to zoom the height of control points;
+        Shift + Scroll to zoom the scale of time axis;
+        Alt + Scroll to move view along the time axis;
+        Use the left/right key to navigate to the previous/next frame;
+        Select a time and move a point to add a keyframe;
+        Press Delete/Backspace to delete all selected keyframes;
+        Drag selected points along the time axis to switch keyframe;
+        Press tab to insert keyframes identical to the previous keyframe;
 
-	Animation Preview:
-		Press space key on any window to preview/pause animation.
-		The animation will start from current frame, or from the first if current frame is the last frame.
-		When starting preview, all points are unselected.
-		[not implemented] Select start and end frame from time axis as preview range.
+    Animation Preview:
+        Press the space key on any window to preview/pause the animation.
+        The animation will start from the current frame, or from the first if the current frame is the last.
+        When starting preview, all points are unselected.
+        [not implemented] Select start and end frame from the time axis as preview range.
 
-	Save File:
-		Ctrl + S to save file, Ctrl + O to open file.
-		Viewport and control point data are saved as text, start with character '#'
-		When saving file, file is opened in append mode.
-		Opening file will replace the current scene with new scene.
-		Due to the lack of error handling, if program crashes due to file format error, restart the program.
+    Save File:
+        Ctrl + S to save the file, Ctrl + O to open a file.
+        Viewport and control point data are saved as text, start with character '#'
+        Files are opened in append mode when saving files.
+        Opening a file will replace the current scene with a new scene.
+        Due to the lack of error handling, if the program crashes due to file format error, restart the program.
 
 */
 
@@ -375,7 +375,7 @@ double intSphere(vec3 O, double r, vec3 p, vec3 d) {
 	return sqrt(dot(p, p) - rd2) - sqrt(r*r - rd2);
 #else
 	// works when p is inside the sphere (and its slightly faster)
-	double b = -dot(p, d), c = dot(p, p) - r * r;  // require d to be normalized
+	double b = -dot(p, d), c = dot(p, p) - r * r;  // requires d to be normalized
 	double delta = b * b - c;
 	if (delta < 0.0) return NAN;
 	delta = sqrt(delta);
@@ -704,7 +704,7 @@ double ObjectIDToCoord(int d) {
 	return (d - BObject)*UnitTV;
 }
 
-vec2 timeAxisSquareCenter(double frame, int obj) {  // note that frame is floatpoint
+vec2 timeAxisSquareCenter(double frame, int obj) {  // note that frame is double
 	return vec2(FrameToCoord(frame) + 0.5*UnitT, ObjectIDToCoord(obj) + 0.5*UnitTV);
 }
 
@@ -1126,18 +1126,18 @@ void render_raymarching() {
 			q = vec3(dot(q, Ai), dot(q, Aj), dot(q, Ak));
 			vec3 d1 = vec3(dot(d, Ai), dot(d, Aj), dot(d, Ak));
 			t = t0 = max(intBoxC(MapR, q - MapC, d1) + 1e-4, 0.);
-			// test intersection for the archer - EXTREMLY SLOW!!!
+			// test intersection for the archer - EXTREMELY SLOW!!!
 			if (t0 < mt) {
 				prev_dt = NAN;
 				if (!isnan(t)) {
 					q += t * d1;
-					bool hit = false;  // identify if an error have occured (reduce step length after an error occur)
+					bool hit = false;  // identify if an error has occurred (reduce step length after an error occur)
 					for (int u = 0; u < 256; u++) {
 						if (sdBox(q - MapC, MapR) > 0.0) { t = NAN; break; }
 						dt = Archer_S * map(q, Time);
 						if (hit) dt *= 0.5;
 						else if (dt < 0.) {
-							if (isnan(prev_dt)) q -= (t - t0)*d1, t = t0;  // this line might be unneccessary
+							if (isnan(prev_dt)) q -= (t - t0)*d1, t = t0;  // this line might be unnecessary
 							else t -= 0.5 * prev_dt, q -= (0.5*prev_dt)*d1;
 							hit = true;
 							dt = 0.5*Archer_S*map(q, Time), t -= dt, q -= dt * d1;
@@ -1295,7 +1295,7 @@ void render() {
 void render_t() {
 	for (int i = 0, l = _WIN_T_W * _WIN_T_H; i < l; i++) _WINIMG_T[i] = 0;
 
-	// highlight mouse-hower frame
+	// highlight mouse-hover frame
 	int f = (int)getFrame(CursorT.x); double f0 = FrameToCoord(f);
 	for (int x = max((int)f0, 0), x1 = min((int)(f0 + UnitT), _WIN_T_W); x < x1; x++) {
 		for (int y = 0; y < _WIN_T_H; y++) CanvasT(x, y) = 0x101418;
@@ -1465,7 +1465,7 @@ void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y), D = P - P0;
 	Cursor = P;
 
-	// drag to rotate scene
+	// drag to rotate the scene
 	if (mouse_down && moveAlong == none) {
 		if (Shift) {
 			ry += 0.002*D.y;
@@ -1497,7 +1497,7 @@ void MouseMove(int _X, int _Y) {
 			updateCursorPosition();  // not necessary just for safe
 		}
 		else {
-			// test if which part the mouse hover 3D cursor
+			// test if which part the mouse hover the 3D cursor
 			vec3 p, d; getRay(Cursor, p, d);
 			double Unit = dot(CPC, Tr.p) + Tr.s;
 			double sR = selRadius * Unit, sL = selLength * Unit, sA = selAxisRatio * sR;
@@ -1594,7 +1594,7 @@ void MouseDownLT(int _X, int _Y) {
 	mouse_down_T = true;
 	previewFrame = getFrame(CursorT.x), currentFrame = (int)previewFrame;
 
-	// ready to drag key frames
+	// ready to drag keyframes
 	if (currentFrame != 0 && (int)getFrame(CursorT.x) == currentFrame) {
 		for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
 			if (CPs[i].existFrame(currentFrame)) pointOnMove[i] = currentFrame;
@@ -1625,7 +1625,7 @@ void MouseUpLT(int _X, int _Y) {
 		// click to select edit frame
 		currentFrame = (int)getFrame(CursorT.x);
 
-		// select point from time axis
+		// select point from the time axis
 		if (CPs[HObject].existFrame(currentFrame) && sdBox(CursorT - timeAxisSquareCenter(currentFrame, HObject), vec2(rdrRadiusT)) < 0.) {
 			CPs[HObject].selected ^= 1;
 		}
@@ -1683,19 +1683,19 @@ void KeyUpT(WPARAM _KEY) {
 // ============================================== File ==============================================
 
 /*
-	// Text File
+    // Text File
 
-	# _WIN_W _WIN_H
-	Center.x Center.y Center.z rz rx ry dist Unit
-	NCtrPs FPS currentFrame
-	keyFrames.size() F P.x P.y P.z ......
-	[new line]
+    # _WIN_W _WIN_H
+    Center.x Center.y Center.z rz rx ry dist Unit
+    NCtrPs FPS currentFrame
+    keyFrames.size() F P.x P.y P.z ......
+    [new line]
 
-	File starts with character '#'
-	The program searches for that character after opening the file.
+    Files start with a character '#'
+    The program searches for that character after opening the file.
 
-	There will be a basic error handling for file open error, but no further handling on file format error.
-	Opening file will clear the current scene. If errors occur or program crashes due to file format error, restart this program.
+    There will be a basic error handling for file open error, but no further handling on file format error.
+    Opening a file will clear the current scene. If errors occur or program crashes due to file format error, restart this program.
 
 */
 

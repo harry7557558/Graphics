@@ -10,7 +10,7 @@
  *  Scale Polygon:              alt + drag
  *  Move Vertex:                click and drag
  *  Add Vertex:                 ctrl + click
- *  Delete Vertex:              right click
+ *  Delete Vertex:              right-click
  *  Shift Vertex Order:         left / right
  *  Reverse Vertex Order:       space
  *  Hide/Unhide Vertices:       c

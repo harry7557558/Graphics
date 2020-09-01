@@ -32,7 +32,7 @@ const double W = 6.0, H = 5.0;  // W is the diameter of the circle
 const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*W);  // bounding box
 #endif
 const double SC = 100.0;  // output scaling
-const double R = 0.1;  // radius of ball
+const double R = 0.1;  // radius of the ball
 vec2 P0 = vec2(-1, 0.5), V0 = vec2(5, 2);  // initial state
 const vec2 g = vec2(0, -9.8);  // acceleration, or force for unit mass
 const double t_max = 10.0;  // end time

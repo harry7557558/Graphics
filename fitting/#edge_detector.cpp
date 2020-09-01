@@ -321,7 +321,7 @@ bool imgGrad(const image<frgb> &src, image<frgb> &tgt) {
 
 
 
-// pictures/illustrations/photos/sketchs, found on the internet
+// pictures/illustrations/photos/sketches, found on the internet
 string testCase(unsigned n) {
 	string s = "00";
 	s[0] += n / 10, s[1] += n % 10;

@@ -1,5 +1,5 @@
 // seems like hard-coding matrices as static 2d arrays can be 1.2x faster
-// do dirty things when performance really matter
+// do dirty things when performance really matters
 
 
 #ifndef __INC_LINEARSYSTEM_H

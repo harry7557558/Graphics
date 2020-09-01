@@ -29,13 +29,13 @@ void randomVector(int N, double *A) {
 
 
 
-// large arrays as global variable
+// large arrays as global variables
 #define N 250
 double A[N][N], B[N], X[N], AX[N];
 
 
 // conjugate gradient should converge in no more than N iterations
-// but that number seems to be larger for large matrixes due to floatpoint truncation...
+// but that number seems to be larger for large matrices due to floating-point truncation...
 void testConjugateGradientIteration() {
 
 	for (int D = 2; D <= N; D++) {

@@ -245,7 +245,7 @@ void refreshBackground() {
 			((byte*)BKG)[i] = BKGAlpha * ((byte*)BKG_ORIGIN)[i];
 }
 
-// get backgroud color from screen coordinate
+// get background color from screen coordinate
 COLORREF getBackground(int x, int y) {
 	x = (x - BKGPos.x)*BKGUnit, y = (y - BKGPos.y)*BKGUnit;
 	if (x < 0 || y < 0 || x >= BKG_W || y >= BKG_H) return 0;
@@ -299,7 +299,7 @@ void calcFourierParameter(vec2 *a, vec2 *b, int N) {
 	int n = CP.size();
 	for (int k = 0; k < N; k++) {
 		a[k] = vec2(0.0), b[k] = vec2(0.0);
-		t = 0.0, dt = 2.0 * k * PI / n;  // uniform distribute parameter
+		t = 0.0, dt = 2.0 * k * PI / n;  // uniform samplings
 		for (int i = 0; i < n; i++, t += dt) {
 			a[k] = a[k] + CP[i] * cos(t);
 			b[k] = b[k] + CP[i] * sin(t);

@@ -185,7 +185,7 @@ void applyMatrix(vector<vector<spline3>> &v, mat2x3 M) {
 	for (int i = 0, n = v.size(); i < n; i++) applyMatrix(v[i], M);
 }
 
-// based on Green's formula, doesn't work for unclosed, self-intersecting, and some multiple-connected shapes
+// based on  divergence theorem, doesn't work for unclosed, self-intersecting, and some multiple-connected shapes
 double calcArea(const vector<spline3> &v) {
 	double S = 0;
 	for (int i = 0, n = v.size(); i < n; i++) {
@@ -199,7 +199,7 @@ vec2 calcCOM(const vector<spline3> &v, double* A = 0) {
 	for (int i = 0, n = v.size(); i < n; i++) {
 		vec2 a = v[i].A, b = v[i].B, c = v[i].C, d = v[i].D;
 		S += a.x*(a.y*.5 + b.y*.4 + c.y*.25) + a.y*(b.x*.6 + c.x*.75 + d.x) + (b.y*(b.x*3. + c.x*4.) + c.y*(b.x*2. + c.x*3.)) / 6. + (b.y + c.y)*d.x;
-		// copied from an online integral calculator and it's pretty unneat
+		// copied from an online integral calculator and it's pretty dirty
 		P = P + vec2(((420 * c.y + 420 * b.y + 420 * a.y)*d.x*d.x + ((420 * c.x + 280 * b.x + 210 * a.x)*c.y + (560 * b.y + 630 * a.y)*c.x + (420 * b.x + 336 * a.x)*b.y + 504 * a.y*b.x + 420 * a.x*a.y)*d.x + (140 * c.x*c.x + (210 * b.x + 168 * a.x)*c.x + 84 * b.x*b.x + 140 * a.x*b.x + 60 * a.x*a.x)*c.y + (210 * b.y + 252 * a.y)*c.x*c.x + ((336 * b.x + 280 * a.x)*b.y + 420 * a.y*b.x + 360 * a.x*a.y)*c.x + (140 * b.x*b.x + 240 * a.x*b.x + 105 * a.x*a.x)*b.y + 180 * a.y*b.x*b.x + 315 * a.x*a.y*b.x + 140 * a.x*a.x*a.y) / 840, (((840 * c.y + 840 * b.y + 840 * a.y)*d.x + (420 * c.x + 280 * b.x + 210 * a.x)*c.y + (560 * b.y + 630 * a.y)*c.x + (420 * b.x + 336 * a.x)*b.y + 504 * a.y*b.x + 420 * a.x*a.y)*d.y + (420 * c.y*c.y + (840 * b.y + 840 * a.y)*c.y + 420 * b.y*b.y + 840 * a.y*b.y + 420 * a.y*a.y)*d.x + (280 * c.x + 210 * b.x + 168 * a.x)*c.y*c.y + ((630 * b.y + 672 * a.y)*c.x + (504 * b.x + 420 * a.x)*b.y + 560 * a.y*b.x + 480 * a.x*a.y)*c.y + (336 * b.y*b.y + 700 * a.y*b.y + 360 * a.y*a.y)*c.x + (280 * b.x + 240 * a.x)*b.y*b.y + (600 * a.y*b.x + 525 * a.x*a.y)*b.y + 315 * a.y*a.y*b.x + 280 * a.x*a.y*a.y) / 840);
 		//P = P + vec2(-(((280 * c.x + 280 * b.x + 280 * a.x)*d.x + 140 * c.x*c.x + (280 * b.x + 280 * a.x)*c.x + 140 * b.x*b.x + 280 * a.x*b.x + 140 * a.x*a.x)*d.y + (-280 * c.y - 280 * b.y - 280 * a.y)*d.x*d.x + ((70 * a.x - 140 * c.x)*c.y + (-280 * b.y - 350 * a.y)*c.x + (-140 * b.x - 56 * a.x)*b.y - 224 * a.y*b.x - 140 * a.x*a.y)*d.x + ((70 * b.x + 112 * a.x)*c.x + 56 * b.x*b.x + 140 * a.x*b.x + 80 * a.x*a.x)*c.y + (-70 * b.y - 112 * a.y)*c.x*c.x + (-56 * b.x*b.y - 140 * a.y*b.x - 80 * a.x*a.y)*c.x + (40 * a.x*b.x + 35 * a.x*a.x)*b.y - 40 * a.y*b.x*b.x - 35 * a.x*a.y*b.x) / 840, -((280 * c.x + 280 * b.x + 280 * a.x)*d.y*d.y + ((-280 * c.y - 280 * b.y - 280 * a.y)*d.x + (140 * c.x + 280 * b.x + 350 * a.x)*c.y - 70 * a.y*c.x + (140 * b.x + 224 * a.x)*b.y + 56 * a.y*b.x + 140 * a.x*a.y)*d.y + (-140 * c.y*c.y + (-280 * b.y - 280 * a.y)*c.y - 140 * b.y*b.y - 280 * a.y*b.y - 140 * a.y*a.y)*d.x + (70 * b.x + 112 * a.x)*c.y*c.y + ((-70 * b.y - 112 * a.y)*c.x + (56 * b.x + 140 * a.x)*b.y + 80 * a.x*a.y)*c.y + (-56 * b.y*b.y - 140 * a.y*b.y - 80 * a.y*a.y)*c.x + 40 * a.x*b.y*b.y + (35 * a.x*a.y - 40 * a.y*b.x)*b.y - 35 * a.y*a.y*b.x) / 840);
 	}

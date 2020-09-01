@@ -55,7 +55,7 @@ bool _check_eigenpair_correctness(int N, const double *M, double eigv, double *e
 
 // find the all eigenpairs of a matrix by solving its characteristic equation
 // eigvec: a matrix of row vectors
-// due to the O(N⁴) complexity and error accumulation in Gaussian elimination, it is not recommend for N>6
+// due to the O(N⁴) complexity and error accumulation in Gaussian elimination, it is not recommended for N>6
 void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
 	double *A = new double[N*N]; matcpy(N, M, A);
 	double msc = 1.0;
@@ -70,7 +70,7 @@ void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
 #endif
 
 	// expand characteristic polynomial, works in O(n^4)
-	// method discribed at https://mathworld.wolfram.com/CharacteristicPolynomial.html
+	// method described at https://mathworld.wolfram.com/CharacteristicPolynomial.html
 	double *C = new double[N + 1], *C0 = new double[N + 1], Ci = -1;
 	double *B = new double[N*N], *T = new double[N*N]; matcpy(N, A, B);
 	C0[0] = C[0] = 1;
@@ -88,7 +88,7 @@ void EigenPairs_expand(int N, const double *M, double *eigv, double *eigvec) {
 	double *v = new double[N];
 	for (int R = N; R > 0; R--) {
 		// Newton's iteration method starting at x=0
-		// this should success because the matrix is positive definite
+		// this should be successful because the matrix is positive definite
 		double x = 0;
 		for (int i = 0; i < 64; i++) {
 			double y = 0, dy = 0;
@@ -177,7 +177,7 @@ void EigenPair_powIter(int N, const double *M, double *eigv, double *eigvec) {
 	for (int i = 0; i < N; i++) eigvec[i] = sqrt(1. / N);
 	double *A = new double[N*N]; matcpy(N, M, A);
 #if 1
-	// use power of matrix to make it converge faster
+	// use powers of the matrix to make it converge faster
 	// sometimes the numbers can get extremely large and cause precision/overflow error
 	double m = 1. / pow(determinant(N, A), 1. / N);
 	if (0.*m == 0.) {
@@ -250,13 +250,13 @@ void EigenPairs_Jacobi(int N, const double *M, double *eigv, double *eigvec) {
 				ti[k] = c * A[i*N + k] - s * A[j*N + k];
 			}
 			for (int k = 0; k < N; k++) A[j*N + k] = tj[k], A[i*N + k] = ti[k];
-			// apply rotation to the right side of A
+			// apply rotations to the right side of A
 			for (int k = 0; k < N; k++) {
 				tj[k] = c * A[k*N + j] + s * A[k*N + i];
 				ti[k] = c * A[k*N + i] - s * A[k*N + j];
 			}
 			for (int k = 0; k < N; k++) A[k*N + j] = tj[k], A[k*N + i] = ti[k];
-			// apply rotation to the right side of C
+			// apply rotations to the right side of C
 			for (int k = 0; k < N; k++) {
 				tj[k] = c * C[k*N + j] + s * C[k*N + i];
 				ti[k] = c * C[k*N + i] - s * C[k*N + j];

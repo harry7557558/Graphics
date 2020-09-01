@@ -1,6 +1,6 @@
 // physics: a 2d stretched string
-// the string is a discretized as a long grid of springs satisfying Hook's law
-// gravity and air resistence (proper to v²) is added to the equation
+// the string is a discretized as a long grid of springs satisfying Hooke's law
+// gravity and air resistance (proper to v²) is added to the equation
 // there are still vibrations even the string turns calm; I assume it can be reduced by adding spring damping
 
 #include "numerical/ode.h"
@@ -51,7 +51,7 @@ void dxdt(double* x, double t, double* dx) {
 	state *s1 = s + (W + 1);
 	state *ds1 = ds + (W + 1);
 
-	// first derivative equals to velosity
+	// first derivative equals to velocity
 	for (int i = 0; i < SZ; i++) {
 		ds[i].p = s[i].v;
 	}
@@ -115,7 +115,7 @@ int main() {
 
 		// energy
 		double E = 0;
-		for (int i = 0; i < SZ; i++) {  // velosity
+		for (int i = 0; i < SZ; i++) {  // velocity
 			E += 0.5*S[i].v.sqr();
 		}
 		for (int i = 0; i < W; i++) {  // "parallel" springs

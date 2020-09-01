@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 // test numerical differentiation
-// this function helped me discovered and killed 3 bugs ;)
+// this function helped me discover and kill 3 bugs ;)
 void testNGrad() {
 	// test function, one should be enough
 	auto testF = [&](double x[4]) {
@@ -191,7 +191,7 @@ void testOptimize_Rosenbrock(int N) {
 }
 
 // (Σxi²-r²)²+4(r²-N)Σxi   N>1, 0.75N<r²<N
-// one minima at xi=1; one maxima surrounded by a valley and one saddle point inside the valley
+// one minimum at xi=1; one maximum surrounded by a valley and one saddle point inside the valley
 void testOptimize_Ring(int N) {
 	for (int T = 0; T < 10; T++) {
 		_SRAND(10 * N + T);

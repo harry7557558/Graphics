@@ -170,7 +170,7 @@ void fitCircle_O_ad(const vec2* P, int N, vec2 &C, double &R) {
 	if (0.0*R != 0.0) fprintf(stderr, "Error! %d\n", __LINE__);
 	// In the test, this function fails 6 cases in 10000 cases.
 	// All failures are caused by the gradient information leading it to infinity.
-	// Try to detect failure and restart iteration from a new startpoint when fails.
+	// Try to detect failure and restart iteration from a new start point when it fails.
 }
 
 

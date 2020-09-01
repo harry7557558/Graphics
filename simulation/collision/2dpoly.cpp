@@ -28,14 +28,14 @@ typedef struct { vec2 c, d; } splineTo;  // path as quadratic bezier curve
 typedef std::vector<keyFrame> sequence;
 typedef std::vector<vec2> polygon;
 struct object {
-	polygon P;  // with center of mass at origin
+	polygon P;  // with center of mass at the origin
 	double inv_m;  // reciprocal of mass
-	double inv_I;  // reciprocal of moment of inertia
+	double inv_I;  // reciprocal of the moment of inertia
 };
 
 
 // constants/parameters/conditions
-const double W = 6.0, H = 4.0;  // width and height of simulation box;  unit: m
+const double W = 6.0, H = 4.0;  // width and height of the simulation box;  unit: m
 const vec2 BMax = vec2(0.5*W, 0.5*H), BMin = vec2(-0.5*W, -0.5*H);  // bounding box
 const double SC = 100.0;  // output scaling
 object Shape;  // main object
@@ -78,7 +78,7 @@ void init() {
 	C *= sc, M *= sc * sc, I *= sc * sc * sc * sc;
 	for (int i = 0; i < N; i++) S[i] = S[i] * sc - C;
 	I -= M * C.sqr();
-	// uptate calculation
+	// update calculation
 	Shape.P = S;
 	Shape.inv_m = 1. / M;
 	Shape.inv_I = 1. / I;
@@ -190,7 +190,7 @@ void calcAnalyticPath() {
 		for (int i = 1; i <= tN; i++) {
 			double ct = i * ddt;
 			analyticPath.push_back(state{ t + ct, st.x + st.v * ct + g * (.5*ct*ct), st.v + g * ct, st.r + st.w*ct, st.w });
-			// linear and angular velocities isn't presented in output
+			// linear and angular velocities aren't presented in the output
 		}
 		qPath.push_back(splineTo{ st.x + .5*st.v*dt, x1 });
 

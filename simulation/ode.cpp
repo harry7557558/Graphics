@@ -6,7 +6,7 @@
 
 
 // To-do:
-// Find and fix bug in backward Euler's method
+// Find and fix the bug in backward Euler's method
 // * Adaptive step size
 
 
@@ -137,7 +137,7 @@ Affine operator * (const Affine &A, const Affine &B) {
 
 // viewport
 // Ctrl/Shift + Drag/Wheel to adjust these variables
-vec3 Center(0.0, 0.0, 0.0);  // view center in world coordinate
+vec3 Center(0.0, 0.0, 0.0);  // view center in world coordinates
 double rz = -0.8, rx = 0.3, ry = 0.0, dist = 120.0, Unit = 100.0;  // yaw, pitch, row, camera distance, scale to screen
 
 #pragma region General Global Variables and Functions
@@ -479,7 +479,7 @@ void plotPath(const Path &P, double t, COLORREF col, bool highlight = false) {
 // ∂²a/∂p², ∂²a/∂v², ∂²a/∂p∂v: 3x3x3 cube matrix??
 // Is (∂²a/∂v∂p a v) equal to (∂²a/∂p∂v v a) ?  - Yes.
 // Is (∂²a/∂p∂v a v) equal to (∂²a/∂p∂v v a) ?  - Maybe not.
-// hope my math isn't wrong... (I swear I don't know anything about tensor)
+// hope my math isn't wrong...
 */
 
 Path RefPath;
@@ -549,7 +549,7 @@ void MidpointMethodInit() {
 }
 
 // red; standard Runge Kutta methods
-// relies on continuous derivative; better when step size is small
+// relies on a continuous derivative; better when step size is small
 Path RungeKuttaMethodPath;
 void RungeKuttaMethodInit() {
 	vec3 p0, p = p0 = T.P0, v0, v = v0 = T.V0;
@@ -589,7 +589,7 @@ void MultistepMidpointInit() {
 }
 
 // sky blue; p: 1/12 h⁴ p⁴(t0); v: 5/12 h³ v³(t0) ????
-// modified, works best when acceleration only depend on the position (eg. static gravity field)
+// modified, works best when acceleration only depends on the position (eg. static gravity field)
 Path MultistepVerletMethodPath;
 void MultistepVerletMethodInit() {
 	vec3 v0 = T.V0, p0 = T.P0;
@@ -631,7 +631,7 @@ void BackwardEulersMethodInit() {
 		}
 		vec3 dadt = (.5 / e) * (T.Acceleration(p, v, t + e) - T.Acceleration(p, v, t - e));
 
-		// solve linear system
+		// solve a linear system
 		x[0] = v + a * dt;
 		x[1] = a + dadt * dt;
 		solveLinear(6, &M[0][0], (double*)x);

@@ -78,8 +78,8 @@ template<typename vec> vec Refract(vec I, vec N, double n1, double n2, double &R
 
 // Camera
 vec3 POS = vec3(-10, -10, 2);  // camera ray origin
-vec3 DIR = normalize(-POS) * 0.3;  // camera ray center direction, modulus represents distance to screen
-double SCALE = 0.5;  // screen scaling, where 1 means the width and height of the screen forms an unit vector
+vec3 DIR = normalize(-POS) * 0.3;  // camera ray center direction, modulus represents the distance to the screen
+double SCALE = 0.5;  // screen scaling, where 1 means the width and height of the screen forms a unit vector
 vec3 SCR_O, SCR_A, SCR_B;  // P = O + uA + vB
 
 #define BULB 10.0

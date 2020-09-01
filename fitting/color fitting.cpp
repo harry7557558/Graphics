@@ -13,7 +13,7 @@ using namespace std;
 #include "stb_image_write.h"
 
 
-// Regression, it is not recommand for N > 8
+// Regression, it is not recommend for N > 8
 void fitPolynomial(double *x, double *y, unsigned n, double *c, unsigned N) {
 	unsigned L = N + 1;
 	double *sumxn = new double[2 * N + 1], *sumxny = new double[L];
@@ -159,7 +159,7 @@ int main() {
 	delete img_orig_process;
 	//return 0;
 
-	cout << "Loading image succeed. (" << w << "x" << h << ")\n";
+	cout << "Image loading succeeds. (" << w << "x" << h << ")\n";
 
 
 	auto output = [](string s, double *coe, int n) {

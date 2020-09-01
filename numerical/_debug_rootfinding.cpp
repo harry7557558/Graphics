@@ -94,7 +94,7 @@ void test_solveQuartic() {
 
 // Visual Studio: 0.95M/s
 // GCC Ofast: 0.53M/s
-// there is no guarantee that the solver does not miss a root or find an unintented root
+// there is no guarantee that the solver does not miss a root or find an unintended root
 void test_solveQuadraticTrig() {
 	const int N = 0x1000000;
 	// set up random numbers

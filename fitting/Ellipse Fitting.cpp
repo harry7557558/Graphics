@@ -31,7 +31,7 @@
 
 // Ellipse fitting - v contains the coefficients of { x², xy, y², x, y, 1 }, {a,b,c,d,e,f}
 
-// generate least square fitting matrix, should be positive (semi)definite
+// generate least-square fitting matrix, should be positive (semi)definite
 void generateMatrix(double M[6][6], const vec2 *P, int N) {
 	for (int i = 0; i < 6; i++) for (int j = 0; j < 6; j++) M[i][j] = 0;
 	for (int n = 0; n < N; n++) {
@@ -66,7 +66,7 @@ void fitEllipse0(const vec2 *P, int N, double v[6]) {
 }
 
 // Minimize vᵀMv, subject to vᵀCv=1
-// To get expected result, C should be non-negative definite
+// To get the expected result, C should be non-negative definite
 // I'm sure there is a bug because it sometimes gets hyperbolas
 void fitEllipse_ConstraintMatrix(const vec2 *P, int N, double v[6], const double C[6][6], bool checkEllipse = true) {
 	double M[6][6]; generateMatrix(M, P, N);
@@ -105,7 +105,7 @@ void fitEllipse3(const vec2 *P, int N, double v[6]) {
 	fitEllipse_ConstraintMatrix(P, N, v, C);
 }
 
-// Minimize vᵀMv/vᵀCv, where C is the sum of magnitude of gradients
+// Minimize vᵀMv/vᵀCv, where C is the sum of the magnitude of gradients
 // doesn't "shrink", visually good but checking hyperbolas makes it horrible
 void fitEllipse_grad(const vec2 *P, int N, double v[6]) {
 	double C[6][6] = { {0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0} };

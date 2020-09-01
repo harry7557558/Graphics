@@ -8,7 +8,7 @@
 
 
 
-// visualization of optimization process and result
+// visualization of the optimization process and result
 
 #pragma region Visualization (forward declaration)
 
@@ -59,7 +59,7 @@ bool save(const char* path) { return stbi_write_png(path, W, H, 3, canvas, 3 * W
 
 
 // test functions for optimization
-// all functions contain at least one global minimas
+// all functions contain at least one global minima
 
 int Fi = 0;  // test case id
 int F_count = 0;  // function call count
@@ -191,7 +191,7 @@ double F_ad(vec2 p, vec2* grad = 0, vec2* grad2 = 0, double* dxy = 0) {
 // test optimization algorithms in a visual way
 void test_image() {
 	for (Fi = 0; Fi < 30; Fi++) {
-		// iteration startpoints
+		// iteration starting points
 		vec2 P0[4] = { vec2(4,3), vec2(3,-5), vec2(-8,0), vec2(-0.5,1) };
 
 		for (int T = 0; T <= 4; T++) {
@@ -233,7 +233,7 @@ void test_image() {
 				drawString(s, vec2(0, 60), 28, COLOR{ 160,40,40 });
 			}
 
-			// save rendered image
+			// save the rendered image
 #ifdef _DEBUG
 			drawString("[DEBUG]", vec2(W - 160, 4), 40, COLOR{ 128,128,128 });
 #endif
@@ -347,7 +347,7 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 		if (contour != 0) val = sin((1. / contour)*PI*val);
 		buffer[j*W + i] = val;
 	}
-	// calculate numerical gradient from neighbourhood values
+	// calculate numerical gradient from neighborhood values
 	for (int j = 1; j < H - 1; j++) for (int i = 1; i < W - 1; i++) {
 		buffervx[j*W + i] = bufferv[j*W + i + 1] - bufferv[j*W + i - 1];
 		buffervy[j*W + i] = bufferv[j*W + i + W] - bufferv[j*W + i - W];
@@ -369,8 +369,8 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 	for (int j = 1; j < H - 1; j++) for (int i = 1; i < W - 1; i++) {
 		double dx = buffer[j*W + i + 1] - buffer[j*W + i - 1];
 		double dy = buffer[j*W + i + W] - buffer[j*W + i - W];
-		double m = .5*sqrt(dx * dx + dy * dy);  // magnitude of gradient
-		double d = abs(buffer[j*W + i] / m) - r;  // divide by gradient to estimate distance
+		double m = .5*sqrt(dx * dx + dy * dy);  // magnitude of the gradient
+		double d = abs(buffer[j*W + i] / m) - r;  // divide by gradient to estimate the distance to the isoline
 		if ((d = 1. - d) > 0.) {
 			COLOR heatmap[5] = { COLOR{0,0,255},COLOR{75,215,180},COLOR{75,215,0},COLOR{255,215,0},COLOR{255,0,0} };  // colors
 			double z = 10. / (exp(-.5*buffer0[j*W + i]) + 1.) - 5.; z = clamp(z, 0, 3.9999);  // interval mapping
@@ -380,7 +380,7 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 	}
 	// distance estimation has some artifacts at the points with high curvature
 	// discontinuities may be stroked
-	// zero-isoline stroke will be double-width when using logarithmic scale
+	// zero-isoline stroke will be double-width when using a logarithmic scale
 }
 #include "_debug_font_rendering.h"
 void drawCharacter(char c, vec2 p, double sz, COLOR col) {

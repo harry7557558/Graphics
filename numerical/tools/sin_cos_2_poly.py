@@ -2,7 +2,7 @@
 # Still fails in degenerated cases (avoid it)
 
 # Fitting polynomial to trigonometric functions:
-# Given degree N, starting point a, ending point b, find the coefficients of polynomial of best fit
+# Given degree N, interval [a, b], find the coefficients of the polynomial of best fit
 
 from decimal import *
 getcontext().prec=80
@@ -92,7 +92,7 @@ def fitCos(N, a, b):
     solveLinear(M, x)
     return x
 
-# Polynomials of best fit with boundary constrains
+# Polynomials of best fit with boundary constraints
 def fitTrigonometric_c(F, f, N, a, b):
     N+=1
     M = PolyCovarianceInt(N, a, b)
@@ -133,7 +133,7 @@ def printArray(arr, end=',\n'):
 
 
 
-# Print result; Split [0,2π] to N equal intervals and fit to quadratic function
+# Print result; Split [0,2π] to N equal intervals and fit to quadratic functions
 # N should be even
 def QuadraticCoefficients(fitTrig, N):
     # calculate coefficients

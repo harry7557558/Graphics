@@ -1,57 +1,57 @@
 /*
 
-	3D GUI editor - Created for a school project
+    3D GUI editor - Created for a school project
 
-	Viewport:
-		Drag to rotate viewpoint;
-		Scroll to zoom; (there is a zooming limit)
-		Shift + drag vertically to roll camera;
-		Shift + scroll to adjust perspective (move camera without scaling the screen)
-		Press . to move view center to the 3D cursor;
+    Viewport:
+        Drag to rotate viewpoint;
+        Scroll to zoom; (there is a zooming limit)
+        Shift + drag vertically to roll camera;
+        Shift + scroll to adjust perspective (move the camera without scaling the screen)
+        Press . to move view center to the 3D cursor;
 
-	Selection:
-		Click to select a point;
-		Shift + Click to select multiple points;
-		You can also click points on time axis window to select/unselect points (no Shift key required);
-		Ctrl + A to select all points;
-		Ctrl + I is for inverse selection;
-		Click empty space on preview window to unselect all points;
+    Selection:
+        Click to select a point;
+        Shift + Click to select multiple points;
+        You can also click points on time axis window to select/unselect points (no Shift key required);
+        Ctrl + A to select all points;
+        Ctrl + I is for inverse selection;
+        Click empty space on the preview window to unselect all points;
 
-	3D Cursor:
-		The position of 3D cursor is the average of all selected points;
-		Drag axis to translate points (default)
-		[not implemented] Press T to enter translation mode;
-		[not implemented] Press R to enter rotation mode;
-		[not implemented] Press S to enter scaling mode;
+    3D Cursor:
+        The position of the 3D cursor is the average of all selected points;
+        Drag axis to translate points (default)
+        [not implemented] Press T to enter translation mode;
+        [not implemented] Press R to enter rotation mode;
+        [not implemented] Press S to enter scaling mode;
 
-	Time Axis (separated window):
-		Vertical lines indicate frame, the lighter one indicates integer second;
-		Right click to pin/unpin window (set/unset window to topmost);
-		Simple mouse scroll is vertical;
-		Ctrl + Scroll to zoom the height of control points;
-		Shift + Scroll to zoom the scale of time axis;
-		Alt + Scroll to move view along time axis;
-		Select a time and move a point to add a keyframe;
-		Press Delete/Backspace to delete all selected keyframes;
-		Drag selected points along time axis to switch key frame;
-		Press tab to insert keyframes identical to the previous keyframe;
+    Time Axis (separated window):
+        Vertical lines indicate frame, the lighter one indicates integer second;
+        Right-click to pin/unpin window (set/unset window to topmost);
+        Simple mouse scroll is vertical;
+        Ctrl + Scroll to zoom the height of control points;
+        Shift + Scroll to zoom the scale of time axis;
+        Alt + Scroll to move view along the time axis;
+        Select a time and move a point to add a keyframe;
+        Press Delete/Backspace to delete all selected keyframes;
+        Drag selected points along the time axis to switch keyframe;
+        Press tab to insert keyframes identical to the previous keyframe;
 
-	Animation Preview:
-		Press space key on any window to preview/pause animation.
-		The animation will start from current frame, or from the first if current frame is the last frame.
-		When starting preview, all points are unselected.
-		[not implemented] Select start and end frame from time axis as preview range.
+    Animation Preview:
+        Press the space key on any window to preview/pause the animation.
+        The animation will start from the current frame, or from the first if the current frame is the last.
+        When starting preview, all points are unselected.
+        [not implemented] Select start and end frame from the time axis as preview range.
 
-	Edit History:
-		[not implemented]
-		History should include point position change, keyframe change, and selection/unselection
+    Edit History:
+        [not implemented]
+        History should include point position change, keyframe change, and selection/deselection
 
-	Save File:
-		Ctrl + S to save file, Ctrl + O to open file.
-		Viewport and control point data are saved as text, start with character '#'
-		When saving file, file is opened in append mode.
-		Opening file will replace the current scene with new scene.
-		Due to the lack of error handling, if program crashes due to file format error, restart the program.
+    Save File:
+        Ctrl + S to save the file, Ctrl + O to open a file.
+        Viewport and control point data are saved as text, start with character '#'
+        Files are opened in append mode when saving files.
+        Opening a file will replace the current scene with a new scene loading from the file.
+        Due to the lack of error handling, if the program crashes due to file format error, restart the program.
 
 */
 
@@ -547,7 +547,7 @@ double ObjectIDToCoord(int d) {
 	return (d - BObject)*UnitTV;
 }
 
-vec2 timeAxisSquareCenter(double frame, int obj) {  // note that frame is floatpoint
+vec2 timeAxisSquareCenter(double frame, int obj) {  // note that frame is double
 	return vec2(FrameToCoord(frame) + 0.5*UnitT, ObjectIDToCoord(obj) + 0.5*UnitTV);
 }
 
@@ -657,7 +657,7 @@ const double selAxisRatio = 0.3;  // ratio of radius for selecting cursor and se
 const double selLength = 60.0;  // (approximate) maximum length of cursor axis in screen coordinate
 enum moveDirection { none = -1, unlimited, xAxis, yAxis, zAxis, xOy, xOz, yOz };  // not all implemented
 moveDirection moveAlong(none);  // which part of the cursor is being moved
-int updateCursorPosition() {  // return the # of selected pointss
+int updateCursorPosition() {  // return the # of selected points
 	double totP = 0.0; vec3 sumP(0.0);
 	for (int i = 0; i < NCtrPs; i++) {
 		if (CPs[i].selected) totP++, sumP += CPs[i].P();
@@ -975,7 +975,7 @@ void render() {
 void render_t() {
 	for (int i = 0, l = _WIN_T_W * _WIN_T_H; i < l; i++) _WINIMG_T[i] = 0;
 
-	// highlight mouse-hower frame
+	// highlight mouse-hover frame
 	int f = (int)getFrame(CursorT.x); double f0 = FrameToCoord(f);
 	for (int x = max((int)f0, 0), x1 = min((int)(f0 + UnitT), _WIN_T_W); x < x1; x++) {
 		for (int y = 0; y < _WIN_T_H; y++) CanvasT(x, y) = 0x101418;
@@ -1311,7 +1311,7 @@ void MouseDownLT(int _X, int _Y) {
 	mouse_down_T = true;
 	previewFrame = getFrame(CursorT.x), currentFrame = (int)previewFrame;
 
-	// ready to drag key frames
+	// ready to drag keyframes
 	if (currentFrame != 0 && (int)getFrame(CursorT.x) == currentFrame) {
 		for (int i = 0; i < NCtrPs; i++) if (CPs[i].selected) {
 			if (CPs[i].existFrame(currentFrame)) pointOnMove[i] = currentFrame;
@@ -1390,19 +1390,19 @@ void KeyUpT(WPARAM _KEY) {
 // ============================================== File ==============================================
 
 /*
-	// Text File
+    // Text File
 
-	# _WIN_W _WIN_H
-	Center.x Center.y Center.z rz rx ry dist Unit
-	NCtrPs FPS currentFrame
-	keyFrames.size() F P.x P.y P.z ......
-	[new line]
+    # _WIN_W _WIN_H
+    Center.x Center.y Center.z rz rx ry dist Unit
+    NCtrPs FPS currentFrame
+    keyFrames.size() F P.x P.y P.z ......
+    [new line]
 
-	File starts with character '#'
-	The program searches for that character after opening the file.
+    Files are started with a character '#'
+    The program searches for that character after opening the file.
 
-	There will be a basic error handling for file open error, but no further handling on file format error.
-	Opening file will clear the current scene. If errors occur or program crashes due to file format error, restart this program.
+    There will be a basic error handling for file open error, but no further handling on file format error.
+    Opening a file will clear the current scene. If errors occur or program crashes due to file format problems, restart the program.
 
 */
 

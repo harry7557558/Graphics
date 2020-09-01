@@ -261,7 +261,7 @@ void rasterize(const spline3 &l, COLOR *Canvas, int W, int H, vec2 Dir, double S
 
 
 
-#define _INT_DIR vec2(1.2353e-8, -2.3886e-8)	// avoid special cases in calculating intersections
+#define _INT_DIR vec2(1.2353e-8, -2.3886e-8)	// avoid degenerated cases in intersection calculations
 
 bool boxIntersect(const vec2 &Min, const vec2 &Max, vec2 p, vec2 d) {
 	double tmin, tmax, tymin, tymax;
@@ -330,7 +330,7 @@ bool inside(const vector<spline3> &v, vec2 p) {
 	return ct & 1;
 }
 
-double calcArea(const vector<spline3> &V) {		// Green's formula, doens't work when two regions have intersections
+double calcArea(const vector<spline3> &V) {	 // based on divergence theorem, only work with prerequisites
 	double A = 0;
 	for (unsigned i = 0; i < V.size(); i++) {
 		double Int = (30.0 * V[i].C.x + 30.0 * V[i].B.x + 10.0 * V[i].A.x)*V[i].D.y + (-30.0 * V[i].D.x + 30.0 * V[i].B.x + 15.0 * V[i].A.x)*V[i].C.y + (-30.0 * V[i].D.x - 30.0 * V[i].C.x + 6.0 * V[i].A.x)*V[i].B.y - (10.0 * V[i].D.x + 15.0 * V[i].C.x + 6.0 * V[i].B.x)*V[i].A.y;

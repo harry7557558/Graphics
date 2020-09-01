@@ -6,7 +6,7 @@
 
 // Note:
 // "⚠" is considered to be unstable as it is caused by "overflow", a difference from EXP001
-// Runge-Kutta's accuracy is highest compare to other methods; this is obvious when setting BatchTest to 0
+// Runge-Kutta's accuracy is highest compared to other methods; this is obvious when setting BatchTest to 0
 // This may not be a good experiment as the reference solution calculates y and t from x instead of x and y from t
 
 #define BatchTest 1

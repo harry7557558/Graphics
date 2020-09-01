@@ -153,7 +153,7 @@ void calcAnalyticPath() {
 		// calculate the next event
 		double dt = t_max - t;
 		int eventI[2] = { -1, -1 };  // index of collided objects, -1 for boundary
-		vec2 dv[2] = { vec2(0), vec2(0) };  // change of velocities during collision
+		vec2 dv[2] = { vec2(0), vec2(0) };  // change of velocities during the collision
 
 		// check collisions with boundary
 		for (int i = 0; i < Ball_N; i++) {

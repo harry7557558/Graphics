@@ -1,4 +1,4 @@
-// test the correctness of some analytically integrated inertia tensors
+// test the correctness of some analytically integrated inertia tensor
 
 #pragma GCC optimize "Ofast"
 
@@ -300,7 +300,7 @@ object calcTetrahedron(triangle s) {
 	r.I = r.m*tetrahedronInertia(a, b, c);
 	return r;
 }
-object calcObject_Ss(const triangle *s, int N) {  // be careful about the face normal of the triangles
+object calcObject_Ss(const triangle *s, int N) {  // be careful about the face normals of the triangles
 	object R;
 	for (int i = 0; i < N; i++) {
 		object r = calcTetrahedron(s[i]);
@@ -385,7 +385,7 @@ void testObject_A(int N = 100) {
 }
 
 template<typename Fun> object calcObject_S(Fun F, double u0, double u1, double v0, double v1, int uN = 1024, int vN = 1024) {
-	// must be closed surface with normal facing outside
+	// must be a closed surface with outward normals
 	double u, v, du = (u1 - u0) / uN, dv = (v1 - v0) / vN;
 	triangle *S = new triangle[2 * uN*vN]; int sD = 0;
 	for (int i = 0; i < uN; i++) {

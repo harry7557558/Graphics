@@ -1,10 +1,10 @@
 # Approximate trigonometric functions using quartic polynomials
 # Find the coefficients of the quartic polynomial
 
-# Multivation:
+# Motivation:
 # Need to solve equations involving trigonometric functions
 # Quartic equations can be solved analytically
-# After finding the approximations of roots, perform Newton's iteration to find numerical solution
+# After finding the approximations of roots, perform Newton's iteration to find a numerical solution
 
 # Arbitrary precision floating point
 from decimal import *
@@ -14,7 +14,7 @@ getcontext().prec=40
 pi = Decimal('3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679')
 rt2 = Decimal('1.414213562373095048801688724209698078569671875376948073176679737990732478462107038850387534327641573')
 
-# Analytical coefficients of polynomial of best fit in [0,pi/2]
+# Analytical coefficients of the polynomial of best fit in [0,pi/2]
 # Thanks Wolfram open access
 sp1 = -5*(1161216-274176*pi-33600*pi**2+1008*pi**3+pi**5)/pi**6
 sp2 = 70*(940032-228096*pi-25536*pi**2+912*pi**3+pi**5)/pi**7
@@ -70,11 +70,11 @@ def translate(p, d):
     q.append(p[4])
     return q
 
-# reflect a polynomial about x axis
+# reflect a polynomial about the x-axis
 def reflectY(p):
     return [-t for t in p]
 
-# reflect a polynomial about y axis
+# reflect a polynomial about the y-axis
 def reflectX(p):
     q = []
     for i in range(len(p)):

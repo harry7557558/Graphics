@@ -31,9 +31,9 @@ typedef struct { vec2 c, d; } splineTo;  // path as quadratic bezier curve
 typedef std::vector<keyFrame> sequence;
 typedef std::vector<vec2> polygon;
 struct object {
-	polygon P;  // with center of mass at origin
+	polygon P;  // with center of mass at the origin
 	double inv_m;  // reciprocal of mass
-	double inv_I;  // reciprocal of moment of inertia
+	double inv_I;  // reciprocal of the moment of inertia
 	double r, r2;  // radius of bounding sphere and its square
 };
 
@@ -73,7 +73,7 @@ void init() {
 		{ vec2(744.3,47.3), vec2(730.8,48.3), vec2(727.8,63.5), vec2(735.9,64.5), vec2(736,71.2), vec2(717.5,67.2), vec2(717.2,70), vec2(735.2,76.2), vec2(732.2,113.5), vec2(736.9,113.5), vec2(739.5,94.5), vec2(744.5,112.5), vec2(749.9,110.9), vec2(741.9,75.7), vec2(759.7,70.2), vec2(758.4,67.4), vec2(740.5,71.2), vec2(740.5,65.2), vec2(747.5,62.3) },
 	};
 	//State0[0].v = vec2(5, 2.5), State0[1].v = vec2(-5, 1);
-	vec2 Min = vec2(INFINITY), Max = -Min;  // bounding box of overall shape
+	vec2 Min = vec2(INFINITY), Max = -Min;  // bounding box of the overall shape
 	const double sc = 0.005;
 	for (int _ = 0; _ < OBJECT_N; _++) {
 		polygon S = Test_Scene[_]; int N = S.size();
@@ -108,14 +108,14 @@ void init() {
 			double r2t = S[i].sqr();
 			r2 = max(r2, r2t);
 		}
-		// uptate calculation
+		// update calculation
 		Body[_].P = S;
 		Body[_].inv_m = 1. / M;
 		Body[_].inv_I = 1. / I;
 		Body[_].r2 = r2, Body[_].r = sqrt(r2);
 		State0[_].x = C;
 	}
-	// set initial state
+	// set the initial state
 	vec2 C = 0.5*sc*(Min + Max);
 	for (int _ = 0; _ < OBJECT_N; _++) State0[_].x -= C;
 }
@@ -196,7 +196,7 @@ void calcIntPath() {
 							vp = st[v].x + vec2(ca*vp.x - sa * vp.y, sa*vp.x + ca * vp.y);
 							if ((vp - st[u].x).sqr() < Body[u].r2) {  // bounding sphere check
 								// calculate the signed distance to a polygon
-								// also record the edge that produces minimum absolute distance
+								// also records the edge that produces the minimum absolute distance
 								// may be optimized as the exact distance is not required
 								int id = -1;
 								double sd = INFINITY;
@@ -365,7 +365,7 @@ int main(int argc, char** argv) {
 		if (s[0] == '0') s = s.erase(0, 1);
 		return s == "" ? "0" : s;
 	};
-	// world coordinate to svg coordinate
+	// world coordinate to SVG coordinate
 	auto transform = [](vec2 p)->vec2 {
 		return SC * vec2(p.x - BMin.x, BMax.y - p.y);
 	};

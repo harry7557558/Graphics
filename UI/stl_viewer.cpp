@@ -708,7 +708,7 @@ void MouseMove(int _X, int _Y) {
 	vec2 P0 = Cursor, P = vec2(_X, _Y), D = P - P0;
 	Cursor = P;
 
-	// drag to rotate scene
+	// drag to rotate the scene
 	if (mouse_down) {
 		Render_Needed = true;
 		if (Ctrl) {

@@ -169,7 +169,7 @@ bool solveTrigL(double a, double b, double c, double r[2]) {
 
 // Solve k2*x^2+k1*x+k0 + c1*cos(w*x)+c2*sin(w*x) = 0
 // return the smallest root greater than x_min, NAN if not found
-// numerical solution, sometimes may miss roots; may be optimized further
+// numerical solution, sometimes misses roots; may be optimized further
 int solveQuadratic(double a, double b, double c, double R[2]) {  // standard quadratic solver
 	if (a*a < 1e-20) {
 		R[0] = -c / b;
@@ -285,16 +285,16 @@ double solveTrigQuadratic(double k2, double k1, double k0, double c1, double c2,
 // Solve k4*x^4+k3*x^3+k2*x^2+k1*x+k0 + c1*cos(w*x)+c2*sin(w*x) = 0
 
 // Ideas for small w:
-//  - Cubic instead of quartic approximation
+//  - Use cubic approximations instead of quartic
 //  - See how quadratic approximation works out
-//  - Implement saperated quadratic, cubic, and quartic solvers
+//  - Implement separated quadratic, cubic, and quartic solvers
 //     - Should have no problem when passing zero k2 to quadratic solver
 //  - Don't use the substitution solution
 
 // return the first root greater than x_min; if not found, return NAN
 double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, double c1, double c2, double w, double x_min) {
 	// original algorithm, may have better ways
-	// substitude u = w*x+phi, x=(u-phi)/w
+	// substitute u = w*x+phi, x=(u-phi)/w
 	if (w < 0) w = -w, c2 = -c2;
 	double m = sqrt(c1*c1 + c2 * c2), phi = atan2(c1, c2);  // c1*cos(w*x)+c2*sin(w*x)=m*sin(u)
 	double iw = 1. / w, iw2 = iw * iw, iw3 = iw2 * iw, iw4 = iw2 * iw2;
@@ -390,7 +390,7 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 					}
 				}
 				if (u != INFINITY) {  // done!
-					// substitude back
+					// substitute back
 					double x = (u - phi) / w;
 					return x;
 				}

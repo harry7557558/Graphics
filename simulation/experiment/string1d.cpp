@@ -1,6 +1,6 @@
-// physics: a 2d stretched string satisfying Hook's law
-// position along x-axis is not equilibrium thus the equation is not wave equation
-// I may get its equation wrong according to life experience
+// physics: a 2d stretched string satisfying Hooke's law
+// position along the x-axis is not equilibrium thus the equation is not wave equation
+// I may get its equation wrong according to common sense
 // (stiff equation?? Euler and Midpoint energy increase exponentially)
 
 #include "numerical/ode.h"

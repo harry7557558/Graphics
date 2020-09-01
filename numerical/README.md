@@ -1,10 +1,10 @@
 Numerical algorithms used in computer graphics.
 
-Used by code in this repository. Add the `Graphics` folder to additional include directory in compiler settings.
+Used by code in this repository. Add `Graphics` folder in the compiler additional include directory settings.
 
 Avoid object orientation for simplicity and performance.
 
-Files started with an underscore are used to debug header files.
+Files started with an underscore are used for debugging header files.
 
 --------
 
