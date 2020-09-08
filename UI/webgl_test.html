@@ -1,0 +1,234 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>New to WebGL</title>
+</head>
+<body>
+    <canvas id="glCanvas" width="640" height="360"></canvas>
+    <pre id="glslCode">
+
+// right-click: pause/start animation
+// drag: rotate viewport
+
+// fragment shader
+
+float F(in vec3 p) {
+    p *= 0.5*(max(1.,10.*sin(4.0*iTime)-8.5)-max(0.,10.*cos(4.0*iTime-2.)-9.7))+0.5;
+    vec3 u = p*p;
+    float d = u.x+2.*u.y+u.z-1.;
+    if (d>3.0) return d;
+    return 4.*d*d-p.z*(5.*u.x*u.x-10.*u.x*u.z+u.z*u.z)-1.;
+}
+vec3 nGrad(vec3 p) {
+    const float e = 1e-5;
+    float a = F(p+vec3(e,e,e));
+    float b = F(p+vec3(e,-e,-e));
+    float c = F(p+vec3(-e,e,-e));
+    float d = F(p+vec3(-e,-e,e));
+    return vec3(a+b-c-d,a-b+c-d,a-b-c+d)*(.25/e);
+}
+
+const vec3 light = normalize(vec3(-0.3, 0.1, 1));
+
+vec3 castRay(vec3 p, vec3 d) {
+    float t = 8., dt;
+    for (int i = 0; i < 128; i++) {
+        vec3 q = p+t*d;
+        dt = F(q) / length(nGrad(q));
+        t += 0.5*dt;
+        if (dt < .01) {
+            vec3 n = normalize(nGrad(q));
+            float dif = clamp(.3+.7*dot(n, light), 0., 1.);
+            vec3 col = vec3(1.0,0.9,0.9)-sqrt(q.y*q.y+0.5)*vec3(0.1,0.4,0.9);
+            return (0.7*dif+0.2*pow(max(dot(d, light),0.),4.)+.5)*col;
+        }
+        if (t > 15.) break;
+    }
+    vec3 col = sin(20.*d.x)+sin(20.*d.y)+sin(20.*d.z)>0.?vec3(0.6,0.8,1.0): vec3(0.8,0.6,1.0);
+    t = max(dot(d,light), 0.);
+    return (0.5+0.5*t)*col;
+}
+
+#define AA 2
+void main() {
+    float rx = iRotate.x, rz = iRotate.y;
+    vec3 w = vec3(cos(rx)*vec2(-sin(rz),cos(rz)), sin(rx));
+    vec3 u=vec3(-cos(rz),-sin(rz),0);
+    vec3 v=cross(w,u);
+    mat3 M=-mat3(u,v,w);
+    vec3 pos = 10.0 * w;
+
+    vec3 col;
+    for (int i=0;i< AA;i++) for (int j=0;j< AA;j++) {
+        vec3 d=M*vec3(0.5*iResolution.xy-(gl_FragCoord.xy+vec2(i,j)/float(AA)),length(iResolution));
+        col += clamp(castRay(pos,normalize(d)),vec3(0),vec3(1));
+    }
+    col/=float(AA*AA);
+
+    float gma = .7;
+    col.x=pow(col.x,gma),col.y=pow(col.y,gma),col.z=pow(col.z,gma);
+    col = col*1.1-0.1;
+
+    gl_FragColor = vec4(col,1.0);
+}
+
+</pre>
+
+    <script>
+        // WebGL tutorial: https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Tutorial
+
+        function main() {
+            const canvas = document.getElementById("glCanvas");
+            const gl = canvas.getContext("webgl");
+
+            // vertex and fragment shader code
+            var vsSource = "\
+attribute vec4 aVertexPosition; \
+void main(void) { gl_Position = aVertexPosition; }";
+            var fsSource = " \
+precision highp float; \
+uniform highp float iTime; \
+uniform highp vec2 iRotate; \
+const highp vec2 iResolution = vec2(640,360); \
+" + document.getElementById('glslCode').innerHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+            // variables for GLSL
+            var iTime = 0.0;  // time
+            var iRx = 0.0, iRz = 0.0;  // rotation
+
+            // initialize a shader program
+            function initShaderProgram(gl, vsSource, fsSource) {
+                function loadShader(gl, type, source) {
+                    var shader = gl.createShader(type);  // create a new shader
+                    gl.shaderSource(shader, source);  // send the source code to the shader
+                    gl.compileShader(shader);  // compile shader
+                    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))  // check if compiled succeed
+                        throw new Error(gl.getShaderInfoLog(shader));  // compile error message
+                    return shader;
+                }
+                var vShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+                var fShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+                // create the shader program
+                var shaderProgram = gl.createProgram();
+                gl.attachShader(shaderProgram, vShader);
+                gl.attachShader(shaderProgram, fShader);
+                gl.linkProgram(shaderProgram);
+                // if creating shader program failed
+                if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS))
+                    throw new Error(gl.getProgramInfoLog(shaderProgram));
+                return shaderProgram;
+            }
+            var shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+
+            // look up the locations that WebGL assigned to inputs
+            const programInfo = {
+                program: shaderProgram,
+                attribLocations: {  // attribute variables, receive values from buffers
+                    vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                },
+                uniformLocations: {  // uniform variables, similar to JS global variables
+                    iTime: gl.getUniformLocation(shaderProgram, 'iTime'),
+                    iRotate: gl.getUniformLocation(shaderProgram, 'iRotate'),
+                },
+            };
+            console.log(programInfo);
+
+            // initialize buffers
+            function initBuffers(gl) {
+                var positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+                // vec2[4], coordinates from -1 to 1
+                var positions = [-1, 1, 1, 1, -1, -1, 1, -1];
+
+                // pass the list of positions into WebGL to build the shape
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+                return { position: positionBuffer, };
+            }
+            const buffers = initBuffers(gl);
+
+            // rendering
+            var lastRender = NaN;
+            function drawScene(gl, programInfo, buffers) {
+                // max 100fps; browser max 60fps, exceeds when dragging
+                var renderTime = performance.now();
+                var time_elapsed = renderTime - lastRender;
+                if (time_elapsed < 10) return;
+                lastRender = renderTime;
+
+                // clear the canvas
+                gl.clearColor(0, 0, 0, 1);
+                gl.clearDepth(1.0);
+                gl.enable(gl.DEPTH_TEST);
+                gl.depthFunc(gl.LEQUAL);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                {
+                    const numComponents = 2;  // pull out 2 values per iteration
+                    const type = gl.FLOAT;  // the data in the buffer is 32bit floats
+                    const normalize = false;  // don't normalize
+                    const stride = 0; // how many bytes to get from one set of values to the next
+                    const offset = 0; // how many bytes inside the buffer to start from
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+                    gl.vertexAttribPointer(
+                        programInfo.attribLocations.vertexPosition,
+                        numComponents, type, normalize, stride, offset);
+                    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+                }
+
+                // make sure it uses the program
+                gl.useProgram(programInfo.program);
+
+                // set shader uniforms
+                // https://webglfundamentals.org/webgl/lessons/webgl-shaders-and-glsl.html
+                gl.uniform1f(programInfo.uniformLocations.iTime, iTime);
+                gl.uniform2f(programInfo.uniformLocations.iRotate, iRx, iRz);
+
+                // render
+                {
+                    const offset = 0;
+                    const vertexCount = 4;
+                    gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
+                }
+            }
+            drawScene(gl, programInfo, buffers);
+
+            // animation
+            var paused = false;
+            var old_time = 0;
+            function render(new_time) {
+                new_time *= 0.001;
+                const time_delta = new_time - old_time;
+                old_time = new_time;
+                if (!paused) {
+                    iTime += time_delta;
+                    drawScene(gl, programInfo, buffers);
+                }
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+
+            // interactions
+            canvas.oncontextmenu = function (e) {
+                e.preventDefault();
+                paused ^= true;
+            };
+            var mouseDown = false;
+            window.onmousedown = function () { mouseDown = true; }
+            window.onmouseup = function () { mouseDown = false; }
+            canvas.onmousemove = function (e) {
+                if (mouseDown) {
+                    iRx += 0.01 * e.movementY;
+                    iRz -= 0.01 * e.movementX;
+                    if (paused) drawScene(gl, programInfo, buffers);
+                }
+            }
+        }
+
+        window.onload = main;
+
+    </script>
+</body>
+</html>
