@@ -12,6 +12,7 @@
 // drag: rotate viewport
 
 // fragment shader
+// original: <a href='https://www.shadertoy.com/view/3dXfDr'>https://www.shadertoy.com/view/3dXfDr</a>
 
 float F(in vec3 p) {
     p *= 0.5*(max(1.,10.*sin(4.0*iTime)-8.5)-max(0.,10.*cos(4.0*iTime-2.)-9.7))+0.5;
@@ -216,7 +217,7 @@ const highp vec2 iResolution = vec2(640,360); \
                 paused ^= true;
             };
             var mouseDown = false;
-            window.onmousedown = function () { mouseDown = true; }
+            canvas.onmousedown = function () { mouseDown = true; }
             window.onmouseup = function () { mouseDown = false; }
             canvas.onmousemove = function (e) {
                 if (mouseDown) {

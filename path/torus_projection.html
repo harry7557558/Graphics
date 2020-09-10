@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Torus orthographic projection</title>
+    <style>
+        body {
+            background-color: lightblue;
+        }
+
+        #container, svg, #rtcanvas {
+            width: 640px;
+            height: 400px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        #container {
+            position: relative;
+            background-color: white;
+        }
+
+        #options {
+            width: 600px;
+            padding: 10px;
+        }
+
+        .slider-caption {
+            display: inline-block;
+            width: 80px;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            outline: none;
+            width: 300px;
+            height: 10px;
+            background-color: white;
+        }
+
+            .slider::-webkit-slider-thumb {
+                /* doens't work in Firefox but looks fine */
+                -webkit-appearance: none;
+                width: 12px;
+                height: 20px;
+                border-radius: 2px;
+                background-color: darkgreen;
+                cursor: pointer;
+            }
+
+        .slider-text {
+            -webkit-appearance: none;
+            background-color: transparent;
+        }
+
+        p {
+            margin: 10px 0px;
+            padding: 0;
+            height: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="raytrace"></canvas>
+        <svg>
+            <g id="axis"></g>
+            <g id="wireframe" style="stroke:gray;stroke-width:1px;fill:none;"></g>
+            <path id="segments" d=""></path>
+            <path id="spline" d=""></path>
+        </svg>
+    </div>
+    <div id="options">
+        <p>The orthographic projection of a torus with a major radius <i>R</i> and a minor radius <i>r</i>.</p>
+        <p>
+            <span class="slider-caption"><i>R</i> = <span class="slider-text" contenteditable="true">2.00</span></span>
+            <input type="range" min="0.01" max="5" value="2" step="0.01" class="slider" />
+        </p>
+        <p>
+            <span class="slider-caption"><i>r</i> = <span class="slider-text" contenteditable="true">1.00</span></span>
+            <input type="range" min="0.01" max="5" value="1" step="0.01" class="slider" />
+        </p>
+        <hr />
+        <p>Layers (from back to front): <input class="checkbox" type="checkbox" />axes</p>
+        <p>
+            <input class="checkbox" type="checkbox" checked />ray-traced graph,
+            <input class="checkbox" type="checkbox" checked />SVG wireframe,
+            <input class="checkbox" type="checkbox" />discretized outline,
+            <input class="checkbox" type="checkbox" />vectorized outline.
+        </p>
+        <hr />
+        <p>Drag graph to rotate, scroll graph to zoom, shift+drag to roll camera.</p>
+        <hr />
+        <p>The ray-traced graph (requires WebGL) may be unstable with certain <i>R</i> and <i>r</i> values.</p>
+        <p>Chrome is the recommended browser.</p>
+    </div>
+
+    <script id="control_script">
+        var sin = Math.sin, cos = Math.cos, atan = Math.atan, atan2 = Math.atan2, sqrt = Math.sqrt, exp = Math.exp, PI = Math.PI, abs = Math.abs, max = Math.max, min = Math.min;
+
+        var iR = 2.0, ir = 1.0;  // major and minor radius of torus
+        var iRx = 0.65, iRz = 2.5, iRy = 0.5;  // pitch, yaw, roll
+        var iSc = 60.0;  // image scaling
+
+        // calculate dimension and center of canvas
+        const container = document.querySelector("#container");
+        const canvas = document.querySelector("#raytrace");
+        const Dimension = [container.clientWidth, container.clientHeight];
+        canvas.width = Dimension[0], canvas.height = Dimension[1];
+        const Center = [0.5 * Dimension[0], 0.5 * Dimension[1]];
+
+        // 2 rows of the transformation matrix
+        var A = [[1, 0, 0], [0, 1, 0]];
+        function calcMatrix() {
+            A = [
+                [-cos(iRy) * sin(iRz) + sin(iRy) * sin(iRx) * cos(iRz),
+                cos(iRy) * cos(iRz) + sin(iRy) * sin(iRx) * sin(iRz),
+                -cos(iRx) * sin(iRy)],
+                [-sin(iRy) * sin(iRz) - cos(iRy) * sin(iRx) * cos(iRz),
+                sin(iRy) * cos(iRz) - cos(iRy) * sin(iRx) * sin(iRz),
+                cos(iRx) * cos(iRy)]
+            ];
+        }
+        // 3d to 2d coordinate
+        var UV = function (P, translate = true) {
+            return [
+                iSc * (A[0][0] * P[0] + A[0][1] * P[1] + A[0][2] * P[2]) + Number(translate) * Center[0],
+                -iSc * (A[1][0] * P[0] + A[1][1] * P[1] + A[1][2] * P[2]) + Number(translate) * Center[1]
+            ];
+        };
+
+        // checkboxes
+        var cks = document.getElementsByClassName('checkbox');
+
+        // rendering updates
+        function rerender() {
+            // max 100fps
+            if (typeof rerender.then != "number") rerender.then = 0;
+            var now = performance.now();
+            var time_elapsed = now - rerender.then;
+            if (time_elapsed < 10) return;
+            rerender.then = now;
+
+            // call rendering functions
+            calcMatrix();
+            render_wireframe();
+            render_raytrace();
+
+            // draw axes
+            if (cks[0].checked) {
+                var line = function (p0, p1, attr) {
+                    p0 = UV(p0, true), p1 = UV(p1, true);
+                    return "<line x1='" + p0[0] + "' y1='" + p0[1] + "' x2='" + p1[0] + "' y2='" + p1[1] + "' " + attr + "/>";
+                };
+                var R = 1.5 * (iR + ir);
+                var x = line([0, 0, 0], [R, 0, 0], "stroke='red'");
+                var y = line([0, 0, 0], [0, R, 0], "stroke='green'");
+                var z = line([0, 0, 0], [0, 0, R], "stroke='blue'");
+                document.getElementById("axis").innerHTML = x + y + z;
+            }
+            else {
+                document.getElementById("axis").innerHTML = "";
+            }
+        }
+
+        // initialize mouse control
+        function control_main() {
+
+            // graphics mouse/keyboard controls
+            var mouseDown = false, Shift = false;
+            container.onmousedown = function () { mouseDown = true; }
+            window.onmouseup = function () { mouseDown = false; }
+            window.onkeydown = function (e) { if (e.keyCode == 16) Shift = true; }
+            window.onkeyup = function (e) { if (e.keyCode == 16) Shift = false; }
+            window.onmousemove = function (e) {
+                if (mouseDown) {
+                    if (Shift) {
+                        iRy -= 0.01 * e.movementY;
+                    }
+                    else {
+                        iRx += 0.01 * e.movementY;
+                        iRz -= 0.01 * e.movementX;
+                    }
+                    rerender();
+                }
+            }
+            container.onmousewheel = function (e) {
+                // doesn't work in Firefox
+                e.preventDefault();
+                iSc *= exp(0.001 * e.wheelDelta);
+                iSc = min(max(iSc, 10.0), 1000.0);
+                rerender();
+            }
+
+            // sliders
+            var sliders = document.getElementsByClassName("slider");
+            var sliders_c = document.getElementsByClassName("slider-text");
+            sliders[0].oninput = function () {
+                iR = Number(sliders[0].value);
+                sliders_c[0].innerHTML = Number(iR).toFixed(2);
+                rerender();
+            };
+            sliders[1].oninput = function () {
+                ir = Number(sliders[1].value);
+                sliders_c[1].innerHTML = Number(ir).toFixed(2);
+                rerender();
+            };
+            sliders_c[0].oninput = function () {
+                var v = sliders_c[0].innerText;
+                if (v.match(/\s/g)) this.innerHTML = v.replace(/\s/g, '');
+                v = Number(v);
+                if (v >= sliders[0].min && v <= sliders[0].max) {
+                    sliders[0].value = v;
+                    iR = v; rerender();
+                }
+            };
+            sliders_c[1].oninput = function () {
+                var v = sliders_c[1].innerText;
+                if (v.match(/\s/g)) this.innerHTML = v.replace(/\s/g, '');
+                v = Number(v);
+                if (v >= sliders[1].min && v <= sliders[1].max) {
+                    sliders[1].value = v;
+                    ir = v; rerender();
+                }
+            };
+        }
+
+        window.onload = function () {
+            // get checkboxes
+            var cks = document.getElementsByClassName('checkbox');
+            for (var i = 0; i < cks.length; i++)
+                cks[i].oninput = rerender;
+
+            // rendering and controls
+            render_raytrace_init();
+            rerender();
+            control_main();
+        }
+
+    </script>
+
+
+    <script id="wireframe_renderer">
+
+        function render_wireframe() {
+            if (!cks[2].checked) {
+                document.getElementById("wireframe").innerHTML = "";
+                return;
+            }
+
+            // SVG contents
+            var svgdata = "";
+
+            // render 2d ellipses with equation p+u*cos(t)+v*sin(t)
+            function ellipsePath(p, u, v) {
+                //console.log(p, u, v);
+                s = "<ellipse cx='" + p[0] + "' cy='" + p[1] + "' ";
+                var m = (u[0] * u[0] + u[1] * u[1]) - (v[0] * v[0] + v[1] * v[1]);  // u²-v²
+                var d = 2 * (u[0] * v[0] + u[1] * v[1]);  // 2 u·v
+                var t = 0.5 * atan2(d, m);  // angle
+                var a = [u[0] * cos(t) + v[0] * sin(t), u[1] * cos(t) + v[1] * sin(t)];  // u cos(t) + v sin(t)
+                var b = [v[0] * cos(t) - u[0] * sin(t), v[1] * cos(t) - u[1] * sin(t)];  // u cos(t+π/2) + v sin(t+π/2)
+                s += "rx='" + sqrt(a[0] * a[0] + a[1] * a[1]) + "' ";  // |a|
+                s += "ry='" + sqrt(b[0] * b[0] + b[1] * b[1]) + "' ";  // |b|
+                s += "transform='rotate(" + (180 / PI) * atan2(a[1], a[0]) + " " + p[0] + " " + p[1] + ")'/>";
+                return s;
+            }
+
+            // number of "wires" on longtitude and latitude directions
+            const Du = 20, Dv = 20;
+
+            // draw circles on longtitude direction
+            for (var i = 0; i < Du; i++) {
+                var u = i * (2 * PI / Du);
+                var P = UV([iR * cos(u), iR * sin(u), 0], true);
+                var au = UV([ir * cos(u), ir * sin(u), 0], false);
+                var av = UV([0, 0, ir], false);
+                svgdata += ellipsePath(P, au, av);
+            }
+
+            // draw circles on latitude direction
+            for (var i = 0; i < Dv; i++) {
+                var v = i * (2 * PI / Dv);
+                var P = UV([0, 0, ir * sin(v)], true);
+                var R = iR + ir * cos(v);
+                var au = UV([R, 0, 0], false);
+                var av = UV([0, R, 0], false);
+                svgdata += ellipsePath(P, au, av);
+            }
+
+            // output
+            document.getElementById("wireframe").innerHTML = svgdata;
+        }
+
+    </script>
+
+
+
+    <!-- Fun fact: rendering fragment shader isn't slower than rendering wireframe on my machine -->
+
+    <pre id="vertex_shader_code" style="display:none">
+
+attribute vec4 aVertexPosition;
+
+uniform vec2 iRes;
+uniform float iSc;
+varying highp vec2 vPos;
+
+void main() {
+    vPos = aVertexPosition.xy*.5*iRes/iSc;
+    gl_Position = aVertexPosition;
+}
+
+</pre>
+    <pre id="fragment_shader_code" style="display:none">
+
+precision highp float;
+
+// major and minor radiuses of the torus
+uniform float iR, ir;
+
+// signed distance to the torus
+float sdTorus(in vec3 p){
+    float l = length(p.xy)-iR;
+    return length(vec2(l,p.z))-ir;
+}
+
+
+// Analytical torus intersection: https://www.shadertoy.com/view/4sBGDy
+// Modified to reduce floating-point inaccuracy
+
+// The MIT License
+// Copyright © 2014 Inigo Quilez
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+float iTorus(in vec3 ro, in vec3 rd) {
+    float po = 1.0;
+    float Ra2 = iR*iR, ra2 = ir*ir;
+    float m = dot(ro,ro), n = dot(ro,rd), n2 = n*n;
+
+    float k = (m -ra2-Ra2)*.5;
+    float k3 = n;
+    float k2 = n2 + Ra2*rd.z*rd.z + k;
+    float k1 = k*n + Ra2*ro.z*rd.z;
+    float k0 = k*k + Ra2*ro.z*ro.z - Ra2*ra2;
+
+#if 1
+    // modified from the original
+    if (abs(rd.z)< min(ir/iR,1.) && n2>m-max(Ra2,ra2)) {
+        po = -1.0;
+        float tmp=k1; k1=k3; k3=tmp;
+        k0 = 1.0/k0; k1 = k1*k0; k2 = k2*k0; k3 = k3*k0;
+    }
+#endif
+
+    float c2 = 2.0*k2 - 3.0*k3*k3;
+    float c1 = k3*(k3*k3 - k2) + k1;
+    float c0 = k3*(k3*(-3.0*k3*k3 + 4.0*k2) - 8.0*k1) + 4.0*k0;
+    c2 /= 3.0, c1 *= 2.0, c0 /= 3.0;
+    float Q = c2*c2 + c0, R = 3.0*c0*c2 - c2*c2*c2 - c1*c1;
+
+    float h = R*R - Q*Q*Q;
+    float z = 0.0;
+    if(h < 0.0) {
+        float sQ = sqrt(Q);
+        z = 2.0*sQ*cos(acos(R/(sQ*Q)) / 3.0);
+    } else {
+        float sQ = pow(sqrt(h) + abs(R), 1.0/3.0);
+        z = sign(R)*abs(sQ + Q/sQ);
+    }
+    z = c2 - z;
+    
+    float d1 = z - 3.0*c2, d2 = z*z - 3.0*c0;
+    if (abs(d1) < 1.0e-4) {
+        if (d2 < 0.0) return -1.0;
+        d2 = sqrt(d2);
+    }
+    else {
+        if (d1 < 0.0) return -1.0;
+        d1 = sqrt(d1/2.0), d2 = c1/d1;
+    }
+
+    float t = 1e20;
+
+    h = d1*d1 - z + d2;
+    if (h > 0.0) {
+        h = sqrt(h);
+        float t1 = -d1 - h - k3; t1 = (po< 0.0)?2.0/t1:t1;
+        float t2 = -d1 + h - k3; t2 = (po< 0.0)?2.0/t2:t2;
+        t = min(t1,t2);
+    }
+    h = d1*d1 - z - d2;
+    if (h > 0.0) {
+        h = sqrt(h);
+        float t1 = d1 - h - k3;  t1 = (po< 0.0)?2.0/t1:t1;
+        float t2 = d1 + h - k3;  t2 = (po< 0.0)?2.0/t2:t2;
+        t = min(t,min(t1,t2));
+    }
+
+    // perform raymarching steps to reduce floating-point inaccuracy
+    for (int i=0;i< 2;i++) t += sdTorus(ro+rd*t);
+    return t;
+}
+vec3 nTorus(in vec3 p) {
+    return normalize(p*(dot(p,p) - ir*ir - iR*iR*vec3(1,1,-1)));
+}
+
+
+varying vec2 vPos;
+uniform vec3 iUd, iVd;
+
+void main() {
+    vec3 w = cross(iUd, iVd);
+    vec3 ro = 10.*w + vPos.x*iUd + vPos.y*iVd;
+    vec3 rd = -w;
+    vec3 col = vec3(0.0);
+    float t = iTorus(ro, rd);
+    if (t>0.) {
+        vec3 p = ro+rd*t;
+        vec3 n = nTorus(p);
+        col = vec3(.4)+.3*n;
+        col += vec3(0.5)*pow(clamp(dot(n,w),0.,1.),10.);
+    }
+    gl_FragColor = vec4(clamp(col,vec3(0),vec3(1)),1.0);
+}
+
+</pre>
+
+    <script id="raytrace_renderer">
+
+        // variables made global
+        var gl, programInfo, pos_buffer;
+
+        // rendering entrance
+        function render_raytrace() {
+            if (!cks[1].checked) {
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                return;
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, pos_buffer);
+            gl.vertexAttribPointer(programInfo.attribs.vertex, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(programInfo.attribs.vertex);
+
+            gl.useProgram(programInfo.program);
+            gl.uniform2fv(programInfo.uniforms.pRes, Dimension);
+            gl.uniform1f(programInfo.uniforms.pSc, iSc);
+            gl.uniform1f(programInfo.uniforms.pR, iR);
+            gl.uniform1f(programInfo.uniforms.pr, ir);
+            gl.uniform3fv(programInfo.uniforms.pUd, A[0]);
+            gl.uniform3fv(programInfo.uniforms.pVd, A[1]);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+
+        function render_raytrace_init() {
+            gl = canvas.getContext("webgl");
+
+            var vs_code = document.getElementById("vertex_shader_code").textContent;
+            var fs_code = document.getElementById("fragment_shader_code").textContent;
+
+            // initialize shader program
+            var shaderProgram = (function () {
+                var shaderProgram = gl.createProgram();
+                function loadShader(type, code) {
+                    var shader = gl.createShader(type);
+                    gl.shaderSource(shader, code);
+                    gl.compileShader(shader);
+                    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+                        throw new Error(gl.getShaderInfoLog(shader));
+                    return shader;
+                }
+                var shader_v = loadShader(gl.VERTEX_SHADER, vs_code);
+                var shader_f = loadShader(gl.FRAGMENT_SHADER, fs_code);
+                gl.attachShader(shaderProgram, shader_v);
+                gl.attachShader(shaderProgram, shader_f);
+                gl.linkProgram(shaderProgram);
+                if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS))
+                    throw new Error(gl.getProgramInfoLog(shaderProgram));
+                return shaderProgram;
+            })();
+            programInfo = {
+                program: shaderProgram,
+                attribs: {
+                    vertex: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                },
+                uniforms: {
+                    pRes: gl.getUniformLocation(shaderProgram, 'iRes'),
+                    pSc: gl.getUniformLocation(shaderProgram, 'iSc'),
+                    pR: gl.getUniformLocation(shaderProgram, 'iR'),
+                    pr: gl.getUniformLocation(shaderProgram, 'ir'),
+                    pUd: gl.getUniformLocation(shaderProgram, 'iUd'),
+                    pVd: gl.getUniformLocation(shaderProgram, 'iVd'),
+                },
+            };
+
+            // initialize position buffer
+            pos_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, pos_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), gl.STATIC_DRAW);
+
+        }
+
+    </script>
+
+</body>
+</html>
