@@ -6,6 +6,8 @@
     <style>
         body {
             background-color: lightblue;
+            font-family: 'Times New Roman';
+            font-size: 16px;
         }
 
         #container, svg, #rtcanvas {
@@ -60,6 +62,7 @@
             margin: 10px 0px;
             padding: 0;
             height: 18px;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -107,7 +110,7 @@
         <hr />
         <p>Drag graph to rotate, scroll graph to zoom, shift+drag to roll camera.</p>
         <hr />
-        <p>If issue occurs with the ray-casted image, try to check the “use SDF ray marching” checkbox.</p>
+        <p>If there are black blobs on the ray-casted image, try to check the “use SDF ray marching” checkbox.</p>
         <p>Chrome is the recommended web browser.</p>
     </div>
 
@@ -491,7 +494,10 @@ void main() {
             float dt = sdTorus(ro+rd*t);
             t += dt;
             if (dt< 0.001) break;
-            if (i+1.5>MAX_STEP) t=-1.0;
+            if (t>21.||i+1.5>MAX_STEP) {
+                gl_FragColor = vec4(0,0,0,1);
+                return;
+            }
         }
     }
     else t = iTorus(ro, rd);
