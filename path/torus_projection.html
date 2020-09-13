@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -66,11 +66,20 @@
 <body>
     <div id="container">
         <canvas id="raytrace"></canvas>
-        <svg>
+        <svg id="svg">
+            <defs>
+                <marker id="anchor-start" viewBox="0 0 10 10" refX="5" refY="5" orient="" markerUnits="strokeWidth" markerWidth="10" markerHeight="10">
+                    <rect x="3.8" y="3.8" width="2.4" height="2.4" style="stroke:white;stroke-width:1px;fill:white"></rect>
+                </marker>
+                <marker id="anchor-end" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="strokeWidth" markerWidth="10" markerHeight="10">
+                    <ellipse cx="5" cy="5" rx="1.5" ry="1.5" style="stroke:white;stroke-width:1px;fill:white"></ellipse>
+                </marker>
+            </defs>
             <g id="axis"></g>
             <g id="wireframe" style="stroke:gray;stroke-width:1px;fill:none;"></g>
-            <path id="segments" d=""></path>
-            <path id="spline" d=""></path>
+            <path id="segments" d="" style="stroke:white;fill:none;"></path>
+            <path id="spline" d="" style="stroke-width:2px;stroke:lime;fill:none;"></path>
+            <g id="spline-anchor" style="stroke-width:1px;stroke:white;opacity:0.6;"></g>
         </svg>
     </div>
     <div id="options">
@@ -84,24 +93,29 @@
             <input type="range" min="0.01" max="5" value="1" step="0.01" class="slider" />
         </p>
         <hr />
-        <p>Layers (from back to front): <input class="checkbox" type="checkbox" />axes</p>
         <p>
-            <input class="checkbox" type="checkbox" checked />ray-traced graph,
-            <input class="checkbox" type="checkbox" checked />SVG wireframe,
-            <input class="checkbox" type="checkbox" />discretized outline,
-            <input class="checkbox" type="checkbox" />vectorized outline.
+            Layers (from back to front):
+            <input class="checkbox" type="checkbox" /><span>axes</span>
+            <input class="checkbox" type="checkbox" /><span title="ray casting variation, slower but more stable">use SDF ray marching</span>
+        </p>
+        <p>
+            <input class="checkbox" type="checkbox" checked /><span title="WebGL">ray-casted image</span>,
+            <input class="checkbox" type="checkbox" checked /><span title="ellipses">SVG wireframe</span>,
+            <input class="checkbox" type="checkbox" checked /><span title="line segments">discretized outline</span>,
+            <input class="checkbox" type="checkbox" /><span title="cubic Bézier curves">vectorized outline</span>.
         </p>
         <hr />
         <p>Drag graph to rotate, scroll graph to zoom, shift+drag to roll camera.</p>
         <hr />
-        <p>The ray-traced graph (requires WebGL) may be unstable with certain <i>R</i> and <i>r</i> values.</p>
-        <p>Chrome is the recommended browser.</p>
+        <p>If issue occurs with the ray-casted image, try to check the “use SDF ray marching” checkbox.</p>
+        <p>Chrome is the recommended web browser.</p>
     </div>
 
-    <script id="control_script">
-        var sin = Math.sin, cos = Math.cos, atan = Math.atan, atan2 = Math.atan2, sqrt = Math.sqrt, exp = Math.exp, PI = Math.PI, abs = Math.abs, max = Math.max, min = Math.min;
+    <script id="control-script">
+        var sin = Math.sin, cos = Math.cos, atan = Math.atan, atan2 = Math.atan2, sqrt = Math.sqrt, exp = Math.exp, PI = Math.PI, abs = Math.abs, max = Math.max, min = Math.min, floor = Math.floor, ceil = Math.ceil, round = Math.round;
+        var clamp = function (x, a, b) { return x < a ? a : x > b ? b : x; };
 
-        var iR = 2.0, ir = 1.0;  // major and minor radius of torus
+        var iR = 2.0, ir = 1.0;  // major and minor radius of the torus
         var iRx = 0.65, iRz = 2.5, iRy = 0.5;  // pitch, yaw, roll
         var iSc = 60.0;  // image scaling
 
@@ -111,6 +125,10 @@
         const Dimension = [container.clientWidth, container.clientHeight];
         canvas.width = Dimension[0], canvas.height = Dimension[1];
         const Center = [0.5 * Dimension[0], 0.5 * Dimension[1]];
+
+        // control variables
+        var sliders = document.getElementsByClassName("slider");
+        var sliders_c = document.getElementsByClassName("slider-text");
 
         // 2 rows of the transformation matrix
         var A = [[1, 0, 0], [0, 1, 0]];
@@ -131,6 +149,9 @@
                 -iSc * (A[1][0] * P[0] + A[1][1] * P[1] + A[1][2] * P[2]) + Number(translate) * Center[1]
             ];
         };
+        var UV2d = function (P) {
+            return [iSc * P[0] + Center[0], -iSc * P[1] + Center[1]];
+        }
 
         // checkboxes
         var cks = document.getElementsByClassName('checkbox');
@@ -144,10 +165,16 @@
             if (time_elapsed < 10) return;
             rerender.then = now;
 
+            // update parameters
+            iR = Number(sliders[0].value);
+            ir = Number(sliders[1].value);
+
             // call rendering functions
             calcMatrix();
             render_wireframe();
             render_raytrace();
+            render_discrete_outline();
+            render_vector_outline();
 
             // draw axes
             if (cks[0].checked) {
@@ -177,12 +204,13 @@
             window.onkeyup = function (e) { if (e.keyCode == 16) Shift = false; }
             window.onmousemove = function (e) {
                 if (mouseDown) {
+                    // 1e-8: avoid degenerated cases
                     if (Shift) {
-                        iRy -= 0.01 * e.movementY;
+                        iRy -= 0.01 * e.movementY + 1e-8 * Math.random();
                     }
                     else {
-                        iRx += 0.01 * e.movementY;
-                        iRz -= 0.01 * e.movementX;
+                        iRx += 0.01 * e.movementY + 1e-8 * Math.random();
+                        iRz -= 0.01 * e.movementX + 1e-8 * Math.random();
                     }
                     rerender();
                 }
@@ -196,16 +224,14 @@
             }
 
             // sliders
-            var sliders = document.getElementsByClassName("slider");
-            var sliders_c = document.getElementsByClassName("slider-text");
+            sliders = document.getElementsByClassName("slider");
+            sliders_c = document.getElementsByClassName("slider-text");
             sliders[0].oninput = function () {
-                iR = Number(sliders[0].value);
-                sliders_c[0].innerHTML = Number(iR).toFixed(2);
+                sliders_c[0].innerHTML = Number(Number(sliders[0].value)).toFixed(2);
                 rerender();
             };
             sliders[1].oninput = function () {
-                ir = Number(sliders[1].value);
-                sliders_c[1].innerHTML = Number(ir).toFixed(2);
+                sliders_c[1].innerHTML = Number(Number(sliders[1].value)).toFixed(2);
                 rerender();
             };
             sliders_c[0].oninput = function () {
@@ -213,8 +239,7 @@
                 if (v.match(/\s/g)) this.innerHTML = v.replace(/\s/g, '');
                 v = Number(v);
                 if (v >= sliders[0].min && v <= sliders[0].max) {
-                    sliders[0].value = v;
-                    iR = v; rerender();
+                    sliders[0].value = v; rerender();
                 }
             };
             sliders_c[1].oninput = function () {
@@ -222,8 +247,7 @@
                 if (v.match(/\s/g)) this.innerHTML = v.replace(/\s/g, '');
                 v = Number(v);
                 if (v >= sliders[1].min && v <= sliders[1].max) {
-                    sliders[1].value = v;
-                    ir = v; rerender();
+                    sliders[1].value = v; rerender();
                 }
             };
         }
@@ -243,10 +267,10 @@
     </script>
 
 
-    <script id="wireframe_renderer">
+    <script id="wireframe-renderer">
 
         function render_wireframe() {
-            if (!cks[2].checked) {
+            if (!cks[3].checked) {
                 document.getElementById("wireframe").innerHTML = "";
                 return;
             }
@@ -256,7 +280,6 @@
 
             // render 2d ellipses with equation p+u*cos(t)+v*sin(t)
             function ellipsePath(p, u, v) {
-                //console.log(p, u, v);
                 s = "<ellipse cx='" + p[0] + "' cy='" + p[1] + "' ";
                 var m = (u[0] * u[0] + u[1] * u[1]) - (v[0] * v[0] + v[1] * v[1]);  // u²-v²
                 var d = 2 * (u[0] * v[0] + u[1] * v[1]);  // 2 u·v
@@ -269,12 +292,10 @@
                 return s;
             }
 
-            // number of "wires" on longtitude and latitude directions
-            const Du = 20, Dv = 20;
-
             // draw circles on longtitude direction
-            for (var i = 0; i < Du; i++) {
-                var u = i * (2 * PI / Du);
+            var uN = clamp(floor(18 * iR / sqrt(ir * (iR + ir))), 10, 100);
+            for (var i = 0; i < uN; i++) {
+                var u = i * (2 * PI / uN);
                 var P = UV([iR * cos(u), iR * sin(u), 0], true);
                 var au = UV([ir * cos(u), ir * sin(u), 0], false);
                 var av = UV([0, 0, ir], false);
@@ -282,8 +303,9 @@
             }
 
             // draw circles on latitude direction
-            for (var i = 0; i < Dv; i++) {
-                var v = i * (2 * PI / Dv);
+            var vN = ir / iR < 0.2 ? 12 : 20;
+            for (var i = 0; i < vN; i++) {
+                var v = i * (2 * PI / vN);
                 var P = UV([0, 0, ir * sin(v)], true);
                 var R = iR + ir * cos(v);
                 var au = UV([R, 0, 0], false);
@@ -298,8 +320,52 @@
     </script>
 
 
+    <script id="discrete-outline-renderer">
 
-    <!-- Fun fact: rendering fragment shader isn't slower than rendering wireframe on my machine -->
+        // parametric equation of the profile, t in [0,2π];
+        // outer: d = 0; inner: d = pi
+        function graph(t, d) {
+            var ct = cos(t), st = sin(t);
+            var a1 = A[0][0] * ct + A[1][0] * st;
+            var a2 = A[0][1] * ct + A[1][1] * st;
+            var a3 = A[0][2] * ct + A[1][2] * st;
+            var u = atan2(a2, a1);
+            var ku = a1 * cos(u) + a2 * sin(u);  // or sqrt(a1*a1+a2*a2)
+            var v = atan2(a3, ku) + d;
+            var p = [cos(u) * (iR + ir * cos(v)), sin(u) * (iR + ir * cos(v)), ir * sin(v)];
+            return UV(p);
+        }
+
+        function render_discrete_outline() {
+            if (!cks[4].checked) {
+                document.getElementById("segments").removeAttribute("d");
+                return;
+            }
+
+            // outer
+            var pathd = "";
+            const dt = PI / 100.;
+            for (var t = 0; t < 2 * PI; t += dt) {
+                var uv = graph(t, 0);
+                pathd += (t == 0 ? 'M' : 'L') + uv[0] + ',' + uv[1];
+            }
+            pathd += 'Z';
+
+            // inner
+            for (var t = 0; t < 2 * PI; t += dt) {
+                var uv = graph(t, PI);
+                pathd += (t == 0 ? 'M' : 'L') + uv[0] + ',' + uv[1];
+            }
+            pathd += 'Z';
+
+            document.getElementById("segments").setAttribute("d", pathd);
+        }
+
+    </script>
+
+
+
+    <!-- Fun fact: on my machine, rendering fragment shader isn't slower than rendering wireframe -->
 
     <pre id="vertex_shader_code" style="display:none">
 
@@ -321,6 +387,7 @@ precision highp float;
 
 // major and minor radiuses of the torus
 uniform float iR, ir;
+uniform float RAYMARCH;
 
 // signed distance to the torus
 float sdTorus(in vec3 p){
@@ -349,7 +416,7 @@ float iTorus(in vec3 ro, in vec3 rd) {
 
 #if 1
     // modified from the original
-    if (abs(rd.z)< min(ir/iR,1.) && n2>m-max(Ra2,ra2)) {
+    if (abs(rd.z)< min(ir/iR,1.) && n2>m-(Ra2+ra2)) {
         po = -1.0;
         float tmp=k1; k1=k3; k3=tmp;
         k0 = 1.0/k0; k1 = k1*k0; k2 = k2*k0; k3 = k3*k0;
@@ -414,29 +481,39 @@ uniform vec3 iUd, iVd;
 
 void main() {
     vec3 w = cross(iUd, iVd);
-    vec3 ro = 10.*w + vPos.x*iUd + vPos.y*iVd;
+    vec3 ro = 10.1*w + vPos.x*iUd + vPos.y*iVd;
     vec3 rd = -w;
     vec3 col = vec3(0.0);
-    float t = iTorus(ro, rd);
+    float t = 0.0;
+    if (RAYMARCH > 0.) {
+        const float MAX_STEP = 256.0;
+        for (float i=0.; i< MAX_STEP;i+=1.0) {
+            float dt = sdTorus(ro+rd*t);
+            t += dt;
+            if (dt< 0.001) break;
+            if (i+1.5>MAX_STEP) t=-1.0;
+        }
+    }
+    else t = iTorus(ro, rd);
     if (t>0.) {
         vec3 p = ro+rd*t;
         vec3 n = nTorus(p);
         col = vec3(.4)+.3*n;
         col += vec3(0.5)*pow(clamp(dot(n,w),0.,1.),10.);
     }
-    gl_FragColor = vec4(clamp(col,vec3(0),vec3(1)),1.0);
+    gl_FragColor = vec4(0.9*clamp(col,vec3(0),vec3(1)),1.0);
 }
 
 </pre>
 
-    <script id="raytrace_renderer">
+    <script id="raytrace-renderer">
 
         // variables made global
         var gl, programInfo, pos_buffer;
 
         // rendering entrance
         function render_raytrace() {
-            if (!cks[1].checked) {
+            if (!cks[2].checked) {
                 gl.clearColor(0, 0, 0, 1);
                 gl.clear(gl.COLOR_BUFFER_BIT);
                 return;
@@ -453,6 +530,7 @@ void main() {
             gl.uniform1f(programInfo.uniforms.pr, ir);
             gl.uniform3fv(programInfo.uniforms.pUd, A[0]);
             gl.uniform3fv(programInfo.uniforms.pVd, A[1]);
+            gl.uniform1f(programInfo.uniforms.pRayMarch, cks[1].checked ? 1.0 : -1.0);
 
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
@@ -495,6 +573,7 @@ void main() {
                     pr: gl.getUniformLocation(shaderProgram, 'ir'),
                     pUd: gl.getUniformLocation(shaderProgram, 'iUd'),
                     pVd: gl.getUniformLocation(shaderProgram, 'iVd'),
+                    pRayMarch: gl.getUniformLocation(shaderProgram, 'RAYMARCH'),
                 },
             };
 
@@ -503,6 +582,274 @@ void main() {
             gl.bindBuffer(gl.ARRAY_BUFFER, pos_buffer);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), gl.STATIC_DRAW);
 
+        }
+
+    </script>
+
+
+
+    <script id="vectorized-outline-renderer">
+
+        // this process is done numerically
+        // some functions are very ill-conditioned
+        // try not to use gradient information or creating local approximations
+
+        // vector operations
+        function add2(p, q) { return [p[0] + q[0], p[1] + q[1]]; }
+        function sub2(p, q) { return [p[0] - q[0], p[1] - q[1]]; }
+        function mul2(p, k) { return [p[0] * k, p[1] * k]; }
+        function dot2(p, q) { return p[0] * q[0] + p[1] * q[1]; }
+        function length2(p) { return sqrt(p[0] * p[0] + p[1] * p[1]); }
+        function length22(p) { return p[0] * p[0] + p[1] * p[1]; }
+        function normalize2(p) { var m = sqrt(p[0] * p[0] + p[1] * p[1]); return [p[0] / m, p[1] / m]; }
+
+        // implicit expression of a cubic bezier curve
+        function bezierImp(A, B, C, D) {
+            // algebraic coefficients
+            var x0 = A[0], y0 = A[1];
+            var x1 = -3 * A[0] + 3 * B[0], y1 = -3 * A[1] + 3 * B[1];
+            var x2 = 3 * A[0] - 6 * B[0] + 3 * C[0], y2 = 3 * A[1] - 6 * B[1] + 3 * C[1];
+            var x3 = -A[0] + 3 * B[0] - 3 * C[0] + D[0], y3 = -A[1] + 3 * B[1] - 3 * C[1] + D[1];
+            // Tell WolframAlpha to:
+            // Collect[Eliminate[{x3*t^3+x2*t^2+x1*t+x0==x,y3*t^3+y2*t^2+y1*t+y0==y},{t}],{x,y}]
+            var y32 = y3 ** 2, y33 = y3 ** 3, x32 = x3 ** 2, x33 = x3 ** 3;
+            var y22 = y2 ** 2, y23 = y2 ** 3, x22 = x2 ** 2, x23 = x2 ** 3;
+            var y12 = y1 ** 2, y13 = y1 ** 3, x12 = x1 ** 2, x13 = x1 ** 3;
+            var y02 = y0 ** 2, y03 = y0 ** 3, x02 = x0 ** 2, x03 = x0 ** 3;
+            var X3 = y33;
+            var X2Y = -3 * x3 * y32;
+            var XY2 = 3 * x32 * y3;
+            var Y3 = -x33;
+            var X2 = x3 * y23 - 3 * x3 * y1 * y2 * y3 - x2 * y22 * y3 + 3 * x3 * y0 * y32 + 2 * x2 * y1 * y32 + x1 * y2 * y32 - 3 * x0 * y33;
+            var XY = 3 * x32 * y1 * y2 - 2 * x2 * x3 * y22 - 6 * x32 * y0 * y3 - x2 * x3 * y1 * y3 + 2 * x22 * y2 * y3 + x1 * x3 * y2 * y3 - 3 * x1 * x2 * y32 + 6 * x0 * x3 * y32;
+            var Y2 = -(-3 * x33 * y0 + x2 * x32 * y1 - x22 * x3 * y2 + 2 * x1 * x32 * y2 + x23 * y3 - 3 * x1 * x2 * x3 * y3 + 3 * x0 * x32 * y3);
+            var X = x32 * y13 - 3 * x32 * y0 * y1 * y2 - x2 * x3 * y12 * y2 + 2 * x2 * x3 * y0 * y22 + x1 * x3 * y1 * y22 - 2 * x0 * x3 * y23 + 3 * x32 * y02 * y3 + x2 * x3 * y0 * y1 * y3 + x22 * y12 * y3 - 2 * x1 * x3 * y12 * y3 - 2 * x22 * y0 * y2 * y3 - x1 * x3 * y0 * y2 * y3 - x1 * x2 * y1 * y2 * y3 + 6 * x0 * x3 * y1 * y2 * y3 + 2 * x0 * x2 * y22 * y3 + 3 * x1 * x2 * y0 * y32 - 6 * x0 * x3 * y0 * y32 + x12 * y1 * y32 - 4 * x0 * x2 * y1 * y32 - 2 * x0 * x1 * y2 * y32 + 3 * x02 * y33;
+            var Y = -(3 * x33 * y02 - 2 * x2 * x32 * y0 * y1 + x1 * x32 * y12 + 2 * x22 * x3 * y0 * y2 - 4 * x1 * x32 * y0 * y2 - x1 * x2 * x3 * y1 * y2 + 3 * x0 * x32 * y1 * y2 + x12 * x3 * y22 - 2 * x0 * x2 * x3 * y22 - 2 * x23 * y0 * y3 + 6 * x1 * x2 * x3 * y0 * y3 - 6 * x0 * x32 * y0 * y3 + x1 * x22 * y1 * y3 - 2 * x12 * x3 * y1 * y3 - x0 * x2 * x3 * y1 * y3 - x12 * x2 * y2 * y3 + 2 * x0 * x22 * y2 * y3 + x0 * x1 * x3 * y2 * y3 + x13 * y32 - 3 * x0 * x1 * x2 * y32 + 3 * x02 * x3 * y32);
+            var _1 = -(-x33 * y03 + x2 * x32 * y02 * y1 - x1 * x32 * y0 * y12 + x0 * x32 * y13 - x22 * x3 * y02 * y2 + 2 * x1 * x32 * y02 * y2 + x1 * x2 * x3 * y0 * y1 * y2 - 3 * x0 * x32 * y0 * y1 * y2 - x0 * x2 * x3 * y12 * y2 - x12 * x3 * y0 * y22 + 2 * x0 * x2 * x3 * y0 * y22 + x0 * x1 * x3 * y1 * y22 - x02 * x3 * y23 + x23 * y02 * y3 - 3 * x1 * x2 * x3 * y02 * y3 + 3 * x0 * x32 * y02 * y3 - x1 * x22 * y0 * y1 * y3 + 2 * x12 * x3 * y0 * y1 * y3 + x0 * x2 * x3 * y0 * y1 * y3 + x0 * x22 * y12 * y3 - 2 * x0 * x1 * x3 * y12 * y3 + x12 * x2 * y0 * y2 * y3 - 2 * x0 * x22 * y0 * y2 * y3 - x0 * x1 * x3 * y0 * y2 * y3 - x0 * x1 * x2 * y1 * y2 * y3 + 3 * x02 * x3 * y1 * y2 * y3 + x02 * x2 * y22 * y3 - x13 * y0 * y32 + 3 * x0 * x1 * x2 * y0 * y32 - 3 * x02 * x3 * y0 * y32 + x0 * x12 * y1 * y32 - 2 * x02 * x2 * y1 * y32 - x02 * x1 * y2 * y32 + x03 * y33);
+            return [X3, X2Y, XY2, Y3, X2, XY, Y2, X, Y, _1];
+        }
+        // estimate the distance to an implicit bezier curve
+        function distImp(c, p) {
+            var x = p[0], y = p[1];
+            var x2 = x * x, xy = x * y, y2 = y * y, x3 = x2 * x, x2y = x2 * y, xy2 = x * y2, y3 = y * y2;
+            // value
+            var val = c[0] * x3 + c[1] * x2y + c[2] * xy2 + c[3] * y3 + c[4] * x2 + c[5] * xy + c[6] * y2 + c[7] * x + c[8] * y + c[9];
+            // directional derivatives
+            var ddx = c[0] * 3 * x2 + c[1] * 2 * xy + c[2] * y2 + c[4] * 2 * x + c[5] * y + c[7];
+            var ddy = c[1] * x2 + c[2] * 2 * xy + c[3] * 3 * y2 + c[5] * x + c[6] * 2 * y + c[8];
+            // divide by gradient (prevent division by zero)
+            return val / sqrt(ddx * ddx + ddy * ddy + 1);
+        }
+
+        // algebraic (expanded) expression of a cubic bezier curve
+        function bezierAlg(A, B, C, D) {
+            var x0 = A[0], y0 = A[1];
+            var x1 = -3 * A[0] + 3 * B[0], y1 = -3 * A[1] + 3 * B[1];
+            var x2 = 3 * A[0] - 6 * B[0] + 3 * C[0], y2 = 3 * A[1] - 6 * B[1] + 3 * C[1];
+            var x3 = -A[0] + 3 * B[0] - 3 * C[0] + D[0], y3 = -A[1] + 3 * B[1] - 3 * C[1] + D[1];
+            return [[x0, y0], [x1, y1], [x2, y2], [x3, y3]];
+        }
+        // distance to a (descretized) cubic bezier curve
+        // slower than the implicit one but more accurate and stable
+        function distBezier(c, p) {  // c: bezierAlg
+            var dt = 1.0 / 30;
+            var c0 = sub2(c[0], p);
+            var md = length22(c0);
+            var a = c0;
+            for (var t = dt; t < 0.9999; t += dt) {
+                var b = [
+                    c0[0] + t * (c[1][0] + t * (c[2][0] + t * c[3][0])),
+                    c0[1] + t * (c[1][1] + t * (c[2][1] + t * c[3][1]))
+                ];
+                var ab = sub2(b, a);
+                var h = -dot2(ab, a) / dot2(ab, ab);
+                if (h > 0) {
+                    h = min(h, 1);
+                    var d = length22([a[0] + h * ab[0], a[1] + h * ab[1]]);
+                    if (d < md) md = d;
+                }
+                a = b;
+            }
+            return sqrt(md);
+        }
+
+        // numerically minimize a function
+        function goldenSectionSearch(fun, x0, x1, eps = 1e-12) {
+            const g1 = 0.5 * (sqrt(5) - 1), g0 = 1 - g1;
+            var t0 = g1 * x0 + g0 * x1;
+            var t1 = g0 * x0 + g1 * x1;
+            var y0 = fun(t0), y1 = fun(t1);
+            for (var i = 0; i < 64; i++) {
+                if (y0 < y1) {
+                    x1 = t1, y1 = y0;
+                    t1 = t0, t0 = g1 * x0 + g0 * x1;
+                    y0 = fun(t0);
+                }
+                else {
+                    x0 = t0, y0 = y1;
+                    t0 = t1, t1 = g0 * x0 + g1 * x1;
+                    y1 = fun(t1);
+                }
+                if (x1 - x0 < eps) break;
+            }
+            return 0.5 * (x0 + x1);
+        }
+
+        // numerical integral
+        function NIntegral(fun, x0, x1, N) {
+            N *= 2;
+            var dx = (x1 - x0) / N;
+            s = 0;
+            for (var i = 1; i < N; i += 2) s += fun(x0 + i * dx);
+            s *= 2;
+            for (var i = 2; i < N; i += 2) s += fun(x0 + i * dx);
+            s = 2 * s + fun(x0) + fun(x1);
+            return s * (dx / 3);
+        }
+
+        // fit a parametric curve to a cubic bezier curve with given endpoints and tangents
+        // fun(t): return [[x,y],[dx/dt,dy/dt]]; should be symmetric for it to work
+        // return m, two control points are p0+m*d0 and p1-m*d1
+        function fitBezier_s(fun, p0, p1, d0, d1) {
+            function Err(m) {
+                var q0 = [p0[0] + m * d0[0], p0[1] + m * d0[1]], q1 = [p1[0] - m * d1[0], p1[1] - m * d1[1]];
+                //var ci = bezierImp(p0, q0, q1, p1);
+                var ca = bezierAlg(p0, q0, q1, p1);
+                return NIntegral(function (t) {
+                    var fd = fun(t);
+                    //var d = distImp(ci, fd[0]);
+                    var d = distBezier(ca, fd[0]);
+                    return d * d * length2(fd[1]);
+                }, 0, 1, 10);
+            }
+            var dp = sub2(p1, p0);
+            var det = d0[0] * d1[1] - d0[1] * d1[0];
+            var u = (dp[0] * d1[1] - dp[1] * d1[0]) / det;
+            var v = (d0[0] * dp[1] - d0[1] * dp[0]) / det;  // the input should ensure u==v and u,v>0
+            //if (min(u, v) < 0) d0 = mul2(d0, -1), d1 = mul2(d1, -1), u *= -1, v *= -1;
+            return goldenSectionSearch(Err, 0, max(u, v), 1e-4);
+        }
+
+
+        // parametric equation of the outline with analytical derivative
+        function graphd(t, query, d) {
+            var ct = cos(t), st = sin(t);
+            const cd = cos(d), sd = sin(d);
+
+            // value
+            var a1 = A[0][0] * ct + A[1][0] * st;
+            var a2 = A[0][1] * ct + A[1][1] * st;
+            var a3 = A[0][2] * ct + A[1][2] * st;
+            var ku = sqrt(a1 * a1 + a2 * a2);
+            var cu = a1 / ku, su = a2 / ku;
+            var kv = sqrt(a3 * a3 + ku * ku);
+            var ku_kv = ku / kv, a3_kv = a3 / kv;
+            var cv = ku_kv * cd - a3_kv * sd;
+            var sv = ku_kv * sd + a3_kv * cd;
+            var Rr = iR + ir * cv;
+            var P;
+            if (query[0] != 'd') {
+                P = [cu * Rr, su * Rr, ir * sv];
+                P = [
+                    A[0][0] * P[0] + A[0][1] * P[1] + A[0][2] * P[2],
+                    A[1][0] * P[0] + A[1][1] * P[1] + A[1][2] * P[2]
+                ];
+                if (query == 'P') return P;
+                if (query == 'Puv') return [P[0] * iSc + Center[0], -P[1] * iSc + Center[1]];
+                if (query == 'Pm') return P[0] * P[0] + P[1] * P[1];
+            }
+
+            // analytical derivative (chain rule)
+            var a1_ = -A[0][0] * st + A[1][0] * ct;
+            var a2_ = -A[0][1] * st + A[1][1] * ct;
+            var a3_ = -A[0][2] * st + A[1][2] * ct;
+            var ku_ = cu * a1_ + su * a2_;
+            var cu_ = (a1_ * ku - a1 * ku_) / (ku * ku);
+            var su_ = (a2_ * ku - a2 * ku_) / (ku * ku);
+            var kv_ = cv * ku_ + sv * a3_;
+            var ku_kv_ = (ku_ * kv - ku * kv_) / (kv * kv);
+            var a3_kv_ = (a3_ * kv - a3 * kv_) / (kv * kv);
+            var cv_ = ku_kv_ * cd - a3_kv_ * sd;
+            var sv_ = ku_kv_ * sd + a3_kv_ * cd;
+            var Rr_ = ir * cv_;
+            var P_ = [cu * Rr_ + cu_ * Rr, su * Rr_ + su_ * Rr, ir * sv_];
+            P_ = [
+                A[0][0] * P_[0] + A[0][1] * P_[1] + A[0][2] * P_[2],
+                A[1][0] * P_[0] + A[1][1] * P_[1] + A[1][2] * P_[2]
+            ];
+            if (query == 'dP') return P_;
+            if (query == 'dPm') return P_[0] * P_[0] + P_[1] * P_[1];
+            if (query == 'dPuv') return [P_[0] * iSc, -P_[1] * iSc];
+            if (query == 'XD') return [P, P_];
+        }
+
+
+        function render_vector_outline() {
+            if (!cks[5].checked) {
+                document.getElementById("spline").removeAttribute("d");
+                document.getElementById("spline-anchor").innerHTML = "";
+                return;
+            }
+
+            // if render anchor points of the spline
+            const has_anchor = !(cks[0].checked || cks[2].checked || cks[3].checked || cks[4].checked);
+
+            // for writing SVG
+            function p2str(p) {
+                return p[0] + "," + p[1];
+            }
+            function line(p, q) {
+                return "<line x1='" + p[0] + "' y1='" + p[1] + "' x2='" + q[0] + "' y2='" + q[1] + "' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'/>";
+            }
+
+            // parameter of axes of symmetric, requires A to be orthogonal
+            var t0 = atan2(-A[0][2], A[1][2]);
+            var t1 = t0 + PI / 2;
+
+            var pathi = "", patho = "";
+            var anchor = "";
+            var time_0 = performance.now();
+
+            for (var i = 0; i < 4; i++) {
+                // find the parameter of line "broken point"
+                // derivative equals to zero, infinite curvature
+                var u0 = goldenSectionSearch(function (t) { return graphd(t, 'dPm', PI); }, t0 - PI / 2, t0, 1e-8);
+                var u1 = goldenSectionSearch(function (t) { return graphd(t, 'dPm', PI); }, t0, t0 + PI / 2, 1e-8);
+                // if the expression is true, then broken line exist
+                // if exist, each outline has 4 curves; otherwise 2
+                if (u1 - u0 > 1e-6) {
+                    // bezier curve fitting
+                    // inner outline
+                    var d0 = normalize2(graphd(u0 + 0.01 * (u1 - u0), 'dP', PI));
+                    var d1 = normalize2(graphd(u1 - 0.01 * (u1 - u0), 'dP', PI));
+                    var p0 = graphd(u0, 'P', PI);
+                    var p1 = graphd(u1, 'P', PI);
+                    var m = fitBezier_s(function (t) { return graphd(u0 + (u1 - u0) * t, 'XD', PI); }, p0, p1, d0, d1);
+                    d0 = mul2(d0, m); d1 = mul2(d1, m);
+                    var P0 = UV2d(p0), P1 = UV2d(p1), Q0 = UV2d(add2(p0, d0)), Q1 = UV2d(sub2(p1, d1));
+                    if (pathi.indexOf('M') == -1) pathi += 'M' + p2str(P0);
+                    pathi += "C" + p2str(Q0) + " " + p2str(Q1) + " " + p2str(P1);
+                    if (has_anchor) anchor += line(P0, Q0) + line(P1, Q1);
+                    // outer outline
+                    d0 = normalize2(graphd(u0 + 0.01 * (u1 - u0), 'dP', 0));
+                    d1 = normalize2(graphd(u1 - 0.01 * (u1 - u0), 'dP', 0));
+                    p0 = graphd(u0, 'P', 0);
+                    p1 = graphd(u1, 'P', 0);
+                    m = fitBezier_s(function (t) { return graphd(u0 + (u1 - u0) * t, 'XD', 0); }, p0, p1, d0, d1);
+                    d0 = mul2(d0, m); d1 = mul2(d1, m);
+                    P0 = UV2d(p0), P1 = UV2d(p1), Q0 = UV2d(add2(p0, d0)), Q1 = UV2d(sub2(p1, d1));
+                    if (patho.indexOf('M') == -1) patho += 'M' + p2str(P0);
+                    patho += "C" + p2str(Q0) + " " + p2str(Q1) + " " + p2str(P1);
+                    if (has_anchor) anchor += line(P0, Q0) + line(P1, Q1);
+                }
+                t0 += PI / 2, t1 += PI / 2;
+            }
+            pathi += 'Z', patho += 'Z';
+
+            var time_elapsed = performance.now() - time_0;
+            //console.log(time_elapsed);
+            document.getElementById("spline").setAttribute("d", pathi + patho);
+            document.getElementById("spline-anchor").innerHTML = anchor;
         }
 
     </script>
