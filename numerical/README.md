@@ -4,9 +4,11 @@ Used by code in this repository. Add `Graphics` folder in the compiler additiona
 
 Avoid object orientation for simplicity and performance.
 
-Files started with an underscore are used for debugging header files.
+Files in the `debug` directory are used for debugging header files.
 
 --------
+
+Some of the following headers include other headers.
 
 [rootfinding.h](rootfinding.h): find the roots of functions;
 
@@ -14,13 +16,17 @@ Files started with an underscore are used for debugging header files.
 
 [geometry.h](geometry.h): 2d/3d vector, 3d matrix; misc macros/functions;
 
-[random.h](random.h): float-point random number generator;
+[random.h](random.h): floating-point random number generator;
+
+[interpolation.h](interpolation.h): generate interpolated or fitted functions on discrete sample points;
 
 [linearsystem.h](linearsystem.h): matrixes as 1d arrays of length N×N; Gaussian elimination;
 
 [eigensystem.h](eigensystem.h): find the eigenvalues/eigenpairs of real symmetric matrices;
 
+[integral.h](integral.h): numerical integration of functions;
+
 [ode.h](ode.h): numerical ordinary differential equation solutions;
 
-To-do: integral.h, interpolation.h, fft.h, complex.h
+To-do: fft.h, complex.h
 
