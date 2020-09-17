@@ -31,7 +31,7 @@ double hashf(double x, double y) {
 
 // from Numerical Recipes
 unsigned int _IDUM = 0;
-unsigned randu() { return _IDUM = _IDUM * 1664525 + 1013904223; }
+unsigned randu() { return _IDUM = _IDUM * 1664525u + 1013904223u; }
 void _SRAND(unsigned i) { _IDUM = hashu(i); }
 
 #else
