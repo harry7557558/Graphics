@@ -146,6 +146,79 @@ int solveQuartic_dg(double k4, double k3, double k2, double k1, double k0, doubl
 
 
 
+// Solve an arbitrary degree polynomial using bisection method
+// O(N²) or O(N²logN), numerically stable when the polynomial does not have multiple roots
+
+// N: degree of the polynomial
+// C: lowest degree term comes first, allocate to N+1
+// R: allocate to at least N for safety
+// the result will be naturally sorted in increasing order
+int solvePolynomial_bisect(int N, const double* C, double* R,
+	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15) {
+
+	// low-degree cases
+	if (N == 0)
+		return 0;
+	if (N == 1) {
+		R[0] = -C[0] / C[1];
+		return 1;
+	}
+
+	// find the roots of its derivative
+	double* Cd = new double[N];
+	for (int i = 1; i <= N; i++) {
+		Cd[i - 1] = C[i] * i;
+	}
+	double *Rd = new double[N - 1];
+	int NRd = solvePolynomial_bisect(N - 1, Cd, Rd, x0, x1, eps);
+
+	// polynomial evaluation
+	auto evalPolynomial = [&](const double* C, int N, double x)->double {
+		double r = 0;
+		for (int i = N; i >= 0; i--) r = r * x + C[i];
+		return r;
+	};
+
+	// bisection search root finding
+	auto binarySearch = [&](double x0, double x1)->double {
+		double y0 = evalPolynomial(C, N, x0), y1 = evalPolynomial(C, N, x1);
+		if ((y0 < 0) == (y1 < 0)) return NAN;
+		for (int i = 0; i < 256; i++) {
+			double x = 0.5 * (x0 + x1);
+			double y = evalPolynomial(C, N, x);
+			if ((y < 0) ^ (y0 < 0)) y1 = y, x1 = x;
+			else y0 = y, x0 = x;
+			if (x1 - x0 < eps) break;
+		}
+		return 0.5*(x0 + x1);
+	};
+
+	// roots must exist in between when sorted
+	// according to differential mean value theorem
+	int NR = 0;
+	double r;
+	if (NRd == 0) {
+		if (!std::isnan(r = binarySearch(x0, x1))) R[NR++] = r;
+	}
+	else {
+		if (!std::isnan(r = binarySearch(x0, Rd[0]))) R[NR++] = r;
+		for (int i = 1; i < NRd; i++) {
+			if (!std::isnan(r = binarySearch(Rd[i - 1], Rd[i]))) R[NR++] = r;
+		}
+		if (!std::isnan(r = binarySearch(Rd[NRd - 1], x1))) R[NR++] = r;
+	}
+
+	delete Cd; delete Rd;
+	return NR;
+}
+
+
+
+
+
+
+
+
 // Solve a*cos(x)+b*sin(x)+c=0 in non-degenerated case
 // solutions in [-π,π]; return false if no real solution
 bool solveTrigL(double a, double b, double c, double r[2]) {
