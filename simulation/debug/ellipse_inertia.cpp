@@ -11,7 +11,7 @@
 // calculate the perimeter of an ellipse
 double ellipse_perimeter(double a, double b) {
 	double a2 = a * a, b2 = b * b;
-	return NIntegral<double>([&](double t) {
+	return NIntegrate_Simpson<double>([&](double t) {
 		double ct = cos(t), st = sin(t);
 		return sqrt(a2 * st*st + b2 * ct*ct);
 	}, 0, 2 * PI, 1000);
@@ -21,7 +21,7 @@ double ellipse_perimeter(double a, double b) {
 // Interactive graph: https://www.desmos.com/calculator/raeuahskxm
 double ellipse_inertia(double a, double b) {
 	double a2 = a * a, b2 = b * b;
-	vec2 mi = NIntegral<vec2>([&](double t) {
+	vec2 mi = NIntegrate_Simpson<vec2>([&](double t) {
 		double ct = cos(t), st = sin(t);
 		ct *= ct, st *= st;
 		double dl = sqrt(a2 * st + b2 * ct);

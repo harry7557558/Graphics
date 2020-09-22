@@ -5,7 +5,6 @@
 // Multivariable numerical root-finding
 
 // Remove debug code in solveTrigPoly() after well-tested
-// Get rid of <algorithm> as it sometimes causes compile error when max and min macros are defined
 
 
 
@@ -13,9 +12,6 @@
 
 #define __INC_ROOTFINDING_H
 
-// :(
-#undef max
-#undef min
 
 #include <cmath>
 #include <algorithm>
@@ -620,10 +616,6 @@ double solveTrigQuartic_refine(double k4, double k3, double k2, double k1, doubl
 
 
 
-
-// :^(
-#define max(x,y) ((x)>(y)?(x):(y))
-#define min(x,y) ((x)<(y)?(x):(y))
 
 #endif // __INC_ROOTFINDING_H
 

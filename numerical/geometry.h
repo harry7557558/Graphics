@@ -1,3 +1,4 @@
+// vector, matrix, small useful functions
 
 
 #ifndef __INC_GEOMETRY_H
@@ -12,18 +13,19 @@
 #define PI 3.1415926535897932384626
 #endif
 
-// for macros, do not use rand() because it will be called multiple times
-#undef max
-#undef min
-#define max(x,y) ((x)>(y)?(x):(y))
-#define min(x,y) ((x)<(y)?(x):(y))
-#define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
-#define mix(x,y,a) ((x)*(1-a)+(y)*(a))
+// defining max and min as macros may cause problems in standard libraries
+#ifndef max
+template<typename T> inline T max(T x, T y) { return (x > y ? x : y); }
+#endif
+#ifndef min
+template<typename T> inline T min(T x, T y) { return (x < y ? x : y); }
+#endif
+template<typename T> inline T clamp(T x, T a, T b) { return (x<a ? a : x>b ? b : x); }
+template<typename T, typename f> inline T lerp(T x, T y, f a) { return (x * (f(1) - a) + y * a); }
 
 #if 1
 #define invsqrt(x) (1.0/sqrt(x))
 #else
-// test: faster in debug mode but not release mode
 #include <stdint.h>
 double invsqrt(double x) {
 	// https://cs.uwaterloo.ca/~m32rober/rsqrt.pdf#page=49

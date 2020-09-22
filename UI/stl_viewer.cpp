@@ -200,7 +200,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 // https://github.com/Harry7557558/Graphics/tree/master/fitting/numerical
 #include "numerical\geometry.h"  // vec2, vec3, mat3
 #include "numerical\eigensystem.h"  // EigenPairs_Jacobi
-typedef _geometry_triangle<vec3> triangle;
+typedef struct { vec3 a, b, c; } triangle;
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
