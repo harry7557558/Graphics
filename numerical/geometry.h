@@ -14,14 +14,12 @@
 #endif
 
 // defining max and min as macros may cause problems in standard libraries
-#ifndef max
+#undef max
+#undef min
 template<typename T> inline T max(T x, T y) { return (x > y ? x : y); }
-#endif
-#ifndef min
 template<typename T> inline T min(T x, T y) { return (x < y ? x : y); }
-#endif
-template<typename T> inline T clamp(T x, T a, T b) { return (x<a ? a : x>b ? b : x); }
-template<typename T, typename f> inline T lerp(T x, T y, f a) { return (x * (f(1) - a) + y * a); }
+template<typename T, typename t> inline T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
+template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
 
 #if 1
 #define invsqrt(x) (1.0/sqrt(x))
@@ -110,6 +108,7 @@ struct vec3 {
 	friend vec3 normalize(vec3 v) { double m = invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); return vec3(v.x*m, v.y*m, v.z*m); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
+	friend vec3 ncross(vec3 u, vec3 v) { return normalize(cross(u, v)); }
 	friend double det(vec3 a, vec3 b, vec3 c) { return dot(a, cross(b, c)); }
 
 	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }

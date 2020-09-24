@@ -28,27 +28,26 @@
 // Ctrl+Scroll to move viewport center along z-axis
 // Alt+Click object to move viewport center to the clicked point on the object (recommend)
 // Press Numpad decimal key to move viewport center to the center of the object (center of its bounding box)
+// Press Numpad0 to move viewport center to the coordinate origin
 // The function of a single press of Numpad keys is the same as that in Blender 2.80
-//   - Numpad0: Move camera to negative y direction (look at positive y)
+//   - Numpad1: Move camera to negative y direction (look at positive y)
 //   - Numpad3: Move camera to positive x direction (look at negative x)
 //   - Numpad7: Move camera to positive z direction (look down, x-axis at right)
 //   - Numpad9: Move camera to negative z direction (look up, x-axis at right)
-//   - Numpad5: Dolly zoom, move camera extremely far away to simulate orthographic projection
+//   - Numpad5: Switch between orthographic and perspective projections
 //   - Numpad4: Rotate camera position horizontally around viewport center for 15 degrees (clockwise)
-//   - Numpad6: Rotate camera position horizontally for 15 degrees (counterclockwise)
-//   - Numpad8: Increase camera position vertical angle for 15 degrees
-//   - Numpad2: Decrease camera position vertical angle for 15 degrees
-//       (I may not use the right terminology)
+//   - Numpad6: Rotate camera position horizontally by 15 degrees (counterclockwise)
+//   - Numpad8: Increase camera position vertical angle by 15 degrees
+//   - Numpad2: Decrease camera position vertical angle by 15 degrees
 // WSAD keys are supported but not recommended (may be used along with Alt+Click)
 // Press Home key or Ctrl+0 to reset viewport to default
 // To-do list:
-//   - Rotation and zooming that changes the position of viewport center but not camera
-//   - Moving camera along xOy plane
+//   - Rotation and zooming that changes the position of viewport center but not camera (Shift+Numpad)
+//   - Moving camera along xOy plane but not changing the viewport center (Ctrl+Shift+Drag)
 //   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
 //   - Dynamic translation and zooming based on the position of the camera and viewport center
-//   - Arrow keys to go up/dow (help with WSAD)
+//   - Arrow keys to go up/down (help with WSAD)
 //   - Free rotation when grid is hidden
-//   - Numpad0 to move viewport center to origin
 //   - A key to move viewport center to center of mass
 //   - Optional: "crawling" on the surface
 
@@ -68,15 +67,20 @@
 // Press I to show/hide highlighting of the object's inertia tensor
 //   - The inertia tensor (calculated at the center of mass) is visualized as three yellow principle axes with lengths equal to the principle radiuses
 //   - If one or more calculations get NAN, there will be a dark green cross at the center of mass
-// By default, the center of mass and inertia tensor calculator assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
+// By default, the center of mass and inertia tensor calculator (based on divergence theorem) assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
 // To-do list:
-//   - Clamp the outline depth to eliminate black "dashes"
+//   - [not trivial] Fix the stroking issue
 //   - Fix bug: top-right axis distortion under high perspective and zooming
 //   - An option to always show viewport center
+//   - Math visualization:
+//     - show grid on other planes
+//     - setAxisRatio
+//     - A (mandatory) clipping box
+//     - Right click to read value
+//   - Rendering with normal/color loaded from file
 //   - Hide/unhide part of object
 //   - Visualization of the objects' bounding box
 //   - Visualization of the volume of the object
-//   - Rendering with normal loaded from file
 //   - Semi-transparent shading
 //   - Outline rendering based on geometry
 //   - Smoothed shading (interpolation)
@@ -86,20 +90,21 @@
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
 // Press Ctrl+S to save edited object
-// Press F5 to reload object (there will not be warning about unsaved changes)
-// Right-click window to set window to topmost or non-topmost
+// Press F5 to reload object from file, Shift+F5 or F9 to reload without resetting the current viewport
+// Press T to set window to topmost or non-topmost
 // Hold Alt key to modify object:
 //   - Press Numpad . to place the object on the center of xOy plane
-//   - Press Numpad 4/6/2/8 to rotate object left/right/up/down about its center of mass
-//   - Press arrow keys to move object left/right/up/down
-//   - Press Numpad5 to translate object so that its center of mass coincident with the origin
-//   - Press plus/minus keys to scale the object about its center of mass
+//   - Press Numpad 4/6/2/8/7/9 to rotate object left/right/up/down/counter/clockwise about its center
+//   - Press arrow keys to move object left/right/front/back (in screen coordinate)
+//   - Press Numpad5 to translate object so that its center coincident with the origin
+//   - Press plus/minus keys to scale the object about its center
+//   - Hold Shift and press plus/minus keys to scale the object along z-axis, about the xOy plane
 // To-do list:
+//   - Report error if the file contains NAN/INF values
 //   - Shortcuts to rotate object to make its principle axes axis-oriented
 //   - Nonlinear transforms
 //   - Reflection
 //   - Mouse-involved editings (eg. dragging, scrolling)
-//   - Shift+F5 to reload without updating viewport
 //   - Shortcut to view next/previous model in directory
 //   - Support for non-standard animated STL (keyframes for position/orientation)
 //   - Recording GIF
@@ -197,7 +202,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #pragma region Vector & Matrix
 
-// https://github.com/Harry7557558/Graphics/tree/master/fitting/numerical
 #include "numerical\geometry.h"  // vec2, vec3, mat3
 #include "numerical\eigensystem.h"  // EigenPairs_Jacobi
 typedef struct { vec3 a, b, c; } triangle;
@@ -250,6 +254,7 @@ double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
 // viewport
 vec3 Center;  // view center in world coordinate
 double rz, rx, ry, dist, Unit;  // yaw, pitch, roll, camera distance, scale to screen
+bool use_orthographic = false;
 
 // window parameters
 Affine Tr;  // matrix
@@ -262,7 +267,7 @@ void calcMat() {
 	Affine D{ veci, vecj, veck, -Center, vec3(0), 1.0 };  // world translation
 	Affine R{ vec3(-sz, cz, 0), vec3(-cz * sx, -sz * sx, cx), vec3(-cz * cx, -sz * cx, -sx), vec3(0), vec3(0), 1.0 };  // rotation
 	R = Affine{ vec3(cy, -sy, 0), vec3(sy, cy, 0), vec3(0, 0, 1), vec3(0), vec3(0), 1.0 } *R;  // camera roll (ry)
-	Affine P{ veci, vecj, veck, vec3(0), vec3(0, 0, 1.0 / dist), 1.0 };  // perspective
+	Affine P{ veci, vecj, veck, vec3(0), vec3(0, 0, use_orthographic ? 0. : (1.0 / dist)), 1.0 };  // perspective
 	Affine S{ veci, vecj, veck, vec3(0), vec3(0), 1.0 / Unit };  // scaling
 	Affine T{ veci, vecj, veck, vec3(SCRCTR, 0.0), vec3(0), 1.0 };  // screen translation
 	Tr = T * S * P * R * D;
@@ -305,7 +310,7 @@ bool DarkBackground = false;
 WCHAR filename[MAX_PATH] = L"";
 int N; triangle *T = 0;
 vec3 BMin, BMax;  // bounding box
-double V; vec3 COM;  // volume/area & center of mass
+double Volume; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
 
 void calcBoundingBox() {
@@ -319,26 +324,26 @@ void calcBoundingBox() {
 void calcVolumeCenterInertia() {
 	// Assume the object to be uniform density
 	// I might have a bug
-	V = 0; COM = vec3(0.0); Inertia = mat3(0.0);
+	Volume = 0; COM = vec3(0.0); Inertia = mat3(0.0);
 	for (int i = 0; i < N; i++) {
 		vec3 a = T[i].a, b = T[i].b, c = T[i].c;
 		if (TreatAsSolid) {
 			double dV = det(a, b, c) / 6.;
-			V += dV;
+			Volume += dV;
 			COM += dV * (a + b + c) / 4.;
 			Inertia += dV * 0.1*(mat3(dot(a, a) + dot(b, b) + dot(c, c) + dot(a, b) + dot(a, c) + dot(b, c)) -
 				(tensor(a, a) + tensor(b, b) + tensor(c, c) + 0.5*(tensor(a, b) + tensor(a, c) + tensor(b, a) + tensor(b, c) + tensor(c, a) + tensor(c, b))));
 		}
 		else {
 			double dV = 0.5*length(cross(b - a, c - a));
-			V += dV;
+			Volume += dV;
 			COM += dV * (a + b + c) / 3.;
 			Inertia += dV / 6. *(mat3(dot(a, a) + dot(b, b) + dot(c, c) + dot(a, b) + dot(a, c) + dot(b, c)) -
 				(tensor(a, a) + tensor(b, b) + tensor(c, c) + 0.5*(tensor(a, b) + tensor(a, c) + tensor(b, a) + tensor(b, c) + tensor(c, a) + tensor(c, b))));
 		}
 	}
-	COM /= V;
-	Inertia = Inertia - V * (mat3(dot(COM, COM)) - tensor(COM, COM));
+	COM /= Volume;
+	Inertia = Inertia - Volume * (mat3(dot(COM, COM)) - tensor(COM, COM));
 	vec3 L;
 	EigenPairs_Jacobi(3, &Inertia.v[0][0], (double*)&L, &Inertia_O.v[0][0]);
 	Inertia_D = mat3(L);
@@ -452,16 +457,21 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 			if (z < _DEPTHBUF[j][i]) {
 				vec2 ap = p - a, bp = p - b, cp = p - c;
 				if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0) {
-					Canvas(j, i) = fill, _DEPTHBUF[j][i] = z;
+					Canvas(j, i) = fill;
+					_DEPTHBUF[j][i] = z;
 				}
 			}
 		}
 	}
 
 	if (stroke != -1) {
-		// WHY I HAVE THE SAME CODE COPY-PASTED THREE TIMES??
+		/*double z_min = std::min({
+			k * dot(n, vec3(A.xy(), 0) - A),
+			k * dot(n, vec3(B.xy(), 0) - A),
+			k * dot(n, vec3(C.xy(), 0) - A) });*/
+			// WHY I HAVE THE SAME CODE COPY-PASTED THREE TIMES??
 		auto drawLine = [&](vec3 p, vec3 q) {
-			vec3 d = q - p;
+			vec3 d = q - p; double d2 = d.xy().sqr();
 			double slope = d.y / d.x;
 			if (abs(slope) <= 1.0) {
 				if (p.x > q.x) std::swap(p, q);
@@ -470,8 +480,17 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 				for (int x = x0; x <= x1; x++, yf += slope) {
 					y = (int)(yf + 0.5);
 					if (y >= 0 && y < _WIN_H) {
+						if (0) {  // an unsuccessful attempt to fix the stroking bug
+							vec2 p(x, y);
+							vec2 ap = p - a, bp = p - b, cp = p - c;
+							if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0);
+							else continue;
+						}
 						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
-						if (z <= _DEPTHBUF[x][y]) Canvas(x, y) = stroke, _DEPTHBUF[x][y] = z;
+						if (z <= _DEPTHBUF[x][y]) {
+							Canvas(x, y) = stroke;
+							_DEPTHBUF[x][y] = z;
+						}
 					}
 				}
 			}
@@ -483,8 +502,34 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 				for (int y = y0; y <= y1; y++, xf += slope) {
 					x = (int)(xf + 0.5);
 					if (x >= 0 && x < _WIN_W) {
+						// the stroking bug isn't trivil to fix (at least for me)
+						// (x,y) isn't always inside the triangle
+						if (0) {
+							vec2 p(x, y);
+							vec2 ap = p - a, bp = p - b, cp = p - c;
+							if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0);
+							else continue;
+						}
+#if 0
+						double h = dot(vec2(x, y) - p.xy(), d.xy()) / d2;
+						double eps = k * dot(n, vec3(d.xy()*dot(vec2(slope, 1), d.xy()) / d2, 0));
+						if (eps < 0.) eps *= -1;
+						vec2 c = p.xy() + d.xy()*h;
+						double z1 = k * dot(n, vec3(c, 0) - A) - eps;
+						//c = vec2(x, y);
 						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
-						if (z <= _DEPTHBUF[x][y]) Canvas(x, y) = stroke, _DEPTHBUF[x][y] = z;
+						//z = max(z, z_min);
+						if (z1 <= _DEPTHBUF[x][y]) {
+							Canvas(x, y) = stroke;
+							_DEPTHBUF[x][y] = z;
+						}
+#else
+						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
+						if (z <= _DEPTHBUF[x][y]) {
+							Canvas(x, y) = stroke;
+							_DEPTHBUF[x][y] = z;
+						}
+#endif
 					}
 				}
 			}
@@ -516,9 +561,11 @@ void render() {
 	if (DarkBackground) {
 		for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
 	}
-	else for (int j = 0; j < _WIN_H; j++) {
-		COLORREF c = toCOLORREF(mix(vec3(0.95), vec3(0.65, 0.65, 1.00), j / double(_WIN_H)));
-		for (int i = 0; i < _WIN_W; i++) _WINIMG[j*_WIN_W + i] = c;
+	else {
+		for (int j = 0; j < _WIN_H; j++) {
+			COLORREF c = toCOLORREF(mix(vec3(0.95), vec3(0.65, 0.65, 1.00), j / double(_WIN_H)));
+			for (int i = 0; i < _WIN_W; i++) _WINIMG[j*_WIN_W + i] = c;
+		}
 	}
 	for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) _DEPTHBUF[i][j] = INFINITY;
 	calcMat();
@@ -552,7 +599,7 @@ void render() {
 			double k = clamp(dot(n, light), 0., 1.);
 			vec3 d = normalize((A + B + C) / 3. - CamP);
 			double s = dot(d - (2 * dot(d, n))*n, light);
-			s = pow(max(s, 0), 20.0);
+			s = pow(max(s, 0.), 20.0);
 			c = vec3(0.1, 0.05, 0.05) + vec3(0.75, 0.75, 0.65)*k + vec3(0.15)*s;
 		}
 		int mode = RenderMode % 4; if (mode < 0) mode += 4;
@@ -565,16 +612,17 @@ void render() {
 	}
 
 	// highlight physical properties
-	if (showCOM) drawCross3D(COM, 6, 0xFF8000);
+	bool hasNAN = false;
 	if (showInertia) {
-		bool hasNAN = isnan(sumsqr(Inertia_O));
+		hasNAN = isnan(sumsqr(Inertia_O));
 		for (int i = 0; i < 3; i++) {
-			double r = sqrt(Inertia_D.v[i][i] / V);
+			double r = sqrt(Inertia_D.v[i][i] / Volume);
 			drawLine_F(COM, COM + Inertia_O.row(i)*r, 0xFFFF00);
 			hasNAN |= isnan(r);
 		}
-		if (hasNAN) drawCross3D(COM, 6, 0x006400);
 	}
+	if (showCOM) drawCross3D(COM, 6, 0xFF8000);
+	if (hasNAN) drawCross3D(COM, 6, 0x006400);
 
 	// highlight center
 	if (Ctrl || Shift || Alt || mouse_down) drawCross3D(Center, 6, 0xFF00FF);
@@ -656,17 +704,19 @@ void setDefaultView() {
 	calcBoundingBox();
 	calcVolumeCenterInertia();
 	if (isnan(0.0*dot(BMax, BMin))) BMax = vec3(1.0), BMin = vec3(-1.0);
-	if (isnan(V*Center.sqr())) Center = vec3(0.0);
-	if (!(V != 0.0) || isnan(V)) V = 8.0;
+	if (isnan(Volume*Center.sqr())) Center = vec3(0.0);
+	if (!(Volume != 0.0) || isnan(Volume)) Volume = 8.0;
 	Center = 0.5*(BMax + BMin);
 	vec3 Max = BMax - Center, Min = BMin - Center;
 	double s = max(max(max(Max.x, Max.y), Max.z), -min(min(Min.x, Min.y), Min.z));
-	s = sqrt(s*cbrt(abs(V)));
+	s = 0.2*dot(Max - Min, vec3(1.));
 	if (_WIN_W*_WIN_H != 0.0) s /= sqrt(5e-6*_WIN_W*_WIN_H);
 	rz = -1.1, rx = 0.25, ry = 0.0, dist = 12.0 * s, Unit = 100.0 / s;
+	use_orthographic = false;
+	//RenderMode = 0, ShadeByNormal = false;
 }
 void Init() {
-	//readFileUserEntry();
+	//wcscpy(filename, L"D:\\test.stl"); readFile(filename);
 	wcscpy(filename, L"Press Ctrl+O to open a file.  ");
 	setDefaultView();
 }
@@ -686,7 +736,9 @@ void WindowClose() {
 void MouseWheel(int _DELTA) {
 	Render_Needed = true;
 	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
-	else if (Shift) dist *= exp(-0.001*_DELTA);
+	else if (Shift) {
+		if (!use_orthographic) dist *= exp(-0.001*_DELTA);
+	}
 	/*else if (Alt) {
 		double dist0 = dist; dist *= exp(-0.001*_DELTA);
 		Center -= (dist0 - dist) * normalize(Center - CamP);
@@ -758,8 +810,6 @@ void MouseDownR(int _X, int _Y) {
 }
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
-	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
-	SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 	Render_Needed = true;
 }
 void KeyDown(WPARAM _KEY) {
@@ -777,12 +827,12 @@ void KeyUp(WPARAM _KEY) {
 		setDefaultView();
 	}
 
-	if (_KEY == VK_F5) {  // reload file
+	if (_KEY == VK_F5 || _KEY == VK_F9) {  // reload file
 		if (!readFile(filename)) {
 			MessageBeep(MB_ICONSTOP);
 			SetWindowText(_HWND, L"Error loading file");
 		}
-		setDefaultView();
+		if (!(_KEY == VK_F9 || Shift)) setDefaultView();
 	}
 
 	if (Ctrl) {
@@ -818,40 +868,52 @@ void KeyUp(WPARAM _KEY) {
 		if (_KEY == 'P') TreatAsSolid ^= 1, calcVolumeCenterInertia();
 		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(BMax + BMin);
 
-		// not recommend
-		if (_KEY == 'W') { vec3 d = 0.08*(Center - CamP); Center += d; }
-		if (_KEY == 'S') { vec3 d = 0.08*(Center - CamP); Center -= d; }
-		if (_KEY == 'A') { vec3 d = 0.05*dist * normalize(cross(veck, Center - CamP)); Center += d; }
-		if (_KEY == 'D') { vec3 d = 0.05*dist * normalize(cross(veck, Center - CamP)); Center -= d; }
+		// WSAD, not recommended
+		if (dist*Unit < 1e5) {
+			vec3 scrdir = normalize(Center - CamP);
+			double sc = 0.08*dot(BMax - BMin, vec3(1.));
+			if (_KEY == 'W') { vec3 d = sc * scrdir; Center += d; }
+			if (_KEY == 'S') { vec3 d = sc * scrdir; Center -= d; }
+			if (_KEY == 'A') { vec3 d = sc * normalize(cross(veck, scrdir)); Center += d; }
+			if (_KEY == 'D') { vec3 d = sc * normalize(cross(veck, scrdir)); Center -= d; }
+		}
 
+		// T to set topmost
+		if (_KEY == 'T') {
+			bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
+			SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		}
 	}
 
 	if (Alt) {
 		// Shape modification
-		if (_KEY == VK_NUMPAD4 || _KEY == VK_NUMPAD6 || _KEY == VK_NUMPAD2 || _KEY == VK_NUMPAD8) {
+		vec3 Center = 0.5*(BMin + BMax);
+		if (_KEY == VK_NUMPAD4 || _KEY == VK_NUMPAD6 || _KEY == VK_NUMPAD2 || _KEY == VK_NUMPAD8 || _KEY == VK_NUMPAD7 || _KEY == VK_NUMPAD9) {
 			mat3 M;
 			if (_KEY == VK_NUMPAD4) M = axis_angle(veck, -.025*PI);
 			if (_KEY == VK_NUMPAD6) M = axis_angle(veck, .025*PI);
-			if (_KEY == VK_NUMPAD2) M = axis_angle(cross(veck, Center - CamP), -.025*PI);
-			if (_KEY == VK_NUMPAD8) M = axis_angle(cross(veck, Center - CamP), .025*PI);
+			if (_KEY == VK_NUMPAD2) M = axis_angle(ScrA, .025*PI);
+			if (_KEY == VK_NUMPAD8) M = axis_angle(ScrA, -.025*PI);
+			if (_KEY == VK_NUMPAD7) M = axis_angle(Center - CamP, -.025*PI);
+			if (_KEY == VK_NUMPAD9) M = axis_angle(Center - CamP, .025*PI);
 			for (int i = 0; i < N; i++) {
-				T[i] = triangle{ M*(T[i].a - COM) + COM, M*(T[i].b - COM) + COM, M*(T[i].c - COM) + COM };
+				T[i] = triangle{ M*(T[i].a - Center) + Center, M*(T[i].b - Center) + Center, M*(T[i].c - Center) + Center };
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_NUMPAD5) {
 			for (int i = 0; i < N; i++) {
-				T[i].a -= COM, T[i].b -= COM, T[i].c -= COM;
+				T[i].a -= Center, T[i].b -= Center, T[i].c -= Center;
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY >= 0x25 && _KEY <= 0x28) {
 			vec3 d;
-			if (_KEY == VK_UP) d = veck;
-			if (_KEY == VK_DOWN) d = -veck;
-			if (_KEY == VK_LEFT) d = normalize(cross(veck, Center - CamP));
-			if (_KEY == VK_RIGHT) d = -normalize(cross(veck, Center - CamP));
-			d *= 0.06*cbrt(V);
+			if (_KEY == VK_UP) d = normalize(ScrB);
+			if (_KEY == VK_DOWN) d = normalize(-ScrB);
+			if (_KEY == VK_LEFT) d = normalize(-ScrA);
+			if (_KEY == VK_RIGHT) d = normalize(ScrA);
+			d *= 0.01*dot(BMax - BMin, vec3(1.));
 			for (int i = 0; i < N; i++) {
 				T[i].a += d, T[i].b += d, T[i].c += d;
 			}
@@ -859,8 +921,11 @@ void KeyUp(WPARAM _KEY) {
 		}
 		if (_KEY == VK_OEM_PLUS || _KEY == VK_ADD || _KEY == VK_OEM_MINUS || _KEY == VK_SUBTRACT) {
 			double s = (_KEY == VK_OEM_PLUS || _KEY == VK_ADD) ? exp(0.05) : exp(-0.05);
-			for (int i = 0; i < N; i++) {
-				T[i].a = (T[i].a - COM)*s + COM, T[i].b = (T[i].b - COM)*s + COM, T[i].c = (T[i].c - COM)*s + COM;
+			if (Shift) for (int i = 0; i < N; i++) {
+				T[i].a.z *= s, T[i].b.z *= s, T[i].c.z *= s;
+			}
+			else for (int i = 0; i < N; i++) {
+				T[i].a = (T[i].a - Center)*s + Center, T[i].b = (T[i].b - Center)*s + Center, T[i].c = (T[i].c - Center)*s + Center;
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
@@ -872,17 +937,17 @@ void KeyUp(WPARAM _KEY) {
 	}
 	else {
 		// Blender-style keys
+		if (_KEY == VK_NUMPAD0) Center = vec3(0.);
 		if (_KEY == VK_NUMPAD4) rz -= PI / 12.;
 		if (_KEY == VK_NUMPAD6) rz += PI / 12.;
 		if (_KEY == VK_NUMPAD2) rx -= PI / 12.;
 		if (_KEY == VK_NUMPAD8) rx += PI / 12.;
-		if (_KEY == VK_NUMPAD1) rx = 0, rz = -.5*PI;
+		if (_KEY == VK_NUMPAD1) rx = 0, rz = -.5*PI, ry = 0;
 		if (_KEY == VK_NUMPAD3) rx = 0, rz = 0;
-		if (_KEY == VK_NUMPAD7) rx = .5*PI, rz = -.5*PI;
-		if (_KEY == VK_NUMPAD9) rx = -.5*PI, rz = -.5*PI;
+		if (_KEY == VK_NUMPAD7) rx = .5*PI, rz = -.5*PI, ry = 0;
+		if (_KEY == VK_NUMPAD9) rx = -.5*PI, rz = -.5*PI, ry = 0;
 		if (_KEY == VK_NUMPAD5) {
-			if (dist*Unit > 1e6) dist = 1200 / Unit;
-			else dist = 1e8 / Unit;
+			use_orthographic ^= 1;
 		}
 	}
 }
