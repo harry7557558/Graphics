@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>ColorFunctions</title>
+    <script src="./ColorFunctions.js"></script>
+</head>
+<body>
+    <table id="table"></table>
+    <script>
+        window.onload = function () {
+            var content = "";
+            var i = 0;
+            var canvas = document.createElement("canvas");
+            canvas.width = 256, canvas.height = 32;
+            for (var key in ColorFunctions) {
+                if (/[A-Z]/.test(key)) {
+                    const ctx = canvas.getContext("2d");
+                    for (var u = 0; u < 256; u++) {
+                        ctx.fillStyle = ColorFunctions[key](u / 256.);
+                        ctx.fillRect(u, 0, 1, 32);
+                    }
+                    var dataURL = canvas.toDataURL("png");
+                    content += (i & 1 ? "" : "<tr>") + "<td>" + key + "</td><td style='width:300px;'><img src='" + dataURL + "'/></td>" + (i & 1 ? "</tr>" : "");
+                    i++;
+                }
+            }
+            document.getElementById("table").innerHTML = content;
+        }
+    </script>
+</body>
+</html>

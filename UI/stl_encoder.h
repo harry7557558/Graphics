@@ -2,6 +2,8 @@
 // for plotting 2d math functions
 
 
+#pragma once
+
 #include <stdio.h>
 #include <stdint.h>
 

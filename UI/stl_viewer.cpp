@@ -52,16 +52,20 @@
 //   - Optional: "crawling" on the surface
 
 // VISUALIZATION OPTIONS:
-// Press C to switch coloring mode (normal color vs. Phong)
+// Press C or Shift+C to switch to next/previous coloring mode
+//   - Default: silver-white Phong shading; if a triangle's normal faces backward from view, its color is dark brown
 //   - Normal color: the color of the triangles are based on their normals (independent to the viewport)
-//   - Phong (default): the color of the triangles should look silver-white; if a triangle's normal faces backward from view, its color is dark brown
+//   - Heatmap: the color of the triangles only depend on the z-position of the triangle's center, useful for visualization
 // Press Tab or Shift+Tab to switch to next/previous polygon rendering mode
 //   - Default: fill the faces by color mentioned above
 //   - Stroke: shaded faces with black strokes
 //   - Polygon: no fill, stroke the triangle using filling color
 //   - Point cloud: no fill or stroke, use filling color to plot vertices
 // Press X to hide/show axis
-// Press G to hide/show grid
+// Press G to hide/show grid ([-10,10] with grid width 1)
+//   - By default there are larger and smaller gridlines if the object is too large or small; Press F or Shift+G to turn on/off this feature
+//   - Press H to show/hide gridlines on xOz and yOz planes
+// Right click shape to read the coordinates of clicked point from windows title; right click empty space or press Esc to return to normal
 // Press B to switch to/out dark background
 // Press M to show/hide highlighting of the object's center of mass (orange)
 // Press I to show/hide highlighting of the object's inertia tensor
@@ -91,14 +95,14 @@
 // Press Ctrl+O to open Windows file explorer to browse and open a file
 // Press Ctrl+S to save edited object
 // Press F5 to reload object from file, Shift+F5 or F9 to reload without resetting the current viewport
-// Press T to set window to topmost or non-topmost
+// Press F1 to set window to topmost or non-topmost
 // Hold Alt key to modify object:
 //   - Press Numpad . to place the object on the center of xOy plane
 //   - Press Numpad 4/6/2/8/7/9 to rotate object left/right/up/down/counter/clockwise about its center
 //   - Press arrow keys to move object left/right/front/back (in screen coordinate)
 //   - Press Numpad5 to translate object so that its center coincident with the origin
-//   - Press plus/minus keys to scale the object about its center
-//   - Hold Shift and press plus/minus keys to scale the object along z-axis, about the xOy plane
+//   - Press plus/minus keys or scroll mouse wheel to scale the object about its center
+//   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along z-axis, about the xOy plane
 // To-do list:
 //   - Report error if the file contains NAN/INF values
 //   - Shortcuts to rotate object to make its principle axes axis-oriented
@@ -285,7 +289,7 @@ void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
 	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
 	Affine Y = axisAngle(w, -ry); u = Y * u, v = Y * v;
-	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= dist;
+	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= use_orthographic ? 1e8 : dist;
 	P = Center + w;
 	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
 }
@@ -294,11 +298,12 @@ void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 vec2 Cursor = vec2(0, 0), clickCursor;  // current cursor and cursor position when mouse down
 bool mouse_down = false;
 bool Ctrl = false, Shift = false, Alt = false;
+vec3 readedValue = vec3(NAN);  // for reading values
 
 // rendering parameters
-bool ShadeByNormal = false;
+int ShadeMode = 0;
 int RenderMode = 0;
-bool showAxis = true, showGrid = true;
+bool showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 bool showCOM = false, showInertia = false, TreatAsSolid = true;
 bool DarkBackground = false;
 
@@ -349,6 +354,21 @@ void calcVolumeCenterInertia() {
 	Inertia_D = mat3(L);
 }
 
+// ray intersection with shape, use for selection
+// return the distance
+double rayIntersect(vec3 ro, vec3 rd) {
+	double mt = INFINITY;
+	for (int i = 0; i < N; i++) {
+		double t = intTriangle(T[i].a, T[i].b, T[i].c, ro, rd);
+		if (t > 0 && t < mt) {
+			if (use_orthographic ||
+				(dot(Tr.p, T[i].a) + Tr.s > 0 && dot(Tr.p, T[i].b) + Tr.s > 0 && dot(Tr.p, T[i].c) + Tr.s > 0))
+				mt = t;
+		}
+	}
+	return mt;
+}
+
 
 #pragma endregion  STL and related calculations
 
@@ -356,6 +376,8 @@ void calcVolumeCenterInertia() {
 // ============================================ Rendering ============================================
 
 #pragma region Rasterization functions
+
+#include "ui/colors/ColorFunctions.h"
 
 typedef unsigned char byte;
 COLORREF toCOLORREF(vec3 c) {
@@ -406,6 +428,15 @@ void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF) {
 	drawLine_F(P - vec3(0, r, 0), P + vec3(0, r, 0), col);
 	drawLine_F(P - vec3(0, 0, r), P + vec3(0, 0, r), col);
 }
+void drawCircle(vec2 c, double r, COLORREF Color) {
+	int s = int(r / sqrt(2) + 0.5);
+	int cx = (int)c.x, cy = (int)c.y;
+	for (int i = 0, im = min(s, max(_WIN_W - cx, cx)) + 1; i < im; i++) {
+		int u = sqrt(r*r - i * i) + 0.5;
+		setColor(cx + i, cy + u, Color); setColor(cx + i, cy - u, Color); setColor(cx - i, cy + u, Color); setColor(cx - i, cy - u, Color);
+		setColor(cx + u, cy + i, Color); setColor(cx + u, cy - i, Color); setColor(cx - u, cy + i, Color); setColor(cx - u, cy - i, Color);
+	}
+}
 
 
 void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
@@ -425,7 +456,7 @@ void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 		double yf = p.y + slope * (x0 - p.x), zf = p.z + slopez * (x0 - p.x) - 1e-4;
 		for (int x = x0; x <= x1; x++) {
 			y = (int)(yf + 0.5);
-			if (y >= 0 && y < _WIN_H && zf < _DEPTHBUF[x][y]) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
+			if (y >= 0 && y < _WIN_H && zf < _DEPTHBUF[x][y] + 1e-6) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
 			yf += slope, zf += slopez;
 		}
 	}
@@ -436,7 +467,7 @@ void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 		double xf = p.x + slope * (y0 - p.y), zf = p.z + slopez * (y0 - p.y) - 1e-4;
 		for (int y = y0; y <= y1; y++) {
 			x = (int)(xf + 0.5);
-			if (x >= 0 && x < _WIN_W && zf < _DEPTHBUF[x][y]) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
+			if (x >= 0 && x < _WIN_W && zf < _DEPTHBUF[x][y] + 1e-6) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
 			xf += slope, zf += slopez;
 		}
 	}
@@ -571,43 +602,70 @@ void render() {
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
 
-	// axis and grid
-	{
-		const double R = 20.0;
-		if (showAxis) {
-			drawLine_ZB(vec3(0, -R, 0), vec3(0, R, 0), 0x409040);
-			drawLine_ZB(vec3(-R, 0, 0), vec3(R, 0, 0), 0xC04040);
-			drawLine_ZB(vec3(0, 0, -.6*R), vec3(0, 0, .6*R), 0x4040FF);
-		}
-		if (showGrid) {
-			for (int i = -R; i <= R; i++) {
-				COLORREF color = DarkBackground ? 0x404040 : 0xA0A0A0;
-				drawLine_ZB(vec3(-R, i, 0), vec3(R, i, 0), color);
-				drawLine_ZB(vec3(i, -R, 0), vec3(i, R, 0), color);
-			}
-		}
-	}
-
+	// shape
 	for (int i = 0; i < N; i++) {
 		vec3 A = T[i].a, B = T[i].b, C = T[i].c;
 		vec3 n = normalize(cross(B - A, C - A)), c;
-		if (ShadeByNormal) {  // shade by normal
-			c = 0.5*(n + vec3(1.0));
-		}
-		else {  // phong, obvious backward normal (darkred/black)
+		switch ((ShadeMode % 3 + 3) % 3) {
+		case 0: {  // phong
 			vec3 light = normalize(CamP - Center);
 			double k = clamp(dot(n, light), 0., 1.);
 			vec3 d = normalize((A + B + C) / 3. - CamP);
 			double s = dot(d - (2 * dot(d, n))*n, light);
 			s = pow(max(s, 0.), 20.0);
 			c = vec3(0.1, 0.05, 0.05) + vec3(0.75, 0.75, 0.65)*k + vec3(0.15)*s;
+			break;
 		}
-		int mode = RenderMode % 4; if (mode < 0) mode += 4;
-		switch (mode) {
+		case 1: {  // shade by normal
+			c = 0.5*(n + vec3(1.0));
+			break;
+		}
+		case 2: {  // height map, for visualization
+			double t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
+			c = ColorFunctions::Rainbow(t);
+			break;
+		}
+		}
+		switch ((RenderMode % 4 + 4) % 4) {
 		case 0: drawTriangle_ZB(A, B, C, toCOLORREF(c)); break;
 		case 1: drawTriangle_ZB(A, B, C, toCOLORREF(c), 0); break;
 		case 2: drawTriangle_ZB(A, B, C, -1, toCOLORREF(c)); break;
 		case 3: drawTriangle_ZB(A, B, C, -1, -1, toCOLORREF(c)); break;
+		}
+	}
+
+	// grid and axes
+	{
+		if (showGrid) {
+			auto drawGridScale = [](double r, double d, COLORREF color) {
+				drawLine_ZB(vec3(-r, d, 0), vec3(r, d, 0), color);
+				drawLine_ZB(vec3(d, -r, 0), vec3(d, r, 0), color);
+				if (showVerticalGrids) {
+					drawLine_ZB(vec3(-r, 0, d), vec3(r, 0, d), color);
+					drawLine_ZB(vec3(d, 0, -r), vec3(d, 0, r), color);
+					drawLine_ZB(vec3(0, -r, d), vec3(0, r, d), color);
+					drawLine_ZB(vec3(0, d, -r), vec3(0, d, r), color);
+				}
+			};
+			if (showMajorMinorGrids) {
+				double range = N > 0 ? std::max({ BMax.x, BMax.y, -BMin.x, -BMin.y }) : NAN;
+				if (range > 4.) {  // large grid
+					for (int i = -10; i <= 10; i++)
+						drawGridScale(100, 10 * i, DarkBackground ? 0x202020 : 0xB8B8B8);
+				}
+				if (range < 2.) {  // small grid
+					for (int i = -10; i <= 10; i++)
+						drawGridScale(1, 0.1*i, DarkBackground ? 0x202020 : 0xB8B8B8);
+				}
+			}
+			for (int i = -10; i <= 10; i++)  // standard grid
+				drawGridScale(10, i, DarkBackground ? 0x404040 : 0xA0A0A0);
+		}
+		if (showAxis) {
+			const double R = 20.0;
+			drawLine_ZB(vec3(0, -R, 0), vec3(0, R, 0), 0x409040);
+			drawLine_ZB(vec3(-R, 0, 0), vec3(R, 0, 0), 0xC04040);
+			drawLine_ZB(vec3(0, 0, -.6*R), vec3(0, 0, .6*R), 0x4040FF);
 		}
 	}
 
@@ -627,6 +685,17 @@ void render() {
 	// highlight center
 	if (Ctrl || Shift || Alt || mouse_down) drawCross3D(Center, 6, 0xFF00FF);
 
+	// render point of readed value
+	if (!isnan(readedValue.sqr())) {
+		// draw a circle
+		drawCircle((Tr*readedValue).xy(), 3, 0xFFFF00);
+		// draw a colored cross
+		double r = 6 * (dot(Tr.p, readedValue) + Tr.s);
+		drawLine_F(readedValue - vec3(r, 0, 0), readedValue + vec3(r, 0, 0), 0xFF0000);
+		drawLine_F(readedValue - vec3(0, r, 0), readedValue + vec3(0, r, 0), 0x008000);
+		drawLine_F(readedValue - vec3(0, 0, r), readedValue + vec3(0, 0, r), 0x0000FF);
+	}
+
 	// top-right coordinate
 	vec2 xi = (Tr*vec3(Tr.s, 0, 0)).xy(), yi = (Tr*vec3(0, Tr.s, 0)).xy(), zi = (Tr*vec3(0, 0, Tr.s)).xy();
 	vec2 ci = (Tr*vec3(0)).xy();
@@ -638,7 +707,9 @@ void render() {
 
 	// window title
 	double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - _iTimer).count();
-	WCHAR text[1024]; wsprintf(text, L"%s [%d %s]   %dx%d %dfps", filename, N, TreatAsSolid ? L"solid" : L"shell", _WIN_W, _WIN_H, int(1.0 / time_elapsed));
+	WCHAR text[1024];
+	if (isnan(readedValue.sqr())) swprintf(text, L"%s [%d %s]   %dx%d %dfps", filename, N, TreatAsSolid ? L"solid" : L"shell", _WIN_W, _WIN_H, int(1.0 / time_elapsed));
+	else swprintf(text, L" (%lg, %lg, %lg)", readedValue.x, readedValue.y, readedValue.z);
 	SetWindowText(_HWND, text);
 	_iTimer = std::chrono::high_resolution_clock::now();
 }
@@ -688,7 +759,7 @@ bool saveFile(const WCHAR* filename) {
 	return fclose(fp) == 0;
 }
 bool saveFileUserEntry() {
-	SetWindowPos(_HWND, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+	SetWindowPos(_HWND, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);  // ??
 	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
 	WCHAR filename[MAX_PATH] = L"";
 	ofn.lpstrFile = filename;
@@ -713,7 +784,9 @@ void setDefaultView() {
 	if (_WIN_W*_WIN_H != 0.0) s /= sqrt(5e-6*_WIN_W*_WIN_H);
 	rz = -1.1, rx = 0.25, ry = 0.0, dist = 12.0 * s, Unit = 100.0 / s;
 	use_orthographic = false;
-	//RenderMode = 0, ShadeByNormal = false;
+	showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
+	readedValue = vec3(NAN);
+	// do not reset color/rendering mode
 }
 void Init() {
 	//wcscpy(filename, L"D:\\test.stl"); readFile(filename);
@@ -736,13 +809,21 @@ void WindowClose() {
 void MouseWheel(int _DELTA) {
 	Render_Needed = true;
 	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
+	else if (Alt) {  // modify object
+		double sc = exp(-0.001*_DELTA);
+		vec3 C = 0.5*(BMin + BMax);
+		if (Shift) {
+			for (int i = 0; i < N; i++)
+				T[i].a.z *= sc, T[i].b.z *= sc, T[i].c.z *= sc;
+		}
+		else {
+			for (int i = 0; i < N; i++)
+				T[i].a = (T[i].a - C)*sc + C, T[i].b = (T[i].b - C)*sc + C, T[i].c = (T[i].c - C)*sc + C;
+		}
+	}
 	else if (Shift) {
 		if (!use_orthographic) dist *= exp(-0.001*_DELTA);
 	}
-	/*else if (Alt) {
-		double dist0 = dist; dist *= exp(-0.001*_DELTA);
-		Center -= (dist0 - dist) * normalize(Center - CamP);
-	}*/
 	else {
 		double s = exp(0.001*_DELTA);
 		double D = length(vec2(_WIN_W, _WIN_H)), Max = 1000.0*D, Min = 0.001*D;
@@ -788,17 +869,10 @@ void MouseUpL(int _X, int _Y) {
 	Render_Needed = true;
 
 	if (Alt) {
-		vec3 rd = ScrO + (Cursor.x / _WIN_W)*ScrA + (Cursor.y / _WIN_H)*ScrB - CamP;
-		double mt = INFINITY;
-		for (int i = 0; i < N; i++) {
-			double t = intTriangle(T[i].a, T[i].b, T[i].c, CamP, rd);
-			if (t > 0 && t < mt) {
-				if (dot(Tr.p, T[i].a) + Tr.s > 0 && dot(Tr.p, T[i].b) + Tr.s > 0 && dot(Tr.p, T[i].c) + Tr.s > 0)
-					mt = t;
-			}
-		}
-		if (0.0*mt == 0.0) {
-			Center = CamP + mt * rd;
+		vec3 rd = scrDir(Cursor);
+		double t = rayIntersect(CamP, rd);
+		if (t < 1e12) {
+			Center = CamP + t * rd;
 			double s = length(Center - CamP) / dist;
 			dist *= s, Unit /= s;
 		}
@@ -810,6 +884,14 @@ void MouseDownR(int _X, int _Y) {
 }
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
+
+	// read value from the (graph?!)
+	{
+		vec3 rd = scrDir(Cursor);
+		double t = rayIntersect(CamP, rd);
+		readedValue = t < 1e12 ? CamP + rd * t : vec3(NAN);
+	}
+
 	Render_Needed = true;
 }
 void KeyDown(WPARAM _KEY) {
@@ -818,13 +900,12 @@ void KeyDown(WPARAM _KEY) {
 	else if (_KEY == VK_MENU) Render_Needed = !Alt, Alt = true;
 }
 void KeyUp(WPARAM _KEY) {
-	if (_KEY == VK_CONTROL) Ctrl = false;
-	else if (_KEY == VK_SHIFT) Shift = false;
-	else if (_KEY == VK_MENU) Alt = false;
-	Render_Needed = true;
 
 	if (_KEY == VK_HOME || (Ctrl && (_KEY == '0' || _KEY == VK_NUMPAD0))) {
 		setDefaultView();
+	}
+	if (_KEY == VK_ESCAPE) {
+		readedValue = vec3(NAN);
 	}
 
 	if (_KEY == VK_F5 || _KEY == VK_F9) {  // reload file
@@ -833,6 +914,10 @@ void KeyUp(WPARAM _KEY) {
 			SetWindowText(_HWND, L"Error loading file");
 		}
 		if (!(_KEY == VK_F9 || Shift)) setDefaultView();
+		else {
+			calcBoundingBox();
+			calcVolumeCenterInertia();
+		}
 	}
 
 	if (Ctrl) {
@@ -855,13 +940,18 @@ void KeyUp(WPARAM _KEY) {
 		Ctrl = false;
 	}
 	else {
-		if (_KEY == 'C') ShadeByNormal ^= 1;
+		if (_KEY == 'C') {
+			if (Shift) ShadeMode--;
+			else ShadeMode++;
+		}
 		if (_KEY == VK_TAB) {
 			if (Shift) RenderMode--;
 			else RenderMode++;
 		}
 		if (_KEY == 'X') showAxis ^= 1;
-		if (_KEY == 'G') showGrid ^= 1;
+		if (_KEY == 'G') showGrid ^= !Shift, showMajorMinorGrids ^= Shift;
+		if (_KEY == 'F') showMajorMinorGrids ^= 1;
+		if (_KEY == 'H') showVerticalGrids ^= 1;
 		if (_KEY == 'M') calcVolumeCenterInertia(), showCOM ^= 1;
 		if (_KEY == 'I') calcVolumeCenterInertia(), showInertia ^= 1;
 		if (_KEY == 'B') DarkBackground ^= 1;
@@ -878,8 +968,8 @@ void KeyUp(WPARAM _KEY) {
 			if (_KEY == 'D') { vec3 d = sc * normalize(cross(veck, scrdir)); Center -= d; }
 		}
 
-		// T to set topmost
-		if (_KEY == 'T') {
+		// set window topmost
+		if (_KEY == VK_F1) {
 			bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
 			SetWindowPos(_HWND, topmost ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		}
@@ -950,5 +1040,11 @@ void KeyUp(WPARAM _KEY) {
 			use_orthographic ^= 1;
 		}
 	}
+
+	if (_KEY == VK_CONTROL) Ctrl = false;
+	else if (_KEY == VK_SHIFT) Shift = false;
+	else if (_KEY == VK_MENU) Alt = false;
+	Render_Needed = true;
 }
+
 
