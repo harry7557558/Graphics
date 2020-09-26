@@ -605,7 +605,8 @@ void render() {
 	// shape
 	for (int i = 0; i < N; i++) {
 		vec3 A = T[i].a, B = T[i].b, C = T[i].c;
-		vec3 n = normalize(cross(B - A, C - A)), c;
+		vec3 n = normalize(cross(B - A, C - A));
+		vec3 c = 0.5*(n + vec3(1.0));  // default: shade by normal
 		switch ((ShadeMode % 3 + 3) % 3) {
 		case 0: {  // phong
 			vec3 light = normalize(CamP - Center);
@@ -617,12 +618,11 @@ void render() {
 			break;
 		}
 		case 1: {  // shade by normal
-			c = 0.5*(n + vec3(1.0));
-			break;
+			break;  // nothing needs to be done
 		}
 		case 2: {  // height map, for visualization
 			double t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
-			c = ColorFunctions::Rainbow(t);
+			if (!isnan(t)) c = ColorFunctions::Rainbow(t);
 			break;
 		}
 		}
@@ -761,12 +761,16 @@ bool saveFile(const WCHAR* filename) {
 bool saveFileUserEntry() {
 	SetWindowPos(_HWND, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);  // ??
 	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
-	WCHAR filename[MAX_PATH] = L"";
-	ofn.lpstrFile = filename;
+	WCHAR filename_t[MAX_PATH] = L"";
+	ofn.lpstrFile = filename_t;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
 	if (!GetSaveFileName(&ofn)) return false;
-	return saveFile(filename);
+	if (saveFile(filename_t)) {
+		wcscpy(filename, filename_t);
+		return true;
+	}
+	else return false;
 }
 
 
@@ -782,7 +786,7 @@ void setDefaultView() {
 	double s = max(max(max(Max.x, Max.y), Max.z), -min(min(Min.x, Min.y), Min.z));
 	s = 0.2*dot(Max - Min, vec3(1.));
 	if (_WIN_W*_WIN_H != 0.0) s /= sqrt(5e-6*_WIN_W*_WIN_H);
-	rz = -1.1, rx = 0.25, ry = 0.0, dist = 12.0 * s, Unit = 100.0 / s;
+	rz = -.25*PI, rx = 0.25, ry = 0.0, dist = 12.0 * s, Unit = 100.0 / s;
 	use_orthographic = false;
 	showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 	readedValue = vec3(NAN);
@@ -820,6 +824,7 @@ void MouseWheel(int _DELTA) {
 			for (int i = 0; i < N; i++)
 				T[i].a = (T[i].a - C)*sc + C, T[i].b = (T[i].b - C)*sc + C, T[i].c = (T[i].c - C)*sc + C;
 		}
+		calcBoundingBox(); calcVolumeCenterInertia();
 	}
 	else if (Shift) {
 		if (!use_orthographic) dist *= exp(-0.001*_DELTA);
@@ -917,6 +922,7 @@ void KeyUp(WPARAM _KEY) {
 		else {
 			calcBoundingBox();
 			calcVolumeCenterInertia();
+			readedValue = vec3(NAN);
 		}
 	}
 

@@ -140,7 +140,7 @@ void solveLinear_ConjugateGradient(int N, const double* M, const double *b, doub
 	for (int i = 0; i < N; i++) p[i] = r[i] = b[i] - Ap[i];
 	double rsold = vecdot(N, r, r), rsnew, alpha;
 
-	int MAX_ITER = N + (.005*N*N);  // :(
+	int MAX_ITER = N + int(.005*N*N);  // :(
 	int i; for (i = 0; i < MAX_ITER; i++) {
 		matvecmul(N, A, p, Ap);  // O(N^2)
 		alpha = rsold / vecdot(N, p, Ap);
