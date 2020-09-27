@@ -142,17 +142,32 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 	else return 100;
 #endif
 
+#if 0
 	uv = Newton_Iteration_2d_([&](vec2 uv) {
 		return cost(uv.x, uv.y);
 	}, uv);
+#else
+	vec2 UV0[3] = {
+		uv,
+		uv * vec2(1.1, 1.),
+		uv * vec2(1., 1.1)
+	};
+	uv = downhillSimplex_2d([&](vec2 uv) {
+		double penalty = max(-min(uv.x, uv.y), 0.);
+		return cost(uv.x, uv.y) + 1.0 * penalty*penalty;
+	}, UV0, 1e-8);
+#endif
+
 	fprintf(stderr, "%d\n", callCount);
 
 	return cost(uv.x, uv.y);
 }
 // P0, P1: starting and ending points; T0, T1: tangent vector (derivative)
+// Error is calculated as the average absolute difference per unit arc length (consider using maximum error instead)
 template<typename ParamCurve>
 std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1,
-	double quaerr, double* Err = nullptr) {
+	double allowed_err, double* Err = nullptr) {
+
 	std::vector<cubicBezier> res;
 	double clength = calcLength(C.p, t0, t1, 48);
 
@@ -162,8 +177,9 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 	err = sqrt(err / clength);
 	fprintf(stderr, "%lf\n", err);
 	// success
-	if (err < quaerr) {
+	if (err < allowed_err) {
 		res.push_back(cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 });
+		if (Err) *Err = err;
 		return res;
 	}
 
@@ -179,9 +195,10 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 		+ fitPartCurve(C, Pc, P1, Tc, T1, tc, t1, uv1);
 	err = sqrt(err / clength);
 	fprintf(stderr, "%lf\n", err);
-	if (err < quaerr) {
+	if (err < allowed_err) {
 		res.push_back(cubicBezier{ P0, P0 + T0 * uv0.x, Pc - Tc * uv0.y, Pc });
 		res.push_back(cubicBezier{ Pc, Pc + Tc * uv1.x, P1 - T1 * uv1.y, P1 });
+		if (Err) *Err = err;
 		return res;
 	}
 
@@ -196,26 +213,78 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 		+ fitPartCurve(C, Pb, P1, Tb, T1, tb, t1, uvb);
 	err = sqrt(err / clength);
 	fprintf(stderr, "%lf\n", err);
-	if (err < quaerr) {
+	if (err < allowed_err) {
 		res.push_back(cubicBezier{ P0, P0 + T0 * uva.x, Pa - Ta * uva.y, Pa });
 		res.push_back(cubicBezier{ Pa, Pa + Ta * uvc.x, Pb - Tb * uvc.y, Pb });
 		res.push_back(cubicBezier{ Pb, Pb + Tb * uvb.x, P1 - T1 * uvb.y, P1 });
+		if (Err) *Err = err;
 		return res;
 	}
 
+	// split recursively
+	double err0, err1;
+	double cl0 = calcLength(C.p, t0, tc, 48);
+	double cl1 = calcLength(C.p, tc, t1, 48);
+	std::vector<cubicBezier> res0 = fitSpline(C, P0, Pc, T0, Tc, t0, tc, allowed_err, &err0);
+	std::vector<cubicBezier> res1 = fitSpline(C, Pc, P1, Tc, T1, tc, t1, allowed_err, &err1);
+	err = sqrt((err0*err0*cl0 + err1 * err1 * cl1) / clength);
+	fprintf(stderr, "%lf\n", err);
+	res = res0; res.insert(res.end(), res1.begin(), res1.end());
+	if (Err) *Err = err;
 	return res;
 }
 
 
 
 
-// test equations and their analytical derivatives
+// test equations
+//  - contains undefined points (0/0=c)
+//  - contains infinite discontinuities (c/0=inf)
+//  - contains jump discontinuities
+//  - continuous but non-differentiable at certain points
+//  - contains infinite-curvature points
+//  - complicated (requires more numerical integration samples)
+//  - NAN outside the parametric interval (requires an integrator than does not sample outside the interval)
+//  - noisy or costy to evaluate
+//  - periodic
+//  - analytical derivative is known
 #if 1
-//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -0.2, PI);
-ParametricCurveL C([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 3.5);
-//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t))*cos(2 * t); }, 0, PI);
-//ParametricCurveL C([](double x) {return vec2(x, exp(-x * x)); }, -1., 2.);
-//ParametricCurveL C([](double x) {return vec2(sinh(x), cosh(x) - 1.); }, -1., 1.4);
+ParametricCurveL C([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -PI, PI);
+//ParametricCurveL C([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 2.*PI - 0.1);
+//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t))*cos(2 * t); }, 0, 2.*PI);
+//ParametricCurveL C([](double x) { return vec2(x, exp(-x * x)); }, -1., 2.);
+//ParametricCurveL C([](double t) { return vec2(sinh(t), cosh(t) - 1.); }, -1., 1.4);
+//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t))*sin(5.*t); }, 0, PI);
+//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t))*sin(6.*t); }, 0, 2.*PI);  // FAIL
+//ParametricCurveL C([](double x) { return vec2(x, sin(5.*x)); }, -2, 2);
+//ParametricCurveL C([](double x) { return vec2(x, x == 0. ? 1. : sin(2.*PI*x) / (2.*PI*x)); }, -2, 2);
+//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) + .5*sin(2.*t)); }, 0, 2.*PI);
+//ParametricCurveL C([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, 0, PI);
+//ParametricCurveL C([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, -1, 2 * PI - 1);
+//ParametricCurveL C([](double t) { return vec2(cos(t) + cos(2.*t), sin(t) + sin(2.*t))*.5; }, 0, 2.*PI);
+//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, 0, 2.*PI);
+//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, -.5*PI, 1.5*PI);  // one may call it fail
+//ParametricCurveL C([](double t) { return vec2(cos(5.*t + PI / 4.), sin(4.*t)); }, 1., 2.*PI + 1.);
+//ParametricCurveL C([](double x) { return vec2(x, log(x + 1)); }, -0.99, 2.);  // FAIL
+//ParametricCurveL C([](double x) { return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5);
+//ParametricCurveL C([](double x) { return vec2(.5*x, 0.04*(x*x*x*x + 2.*x*x*x - 6.*x*x - x + 1.)); }, -4., 4.);
+//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t)) * 0.08*t; }, 0, 6.*PI);
+//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t)) * 0.08*exp(0.25*t); }, -PI, 4.*PI);
+//ParametricCurveL C([](double t) { return vec2(.1*t + .3*cos(t), sin(t)); }, -13., 14.);
+//ParametricCurveL C([](double t) { return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI);
+//ParametricCurveL C([](double a) { return (exp(sin(a)) - 2.*cos(4.*a) + sin((2.*a - PI) / 24.))*vec2(cos(a), sin(a)); }, -8.*PI, 8.*PI);  // FAIL (Wikipedia homepage)
+//ParametricCurveL C([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI);
+//ParametricCurveL C([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 3.*PI);  // FAIL
+//ParametricCurveL C([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, 0, 2.*PI);
+//ParametricCurveL C([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, -1, 2.*PI - 1.);  // FAIL
+//ParametricCurveL C([](double x) { return vec2(x, sin(sin(5.*x))); }, -2, 2);
+//ParametricCurveL C([](double x) { return vec2(x, exp(sin(x)) - 1.5); }, -2, 2);
+//ParametricCurveL C([](double x) { return vec2(x, exp(sin(2.*x)) - 1.5); }, -2, 2);  // FAIL
+//ParametricCurveL C([](double x) { return vec2(x, .5*acos(cos(5.*x)) - .25*PI); }, -2, 2);  // FAIL
+//ParametricCurveL C([](double t) { return vec2(tan(t), 1. / tan(t)); }, 0, PI);  // INFINITE LOOP
+//ParametricCurveL C([](double x) { return vec2(x, tan(x)); }, -.499*PI, .499*PI);  // FAIL
+//ParametricCurveL C([](double x) { return vec2(x, sqrt(1. - x * x)); }, -1., 1.);  // FAIL
+//ParametricCurveL C([](double t) { return vec2(cos(t) + .01*cos(10.*t), sin(t) + .01*sin(10.*t)); }, 0, 2.*PI);  // FAIL
 #endif
 
 
@@ -239,7 +308,7 @@ int main(int argc, char** argv) {
 	// discretized path
 	{
 		printf("<path d='");
-		const int D = 48; double dt = (C.t1 - C.t0) / D;
+		const int D = 200; double dt = (C.t1 - C.t0) / D;
 		vec2 p = C.p(C.t0);
 		printf("M%lg,%lg", p.x, p.y);
 		for (int i = 1; i <= D; i++) {
@@ -259,6 +328,7 @@ int main(int argc, char** argv) {
 		vec2 T0 = (C.p(C.t0 + eps) - C.p(C.t0)) / eps;
 		vec2 T1 = (C.p(C.t1) - C.p(C.t1 - eps)) / eps;
 		std::vector<cubicBezier> sp = fitSpline(C, P0, P1, T0, T1, C.t0, C.t1, 0.001);
+		fprintf(stderr, "%d curves\n", sp.size());
 
 		printf("M%lg,%lg", P0.x, P0.y);
 		for (int i = 0, l = sp.size(); i < l; i++) {

@@ -5,13 +5,20 @@
 // To-do:
 // Bracket minimum in one dimension
 // Conjugate gradient
-// Downhill simplex
-// Simulated annealing
+// Powell's method
+// Downhill simplex in high dimension
+// Downhill simplex with simulated annealing
 
 
 #ifndef __INC_OPTIMIZATION_H
 
 #define __INC_OPTIMIZATION_H
+
+
+#include "linearsystem.h"
+#include "eigensystem.h"
+
+#include "geometry.h"
 
 
 
@@ -45,8 +52,9 @@ template<typename Fun> void GoldenSectionSearch_1d(Fun F, double &x0, double &x1
 
 
 
-#include "geometry.h"
 
+
+/* Numerical Differentiation */
 
 // numerical differentiation in 2d
 // not necessary when the analytical gradient is given
@@ -63,12 +71,59 @@ template<typename Fun> void nGrad2(Fun F, vec2 x, double &Fx, vec2 &grad, vec2 &
 	dxy = (.25 / (e*e)) * ((D[0][0] + D[2][2]) - (D[0][2] + D[2][0]));
 }
 
+// numerical differentiation in higher dimensions
+// F: double F(const double *x);
+// 2N samples
+template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, double e = .0001) {
+	double *p = new double[N];
+	for (int i = 0; i < N; i++) p[i] = x[i];
+	for (int i = 0; i < N; i++) {
+		p[i] = x[i] - e;
+		double a = F(p);
+		p[i] = x[i] + e;
+		double b = F(p);
+		p[i] = x[i];
+		grad[i] = (.5 / e)*(b - a);
+	}
+	delete p;
+}
+// grad2: standard Hessian matrix
+// 2N²+1 samples - an analytical derivative is highly recommended
+template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, double *grad, double *grad2, double e = .0001) {
+	double *p = new double[N];
+	for (int i = 0; i < N; i++) p[i] = x[i];
+	double f = F(p); if (Fx) *Fx = f;
+	for (int i = 0; i < N; i++) {
+		// gradient
+		p[i] = x[i] - e; double a = F(p);
+		p[i] = x[i] + e; double b = F(p);
+		if (grad) grad[i] = (.5 / e)*(b - a);
+		// second derivative
+		grad2[i*N + i] = (1. / (e*e))*(a + b - 2.*f);
+		// other derivatives
+		for (int j = 0; j < i; j++) {
+			p[i] = x[i] + e;
+			p[j] = x[j] + e; a = F(p);
+			p[j] = x[j] - e; double c = F(p);
+			p[i] = x[i] - e; b = F(p);
+			p[j] = x[j] + e; double d = F(p);
+			grad2[i*N + j] = grad2[j*N + i] = (.25 / (e*e))*((a + b) - (c + d));
+			p[j] = x[j];
+		}
+		p[i] = x[i];
+	}
+	delete p;
+}
 
 
 
-// Non-standard 2d methods based on Newton's iteration
+
+
+
+/* Newton's Iteration */
+
+// Non-standard methods based on Newton's iteration
 // Fails when iterates to a point with discontinuous or zero gradient
-
 
 // this method performs Newton's iteration in the gradient direction
 template<typename Fun> vec2 Newton_Gradient_2d(Fun F, vec2 x0) {
@@ -200,64 +255,7 @@ template<typename Fun> vec2 Newton_Iteration_2d_ad(Fun F, vec2 x0) {
 	return x;
 }
 
-
-
-
-
-
-// numerical differentiation in higher dimensions
-
-// F: double F(const double *x);
-// 2N samples
-template<typename Fun> void NGrad(int N, Fun F, const double *x, double *grad, double e = .0001) {
-	double *p = new double[N];
-	for (int i = 0; i < N; i++) p[i] = x[i];
-	for (int i = 0; i < N; i++) {
-		p[i] = x[i] - e;
-		double a = F(p);
-		p[i] = x[i] + e;
-		double b = F(p);
-		p[i] = x[i];
-		grad[i] = (.5 / e)*(b - a);
-	}
-	delete p;
-}
-
-// grad2: standard Hessian matrix
-// 2N²+1 samples - an analytical derivative is highly recommended
-template<typename Fun> void NGrad2(int N, Fun F, const double *x, double *Fx, double *grad, double *grad2, double e = .0001) {
-	double *p = new double[N];
-	for (int i = 0; i < N; i++) p[i] = x[i];
-	double f = F(p); if (Fx) *Fx = f;
-	for (int i = 0; i < N; i++) {
-		// gradient
-		p[i] = x[i] - e; double a = F(p);
-		p[i] = x[i] + e; double b = F(p);
-		if (grad) grad[i] = (.5 / e)*(b - a);
-		// second derivative
-		grad2[i*N + i] = (1. / (e*e))*(a + b - 2.*f);
-		// other derivatives
-		for (int j = 0; j < i; j++) {
-			p[i] = x[i] + e;
-			p[j] = x[j] + e; a = F(p);
-			p[j] = x[j] - e; double c = F(p);
-			p[i] = x[i] - e; b = F(p);
-			p[j] = x[j] + e; double d = F(p);
-			grad2[i*N + j] = grad2[j*N + i] = (.25 / (e*e))*((a + b) - (c + d));
-			p[j] = x[j];
-		}
-		p[i] = x[i];
-	}
-	delete p;
-}
-
-
-
-
 // Optimization in higher dimensions
-
-#include "linearsystem.h"
-#include "eigensystem.h"
 
 // one iteration: O(N²) samples, O(N³) complexity; quadratic convergence
 // return true when (possible) succeed
@@ -303,6 +301,91 @@ template<typename Fun> bool Newton_Iteration_Minimize(int N, Fun F, const double
 	}
 	delete g; delete g2; delete dx;
 	return false;
+}
+
+
+
+
+
+
+/* Downhill Simplex */
+
+// fun(vec2): function to minimize
+// P0: initial simplex/triangle
+// Breaks when the optimizer makes no imporvement more than accur_eps for more than noimporv_break times
+// or iteration steps exceeds max_iter
+// Each iteration step requires 2 or 1 function evaluations
+template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
+	double accur_eps = 1e-6, int noimporv_break = 10, int max_iter = 1000) {
+
+	struct sample {
+		vec2 p;
+		double val;
+	} S[3];
+	for (int i = 0; i < 3; i++) {
+		S[i].p = P0[i];
+		S[i].val = fun(S[i].p);
+	}
+
+	double old_minval = INFINITY;
+	int noimporv_count = 0;
+
+	for (int iter = 0; iter < max_iter; iter++) {
+
+		// sort
+		sample temp;
+		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
+		if (S[1].val > S[2].val) temp = S[1], S[1] = S[2], S[2] = temp;
+		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
+
+		// termination condition
+		if (S[0].val < old_minval - accur_eps) {
+			noimporv_count = 0;
+			old_minval = S[0].val;
+		}
+		else if (++noimporv_count > noimporv_break) {
+			return S[0].p;
+		}
+
+		// reflection
+		sample refl;
+		vec2 center = (S[0].p + S[1].p) * .5;
+		refl.p = center * 2. - S[2].p;
+		refl.val = fun(refl.p);
+		if (refl.val >= S[0].val && refl.val < S[1].val) {
+			S[2] = refl;
+			continue;
+		}
+
+		// expansion
+		if (refl.val < S[0].val) {
+			sample expd;
+			expd.p = center + (center - S[2].p)*2.;
+			expd.val = fun(expd.p);
+			if (expd.val < refl.val)
+				S[2] = expd;
+			else
+				S[2] = refl;
+			continue;
+		}
+
+		// contraction
+		sample ctrct;
+		ctrct.p = center + .5*(S[2].p - center);
+		ctrct.val = fun(ctrct.p);
+		if (ctrct.val < S[2].val) {
+			S[2] = ctrct;
+			continue;
+		}
+
+		// compression
+		S[1].p = S[0].p + (S[1].p - S[0].p)*.5;
+		S[2].p = S[0].p + (S[2].p - S[0].p)*.5;
+
+	}
+
+	return S[0].val < S[1].val && S[0].val < S[2].val ? S[0].p
+		: S[1].val < S[2].val ? S[1].p : S[2].p;
 }
 
 
