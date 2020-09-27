@@ -105,6 +105,7 @@
 //   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along z-axis, about the xOy plane
 // To-do list:
 //   - Report error if the file contains NAN/INF values
+//   - Alt+Numpad0 to move the object to the first quadrant (x-y only)
 //   - Shortcuts to rotate object to make its principle axes axis-oriented
 //   - Nonlinear transforms
 //   - Reflection

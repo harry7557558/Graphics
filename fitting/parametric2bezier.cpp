@@ -167,7 +167,7 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 		return res;
 	}
 
-splitCurve: {
+	// otherwise: try splitting into multiple curves
 	const double eps = 0.001*(t1 - t0);
 
 	// try splitting at the center
@@ -203,9 +203,7 @@ splitCurve: {
 		return res;
 	}
 
-	};
-
-			return res;
+	return res;
 }
 
 
@@ -213,9 +211,11 @@ splitCurve: {
 
 // test equations and their analytical derivatives
 #if 1
-ParametricCurveL C([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -0.2, PI);
-//ParametricCurveL C([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 3.5);
+//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -0.2, PI);
+ParametricCurveL C([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 3.5);
 //ParametricCurveL C([](double t) { return vec2(sin(t), cos(t))*cos(2 * t); }, 0, PI);
+//ParametricCurveL C([](double x) {return vec2(x, exp(-x * x)); }, -1., 2.);
+//ParametricCurveL C([](double x) {return vec2(sinh(x), cosh(x) - 1.); }, -1., 1.4);
 #endif
 
 
@@ -239,14 +239,14 @@ int main(int argc, char** argv) {
 	// discretized path
 	{
 		printf("<path d='");
-		const int D = 30; double dt = (C.t1 - C.t0) / D;
+		const int D = 48; double dt = (C.t1 - C.t0) / D;
 		vec2 p = C.p(C.t0);
 		printf("M%lg,%lg", p.x, p.y);
 		for (int i = 1; i <= D; i++) {
 			p = C.p(C.t0 + i * dt);
 			printf("L%lg,%lg", p.x, p.y);
 		}
-		printf("' vector-effect='non-scaling-stroke'/>");
+		printf("' style='stroke-width:3px;stroke:#ccc;' vector-effect='non-scaling-stroke'/>");
 	}
 
 	// vectorized path
@@ -262,12 +262,29 @@ int main(int argc, char** argv) {
 
 		printf("M%lg,%lg", P0.x, P0.y);
 		for (int i = 0, l = sp.size(); i < l; i++) {
-			vec2 Q0 = sp[i].B;
-			vec2 Q1 = sp[i].C;
-			vec2 P1 = sp[i].D;
+			vec2 Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
 			printf("C%lg,%lg %lg,%lg %lg,%lg", Q0.x, Q0.y, Q1.x, Q1.y, P1.x, P1.y);
 		}
 		printf("' vector-effect='non-scaling-stroke'/>");
+
+		// anchor points
+		{
+			printf("<g style='stroke-width:%lgpx;stroke:black;opacity:0.6'>", 1.0 / SC);
+			printf("<defs>\
+<marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
+	<rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect>\
+</marker><marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
+	<ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse>\
+</marker></defs>");
+			auto line = [](vec2 a, vec2 b) {
+				printf("<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'/>", a.x, a.y, b.x, b.y);
+			};
+			for (int i = 0, l = sp.size(); i < l; i++) {
+				vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
+				line(P0, Q0); line(P1, Q1);
+			}
+			printf("</g>");
+		}
 	}
 
 	printf("</g></svg>");
