@@ -14,9 +14,12 @@ double fun(vec2 p) {
 	double x = p.x, y = p.y;
 #define sq(x) ((x)*(x))
 	//return x * x + y * y - 1.;  // 94 evals
+	return sqrt(x*x + y * y) - 1.;  // 154 evals
 	//return x * x*x*x + y * y*y*y - 1.;  // 63 evals
 	//return 100 * sq(y - x * x) + sq(1 - x) - 1.;  // 195 evals (valley)
+	//return sqrt(100 * sq(y - x * x) + sq(1 - x)) - 1.;
 	//return pow(100 * sq(.5*y - .25*x * x) + sq(1 - .5*x), .25);  // 365 evals
+	//return log(100 * sq(.5*y - .25*x * x) + sq(1 - .5*x) + 1.);  // 192 evals
 	//return 100 * abs(y - x * x) + abs(1 - x);  // **FAIL**
 	//return sq(x*x + y - 11) + sq(y*y + x - 7);  // 102 evals, local minimum
 	//return x * x*x*x - 4 * x*x*y + y * y*y*y;  // 93 evals
@@ -39,8 +42,21 @@ double fun(vec2 p) {
 	//return 1.0 - 2.* cos(x)*cos(y)*exp(-x * x - y * y);  // 67 evals, **very poor local minimum**
 	//return 0.001*abs(x - y) + 100 * (1. - pow(log(1 + exp(-sq(x*y - 1.)))*(1 + tanh(100.*min(x, y))), 10.));  // 1616 evals (valley)
 	//return 100 * sqrt(abs(y - 0.01*x*x)) + 0.01*abs(x + 10);  // 116 evals, **FAIL**
+	//return x * x - abs(x)*y + y * y - 1;  // 102 evals
+	//return sqrt(x*x - abs(x)*y + y * y) - 1;  // 166 evals
+	//return sin(x)*cos(y);  // 82 evals
+	//return x * x + x * y + y * y - 0.5*cos(10.*x)*cos(10.*y);  // 95 evals, local minimum
+	//return sq(x - 3) + sq(y + 3) + (x - 1) * (y + 1) + 6;  // 94 evals
+	//return sqrt(sq(x - 3) + sq(y + 3) + (x - 1) * (y + 1) + 8.);  // 150 evals
+	//return sqrt(sq(x - 3) + sq(y + 3) + (x - 1) * (y + 1) + 7.9);  // 211 evals
+	//return sqrt(x*x + y * y) - exp(atan2(y, x));  // 107 evals, almost success??
+	//return x * x + y * y - atan2(y, x);  // 137 evals, almost success??
+	//return max(log(x*x + y * y) - atan2(y, x), -100.);  // 497 evals
+	//return sq(y - x * tan(.5*log(x*x + y * y))) + 0.01*abs(x - y);  // 136 evals, unintended global minimum
+	//return 100. * sq(tanh(y - x * tan(sqrt(x*x + y * y)))) + (x*x + y * y);  // 583 evals
+	//return 100. * sq(tanh(y - x * tan(sqrt(x*x + y * y)))) + (sq(x - 2.) + y * y);  // 425 evals, local minimum
+	//return sin(x) + sin(2.*x) / 2. + sin(4.*x) / 4. + sin(8.*x) / 8. + sin(16.*x) / 16. + sin(32.*x) / 32. + sin(64.*x) / 64. + .1*cos(y);  // 88 evals, Wow!
 #undef sq
-	return length(vec2(x, y));  // 154 evals
 }
 
 

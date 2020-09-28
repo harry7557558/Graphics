@@ -208,6 +208,86 @@ int solvePolynomial_bisect(int N, const double* C, double* R,
 	return NR;
 }
 
+// optimized for solving quintic polynomials
+int solveQuintic_bisect(const double C[6], double R[5],
+	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15) {
+
+	// find the roots of its derivative
+	double Cd[5] = { C[1], 2.*C[2], 3.*C[3], 4.*C[4], 5.*C[5] };
+	double _Rd[4]; double *Rd = _Rd;
+	int NRd = solveQuartic(Cd[4], Cd[3], Cd[2], Cd[1], Cd[0], Rd);
+	// sort the roots
+	for (int j = NRd; j > 0; j--) {
+		for (int i = 1; i < j; i++) {
+			if (Rd[i - 1] > Rd[i]) {
+				double t = Rd[i]; Rd[i] = Rd[i - 1], Rd[i - 1] = t;
+			}
+		}
+	}
+	//for (int i = 0; i < NRd; i++) for (int _ = 0; _ < 2; _++) Rd[i] = refineRoot_quartic(Cd[4], Cd[3], Cd[2], Cd[1], Cd[0], Rd[i]);
+	while (NRd && Rd[0] < x0) Rd++, NRd--;
+	while (NRd && Rd[NRd - 1] > x1) NRd--;
+	/*{
+		int NRd1 = solvePolynomial_bisect(4, Cd, Rd, x0, x1, eps);
+		if (NRd1 != NRd) {
+			for (int i = 0; i < 6; i++) fprintf(stderr, "%+.16lf*x^{%d}", C[i], i);
+			fprintf(stderr, "\n"); fflush(stderr);
+		}
+	}*/
+
+	// find the root between two numbers
+	auto findRootBetween = [&](double x0, double x1, bool isBetweenExtremum)->double {
+		double y0 = C[0] + x0 * (C[1] + x0 * (C[2] + x0 * (C[3] + x0 * (C[4] + x0 * C[5]))));
+		double y1 = C[0] + x1 * (C[1] + x1 * (C[2] + x1 * (C[3] + x1 * (C[4] + x1 * C[5]))));
+		if ((y0 < 0) == (y1 < 0)) return NAN;
+		// try Newton iteration
+		double x;
+#if 0
+		if (isBetweenExtremum) {
+			double yc = y0 / (y0 - y1);
+			x = x0 + .5*(x1 - x0)*(1. + pow(yc, 1. / 3.) - pow(1. - yc, 1. / 3.));
+		}
+		else
+#endif
+			x = 0.5*(x0 + x1);
+		for (int i = 0; i < 16; i++) {
+			double y = C[0] + x * (C[1] + x * (C[2] + x * (C[3] + x * (C[4] + x * C[5]))));
+			double dy = (((Cd[4] * x + Cd[3])*x + Cd[2])*x + Cd[1])*x + Cd[0];
+			double dx = y / dy;
+			x -= dx;
+			if (!(x > x0 && x < x1)) break;
+			if (abs(dx) < eps) return x;
+		}
+		// bisection search
+		for (int i = 0; i < 80; i++) {
+			double x = 0.5 * (x0 + x1);
+			double y = C[0] + x * (C[1] + x * (C[2] + x * (C[3] + x * (C[4] + x * C[5]))));
+			if ((y < 0) ^ (y0 < 0)) y1 = y, x1 = x;
+			else y0 = y, x0 = x;
+			if (x1 - x0 < eps) break;
+		}
+		return 0.5*(x0 + x1);
+	};
+
+	// roots must exist in between when sorted
+	// according to differential mean value theorem
+	int NR = 0;
+	double r;
+	if (NRd == 0) {
+		if (!std::isnan(r = findRootBetween(x0, x1, false))) R[NR++] = r;
+	}
+	else {
+		if (!std::isnan(r = findRootBetween(x0, Rd[0], false))) R[NR++] = r;
+		for (int i = 1; i < NRd; i++) {
+			if (!std::isnan(r = findRootBetween(Rd[i - 1], Rd[i], true))) R[NR++] = r;
+		}
+		if (!std::isnan(r = findRootBetween(Rd[NRd - 1], x1, false))) R[NR++] = r;
+	}
+
+	return NR;
+}
+
+
 
 
 
