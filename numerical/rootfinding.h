@@ -240,12 +240,17 @@ int solveQuintic_bisect(const double C[6], double R[5],
 		double y0 = C[0] + x0 * (C[1] + x0 * (C[2] + x0 * (C[3] + x0 * (C[4] + x0 * C[5]))));
 		double y1 = C[0] + x1 * (C[1] + x1 * (C[2] + x1 * (C[3] + x1 * (C[4] + x1 * C[5]))));
 		if ((y0 < 0) == (y1 < 0)) return NAN;
+#if 0
 		// try Newton iteration
 		double x;
 #if 0
 		if (isBetweenExtremum) {
-			double yc = y0 / (y0 - y1);
-			x = x0 + .5*(x1 - x0)*(1. + pow(yc, 1. / 3.) - pow(1. - yc, 1. / 3.));
+			// start with a good initial guess
+			x = y0 / (y0 - y1);
+			//x = .5*(1. + pow(x, 1. / 3.) - pow(1. - x, 1. / 3.));
+			//x = (((-.4731919*x + 0.70978785)*x - .190129035)*x - .0232334575) / ((x + 0.05088618)*(1.05088618 - x)) + .5;
+			x = ((1.15304589*x - 1.72956883)*x + 1.33465084)*x + 0.12093605;
+			x = x0 + (x1 - x0)*x;
 		}
 		else
 #endif
@@ -267,6 +272,26 @@ int solveQuintic_bisect(const double C[6], double R[5],
 			if (x1 - x0 < eps) break;
 		}
 		return 0.5*(x0 + x1);
+#else
+		double x = 0.5 * (x0 + x1);
+		for (int i = 0; i < 60; i++) {
+			double y = C[0] + x * (C[1] + x * (C[2] + x * (C[3] + x * (C[4] + x * C[5]))));
+			double dy = (((Cd[4] * x + Cd[3])*x + Cd[2])*x + Cd[1])*x + Cd[0];
+			double dx = y / dy;
+			double x_new = x - dx;
+			if (x_new > x0 && x_new < x1) {
+				x = x_new;
+				if (abs(dx) < eps) return x;
+			}
+			else {
+				if ((y < 0) ^ (y0 < 0)) y1 = y, x1 = x;
+				else y0 = y, x0 = x;
+				x = 0.5*(x0 + x1);
+				if (x1 - x0 < eps) return x;
+			}
+		}
+		return 0.5*(x0 + x1);
+#endif
 	};
 
 	// roots must exist in between when sorted

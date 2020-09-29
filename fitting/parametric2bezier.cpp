@@ -236,60 +236,72 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 //  - noisy or costy to evaluate
 //  - shortcuts for periodic/symmetric functions
 //  - analytical derivative is known
-#if 1
-//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -PI, PI);
-//ParametricCurveL C([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 2.*PI - 0.1);
-//ParametricCurveL C([](double t) { return vec2(sin(t), cos(t))*cos(2 * t); }, 0, 2.*PI);
-//ParametricCurveL C([](double x) { return vec2(x, exp(-x * x)); }, -1., 2.);
-//ParametricCurveL C([](double t) { return vec2(sinh(t), cosh(t) - 1.); }, -1., 1.4);
-//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t))*sin(5.*t); }, 0, PI);
-//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t))*sin(6.*t); }, 0, 2.*PI);
-//ParametricCurveL C([](double x) { return vec2(x, sin(5.*x)); }, -2, 2);
-//ParametricCurveL C([](double x) { return vec2(x, x == 0. ? 1. : sin(2.*PI*x) / (2.*PI*x)); }, -2, 2);
-//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) + .5*sin(2.*t)); }, 0, 2.*PI);  // too many curves
-//ParametricCurveL C([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, 0, PI);
-//ParametricCurveL C([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, -1, 2 * PI - 1);
-//ParametricCurveL C([](double t) { return vec2(cos(t) + cos(2.*t), sin(t) + sin(2.*t))*.5; }, 0, 2.*PI);
-//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, 0, 2.*PI);
-//ParametricCurveL C([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, -.5*PI, 1.5*PI);
-//ParametricCurveL C([](double t) { return vec2(cos(5.*t + PI / 4.), sin(4.*t)); }, 1., 2.*PI + 1.);
-//ParametricCurveL C([](double x) { return vec2(x, log(x + 1)); }, -0.99, 2.);  // too many curves, one may say it fails
-//ParametricCurveL C([](double x) { return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5);  // too many curves
-//ParametricCurveL C([](double x) { return vec2(.5*x, 0.04*(x*x*x*x + 2.*x*x*x - 6.*x*x - x + 1.)); }, -4., 4.);
-//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t)) * 0.08*t; }, 0, 6.*PI);
-//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t)) * 0.08*exp(0.25*t); }, -PI, 4.*PI);
-//ParametricCurveL C([](double t) { return vec2(cos(t), sin(t)) * 0.08*exp(0.25*t)*(1. - .2*exp(sin(10.*t))); }, -PI, 4.*PI);  // too slow
-//ParametricCurveL C([](double t) { return vec2(.1*t + .3*cos(t), sin(t)); }, -13., 14.);
-//ParametricCurveL C([](double t) { return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI);
-ParametricCurveL C([](double a) { return 0.3*(exp(sin(a)) - 2.*cos(4.*a) + sin((2.*a - PI) / 24.))*vec2(cos(a), sin(a)); }, -8.*PI, 8.*PI);  // too slow
-//ParametricCurveL C([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI);
-//ParametricCurveL C([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 3.*PI);
-//ParametricCurveL C([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, 0, 2.*PI);
-//ParametricCurveL C([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, -1, 2.*PI - 1.);
-//ParametricCurveL C([](double x) { return vec2(x, sin(sin(5.*x))); }, -2, 2);
-//ParametricCurveL C([](double x) { return vec2(x, exp(sin(x)) - 1.5); }, -2, 2);
-//ParametricCurveL C([](double x) { return vec2(x, exp(sin(PI*x)) - 1.5); }, -2, 2);
-//ParametricCurveL C([](double x) { return vec2(x, .5*acos(cos(5.*x)) - .25*PI); }, -2, 2);  // too many curves, fail
-//ParametricCurveL C([](double t) { return vec2(tan(t), 1. / tan(t)); }, 0, PI);  // INFINITE LOOP
-//ParametricCurveL C([](double x) { return vec2(x, 0.1*tan(x)); }, -.499*PI, .499*PI);  // too many curves, fail
-//ParametricCurveL C([](double x) { return vec2(x, sqrt(1. - x * x)); }, -1., 1.);  // obviously fails
-//ParametricCurveL C([](double x) { return vec2(x, asin(x)*(2. / PI)); }, -1., 1.);  // obviously fails
-//ParametricCurveL C([](double t) { return vec2(cos(t) + .1*cos(10.*t), sin(t) + .1*sin(10.*t)); }, 0, 2.*PI);
-//ParametricCurveL C([](double x) { return vec2(x, x*x - cos(10.*x) - 1.)*.5; }, -1.8, 2.);
-//ParametricCurveL C([](double t) { return vec2(cos(4.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI);
-//ParametricCurveL C([](double t) { return vec2(-.7*cos(5.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI);
-//ParametricCurveL C([](double t) { return vec2(1.5*cos(t) + cos(1.5*t), 1.5*sin(t) - sin(1.5*t))*.5; }, 0., 4.*PI);
-//ParametricCurveL C([](double t) { return vec2(2.1*cos(t) + cos(2.1*t), 2.1*sin(t) - sin(2.1*t))*.5; }, 0., 10.*PI);
-//ParametricCurveL C([](double t) { return vec2(-1.2*cos(t) + cos(1.2*t), -1.2*sin(t) + sin(1.2*t))*.5; }, 0., 10.*PI);
-//ParametricCurveL C([](double t) { return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(t) + sin(1.9*t))*.5; }, 0., 20.*PI);  // too slow
-//ParametricCurveL C([](double t) { return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI);
-//ParametricCurveL C([](double t) { return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI);  // too slow
-//ParametricCurveL C([](double t) { return vec2(cos(t) - pow(cos(40.*t), 3.), sin(40.*t) - pow(sin(t), 4.) + .5)*.8; }, 0., 2.*PI);  // tooo slow
-//ParametricCurveL C([](double t) { return vec2(cos(60.*t) - 1.6*pow(cos(t), 3.), sin(60.*t) - pow(sin(t), 3.))*.6; }, 0., 2.*PI);  // tooo slow
-//ParametricCurveL C([](double t) { return vec2(cos(80.*t) - 1.4*cos(t)*sin(2.*t), 2.*sin(t) - sin(80.*t))*.5; }, 0., 2.*PI);  // tooo slow
-//ParametricCurveL C([](double t) { return vec2(cos(t) - cos(t)*sin(60.*t), 2.*sin(t) - sin(60.*t))*.5; }, 0., 2.*PI);  // tooo slow
-//ParametricCurveL C([](double t) { return vec2(.04041 + .6156*cos(t) - .3412*sin(t) + .1344*cos(2.*t) - .1224*sin(2.*t) + .08335*cos(3.*t) + .2634*sin(3.*t) - .07623*cos(4.*t) - .09188*sin(4.*t) + .01339*cos(5.*t) - .01866*sin(5.*t) + .1631*cos(6.*t) + .006984*sin(6.*t) + .02867*cos(7.*t) - .01512*sin(7.*t) + .00989*cos(8.*t) + .02405*sin(8.*t) + .002186*cos(9.*t), +.04205 + .2141*cos(t) + .4436*sin(t) + .1148*cos(2.*t) - .146*sin(2.*t) - .09506*cos(3.*t) - .06217*sin(3.*t) - .0758*cos(4.*t) - .02987*sin(4.*t) + .2293*cos(5.*t) + .1629*sin(5.*t) + .005689*cos(6.*t) + .07154*sin(6.*t) - .02175*cos(7.*t) + .1169*sin(7.*t) - .01123*cos(8.*t) + .02682*sin(8.*t) - .01068*cos(9.*t)); }, 0., 2.*PI);
-#endif
+const int CSN = 62;
+const ParametricCurveL Cs[CSN] = {
+ParametricCurveL([](double t) { return vec2(sin(t), cos(t) + .5*sin(t)); }, -PI, PI),
+ParametricCurveL([](double t) { return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 2.*PI - 0.1),
+ParametricCurveL([](double t) { return vec2(sin(t), cos(t))*cos(2 * t); }, 0, 2.*PI),
+ParametricCurveL([](double x) { return vec2(x, exp(-x * x)); }, -1., 2.),
+ParametricCurveL([](double t) { return vec2(sinh(t), cosh(t) - 1.); }, -1., 1.4),
+ParametricCurveL([](double t) { return vec2(cos(t), sin(t))*sin(5.*t); }, 0, PI),
+ParametricCurveL([](double t) { return vec2(cos(t), sin(t))*sin(6.*t); }, 0, 2.*PI),
+ParametricCurveL([](double x) { return vec2(x, sin(5.*x)); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(x, x == 0. ? 1. : sin(2.*PI*x) / (2.*PI*x)); }, -2, 2),
+ParametricCurveL([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) + .5*sin(2.*t)); }, 0, 2.*PI),  // too many curves
+ParametricCurveL([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, 0, PI),
+ParametricCurveL([](double t) { return vec2(cos(2.*t), sin(2.*t))*sin(t); }, -1, 2 * PI - 1),
+ParametricCurveL([](double t) { return vec2(cos(t) + cos(2.*t), sin(t) + sin(2.*t))*.5; }, 0, 2.*PI),
+ParametricCurveL([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, 0, 2.*PI),
+ParametricCurveL([](double t) { return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, -.5*PI, 1.5*PI),
+ParametricCurveL([](double t) { return vec2(cos(5.*t + PI / 4.), sin(4.*t)); }, 1., 2.*PI + 1.),
+ParametricCurveL([](double x) { return vec2(x, log(x + 1)); }, -0.99, 2.),  // too many curves, one may say it fails
+ParametricCurveL([](double x) { return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5),  // too many curves
+ParametricCurveL([](double x) { return vec2(x, x*x*x - x); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(.5*x, 0.04*(x*x*x*x + 2.*x*x*x - 6.*x*x - x + 1.)); }, -4., 4.),
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.08*a; }, 0, 6.*PI),
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a); }, -PI, 4.*PI),
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),  // too slow
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(sin(10.*a) + 1.2); }, -PI, 4.*PI),  // too slow
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(pow(sin(10.*a), 10.) + 1.); }, -PI, 4.*PI),  // too slow
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(-exp(10.*(sin(20.*a) - 1)) + 1.8); }, -PI, 4.*PI),  // too slow and too many curves
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.06*exp(0.25*a)*(pow(0.6*asin(sin(10.*a)) - .05, 8.) + 0.8); }, -PI, 4.*PI),  // too slow and too many curves
+ParametricCurveL([](double a) { return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(0.1*(asin(sin(10.*a)) + asin(sin(30.*a))) + 1.); }, -PI, 4.*PI),  // too slow and too many curves; failed to detect non-differentiable points
+ParametricCurveL([](double t) { return vec2(.1*t + .3*cos(t), sin(t)); }, -13., 14.),
+ParametricCurveL([](double a) { return 0.3*(exp(sin(a)) - 2.*cos(4.*a) + sin((2.*a - PI) / 24.))*vec2(cos(a), sin(a)); }, -8.*PI, 8.*PI),  // too slow
+ParametricCurveL([](double t) { return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI),
+ParametricCurveL([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { return (sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 3.*PI),
+ParametricCurveL([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, -1, 2.*PI - 1.),
+ParametricCurveL([](double x) { return vec2(x, sin(sin(5.*x))); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(x, exp(sin(x)) - 1.5); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(x, exp(sin(PI*x)) - 1.5); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(x, sin(10.*x*x)); }, -2, 2),
+ParametricCurveL([](double x) { return vec2(x, sin(10.*sqrt(x + 2.))); }, -2, 2),  // too many curves, fail
+ParametricCurveL([](double x) { return vec2(x, .5*acos(cos(5.*x)) - .25*PI); }, -2, 2),  // too many curves, fail
+ParametricCurveL([](double x) { return vec2(x, abs(x - .123) - 1.); }, -2, 2),  // too many curves
+ParametricCurveL([](double x) { return vec2(x, x - floor(x)); }, -2, 2),  // failed; contains jump discontinuities
+ParametricCurveL([](double t) { return vec2(.1*floor(10.*t + 1.), sin(2.*PI*t)*(10.*t - floor(10.*t))); }, -2., 2.),  // failed due to jump discontinuities
+//ParametricCurveL([](double t) { return vec2(tan(t), 1. / tan(t)); }, 0, PI),  // INFINITE LOOP
+ParametricCurveL([](double x) { return vec2(x, 0.1*tan(x)); }, -.499*PI, .499*PI),  // too many curves, fail
+ParametricCurveL([](double x) { return vec2(x, sqrt(1. - x * x)); }, -1., 1.),  // obviously fails
+ParametricCurveL([](double x) { return vec2(x, asin(x)*(2. / PI)); }, -1., 1.),  // obviously fails
+ParametricCurveL([](double t) { return vec2(cos(t) + .1*cos(10.*t), sin(t) + .1*sin(10.*t)); }, 0, 2.*PI),
+ParametricCurveL([](double x) { return vec2(x, x*x - cos(10.*x) - 1.)*.5; }, -1.8, 2.),
+ParametricCurveL([](double t) { return vec2(cos(4.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI),
+ParametricCurveL([](double t) { return vec2(-.7*cos(5.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI),
+ParametricCurveL([](double t) { return vec2(1.5*cos(t) + cos(1.5*t), 1.5*sin(t) - sin(1.5*t))*.5; }, 0., 4.*PI),
+ParametricCurveL([](double t) { return vec2(2.1*cos(t) + cos(2.1*t), 2.1*sin(t) - sin(2.1*t))*.5; }, 0., 10.*PI),
+ParametricCurveL([](double t) { return vec2(-1.2*cos(t) + cos(1.2*t), -1.2*sin(t) + sin(1.2*t))*.5; }, 0., 10.*PI),
+ParametricCurveL([](double t) { return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(t) + sin(1.9*t))*.5; }, 0., 20.*PI),  // too slow
+ParametricCurveL([](double t) { return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI),
+ParametricCurveL([](double t) { return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI),  // too slow
+ParametricCurveL([](double t) { return vec2(cos(t) - pow(cos(40.*t), 3.), sin(40.*t) - pow(sin(t), 4.) + .5)*.8; }, 0., 2.*PI),  // tooo slow
+ParametricCurveL([](double t) { return vec2(cos(60.*t) - 1.6*pow(cos(t), 3.), sin(60.*t) - pow(sin(t), 3.))*.6; }, 0., 2.*PI),  // tooo slow
+ParametricCurveL([](double t) { return vec2(cos(80.*t) - 1.4*cos(t)*sin(2.*t), 2.*sin(t) - sin(80.*t))*.5; }, 0., 2.*PI),  // tooo slow
+ParametricCurveL([](double t) { return vec2(cos(t) - cos(t)*sin(60.*t), 2.*sin(t) - sin(60.*t))*.5; }, 0., 2.*PI),  // tooo slow
+ParametricCurveL([](double t) { return vec2(.04041 + .6156*cos(t) - .3412*sin(t) + .1344*cos(2.*t) - .1224*sin(2.*t) + .08335*cos(3.*t) + .2634*sin(3.*t) - .07623*cos(4.*t) - .09188*sin(4.*t) + .01339*cos(5.*t) - .01866*sin(5.*t) + .1631*cos(6.*t) + .006984*sin(6.*t) + .02867*cos(7.*t) - .01512*sin(7.*t) + .00989*cos(8.*t) + .02405*sin(8.*t) + .002186*cos(9.*t), +.04205 + .2141*cos(t) + .4436*sin(t) + .1148*cos(2.*t) - .146*sin(2.*t) - .09506*cos(3.*t) - .06217*sin(3.*t) - .0758*cos(4.*t) - .02987*sin(4.*t) + .2293*cos(5.*t) + .1629*sin(5.*t) + .005689*cos(6.*t) + .07154*sin(6.*t) - .02175*cos(7.*t) + .1169*sin(7.*t) - .01123*cos(8.*t) + .02682*sin(8.*t) - .01068*cos(9.*t)); }, 0., 2.*PI),
+};
 
 
 
@@ -298,25 +310,23 @@ ParametricCurveL C([](double a) { return 0.3*(exp(sin(a)) - 2.*cos(4.*a) + sin((
 typedef std::chrono::high_resolution_clock NTime;
 typedef std::chrono::duration<double> fsec;
 
-int main(int argc, char** argv) {
-	// output format: SVG
-	freopen(argv[1], "w", stdout);
-	const int W = 600, H = 400;
-	const double SC = 120.0;
-	printf("<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", W, H);
-	printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' style='stroke-width:1px;stroke:black;fill:none;'>\n", SC, -SC, 0.5*W, 0.5*H);
+// scaling coefficients as global constants
+const int W = 600, H = 400;
+const double SC = 120.0;
+
+void drawVectorizeCurve(const ParametricCurveL &C) {
 
 	// axis
 	{
-		printf("<g style='stroke-width:%lgpx'>", 1.0 / SC);
-		printf("<line x1='-10' x2='10' y1='0' y2='0'/><line x1='1' x2='1' y1='-.05' y2='.05'/>");
-		printf("<line x1='0' x2='0' y1='-10' y2='10'/><line x1='-.05' x2='.05' y1='1' y2='1'/>");
+		printf("<g class='axes'>");
+		printf("<line x1='%lg' x2='%lg' y1='0' y2='0'/><line x1='1' x2='1' y1='-.05' y2='.05'/>", -0.5*W / SC, 0.5*W / SC);
+		printf("<line x1='0' x2='0' y1='%lg' y2='%lg'/><line x1='-.05' x2='.05' y1='1' y2='1'/>", -0.5*H / SC, 0.5*H / SC);
 		printf("</g>\n");
 	}
 
 	// discretized path
-	{
-		printf("<path d='");
+	if (0) {
+		printf("<path class='segpath' d='");
 		const int D = 200; double dt = (C.t1 - C.t0) / D;
 		vec2 p = C.p(C.t0);
 		printf("M%lg,%lg", p.x, p.y);
@@ -329,7 +339,7 @@ int main(int argc, char** argv) {
 
 	// vectorized path
 	{
-		printf("<path d='");
+		printf("<path class='vecpath' d='");
 		vec2 P0 = C.p(C.t0);
 		vec2 P1 = C.p(C.t1);
 		vec2 uv((C.t1 - C.t0) / 3.);
@@ -349,17 +359,11 @@ int main(int argc, char** argv) {
 			vec2 Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
 			printf("C%lg,%lg %lg,%lg %lg,%lg\n", Q0.x, Q0.y, Q1.x, Q1.y, P1.x, P1.y);
 		}
-		printf("' vector-effect='non-scaling-stroke'/>\n");
+		printf("'/>\n");
 
 		// anchor points
 		{
-			printf("<g style='stroke-width:%lgpx;stroke:black;opacity:0.6'>\n", 1.0 / SC);
-			printf("<defs>\
-<marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
-<rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect>\
-</marker><marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
-<ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse>\
-</marker></defs>\n");
+			printf("<g class='anchor' style='stroke:black;opacity:0.4'>\n");
 			auto line = [](vec2 a, vec2 b) {
 				printf("<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'/>\n", a.x, a.y, b.x, b.y);
 			};
@@ -371,6 +375,29 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	printf("</g></svg>");
+	fflush(stdout);
+
+}
+
+
+int main(int argc, char** argv) {
+	// output format: SVG
+	freopen(argv[1], "wb", stdout);
+	printf("<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", 2 * W, ((CSN + 1) / 2)*H);
+	printf("<defs>\
+<marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
+<rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect>\
+</marker><marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
+<ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse>\
+</marker></defs>\n");
+
+	for (int i = 0; i < CSN; i++) {
+		printf("<rect x='%d' y='%d' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>", (i % 2)*W, (i / 2)*H, W, H);
+		printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' style='stroke-width:%lgpx;stroke:black;fill:none;' >\n", SC, -SC, (i % 2 + 0.5)*W, (i / 2 + 0.5)*H, 1.0 / SC);
+		drawVectorizeCurve(Cs[i]);
+		printf("</g>");
+	}
+
+	printf("</svg>");
 	return 0;
 }
