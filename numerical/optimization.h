@@ -312,7 +312,7 @@ template<typename Fun> bool Newton_Iteration_Minimize(int N, Fun F, const double
 
 // fun(vec2): function to minimize
 // P0: initial simplex/triangle
-// Breaks when the optimizer makes no imporvement more than accur_eps for more than noimporv_break times
+// Breaks when the optimizer makes no improvement more than accur_eps for more than noimporv_break times
 // or iteration steps exceeds max_iter
 // Each iteration step requires 2 or 1 function evaluations
 template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],

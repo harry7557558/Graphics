@@ -1401,7 +1401,7 @@ void KeyUpT(WPARAM _KEY) {
     Files are started with a character '#'
     The program searches for that character after opening the file.
 
-    There will be a basic error handling for file open error, but no further handling on file format error.
+    There will be a basic error handling for file open error, but no further handling of file format error.
     Opening a file will clear the current scene. If errors occur or program crashes due to file format problems, restart the program.
 
 */

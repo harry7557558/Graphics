@@ -369,7 +369,7 @@ void remarch() {
 	SEARCH_DPS = 4, PLOT_DPS = 8;
 	vec2 p0 = fromInt(vec2(0, 0)), dp = fromInt(vec2(_WIN_W, _WIN_H)) - p0;  // starting position and increasement
 	if (CONSTANT) p0 = vec2(-2.5, -2.5), dp = vec2(5, 5);
-	p0 = p0 + vec2(sin(123.4), sin(234.5))*1e-8;  // avoid denegerated cases
+	p0 = p0 + vec2(sin(123.4), sin(234.5))*1e-8;  // avoid degenerated cases
 	evals = 0;
 	Segments.clear();
 	marchSquare(p0.x, p0.y, dp.x, dp.y);

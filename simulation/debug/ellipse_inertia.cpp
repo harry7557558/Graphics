@@ -1,4 +1,4 @@
-// Try to find the rules of the moments of inertia of elliptical rings with uniform line density
+// Try to find the rules of the moments of inertia of elliptical rings with a uniform line density
 // An elliptical ring has a major radius a and a minor radius b
 
 // See if the ratio between the moment of inertia and the mass of elliptical rings can be expressed analytically in terms of a and b

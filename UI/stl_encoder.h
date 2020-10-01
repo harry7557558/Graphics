@@ -38,7 +38,7 @@ struct stl_triangle {
 bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
 
-	// 80 byte header
+	// 80-byte header
 	if (header == 0) {
 		for (int i = 0; i < 80; i++)
 			if (fputc(0, fp) == EOF) return false;

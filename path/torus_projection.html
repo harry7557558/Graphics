@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -44,7 +44,7 @@
         }
 
             .slider::-webkit-slider-thumb {
-                /* doens't work in Firefox but looks fine */
+                /* doesn't work in Firefox but looks fine */
                 -webkit-appearance: none;
                 width: 12px;
                 height: 20px;
@@ -99,7 +99,7 @@
         <p>
             Layers (from back to front):
             <input class="checkbox" type="checkbox" /><span>axes</span>
-            <input class="checkbox" type="checkbox" /><span title="ray casting variation, slower but more stable">use SDF ray marching</span>
+            <input class="checkbox" type="checkbox" /><span title="ray casting variation, slower but more stable">use SDF raymarching</span>
         </p>
         <p>
             <input class="checkbox" type="checkbox" checked /><span title="WebGL">ray-casted image</span>,
@@ -295,7 +295,7 @@
                 return s;
             }
 
-            // draw circles on longtitude direction
+            // draw circles on longitude direction
             var uN = clamp(floor(18 * iR / sqrt(ir * (iR + ir))), 10, 100);
             for (var i = 0; i < uN; i++) {
                 var u = i * (2 * PI / uN);
@@ -655,7 +655,7 @@ void main() {
             var x3 = -A[0] + 3 * B[0] - 3 * C[0] + D[0], y3 = -A[1] + 3 * B[1] - 3 * C[1] + D[1];
             return [[x0, y0], [x1, y1], [x2, y2], [x3, y3]];
         }
-        // distance to a (descretized) cubic bezier curve
+        // distance to a (discretized) cubic bezier curve
         // slower than the implicit one but more accurate and stable
         function distBezier(c, p) {  // c: bezierAlg
             var dt = 1.0 / 30;
@@ -808,7 +808,7 @@ void main() {
                 return "<line x1='" + p[0] + "' y1='" + p[1] + "' x2='" + q[0] + "' y2='" + q[1] + "' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'/>";
             }
 
-            // parameter of axes of symmetric, requires A to be orthogonal
+            // parameter of axes of symmetry, requires A to be orthogonal
             var t0 = atan2(-A[0][2], A[1][2]);
             var t1 = t0 + PI / 2;
 

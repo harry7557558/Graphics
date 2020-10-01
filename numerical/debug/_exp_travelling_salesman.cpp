@@ -1,10 +1,10 @@
 // try simulated annealing for combinatorial optimization
-// some code are modified from Numerical Recipes
+// algorithm introduced in Numerical Recipes
 
-// standard traveling salesman problem, cost is the sum of Euclidean distances
+// standard traveling salesman problem, the cost is the sum of Euclidean distances
 
 // the code can be optimized a lot in time without changing the result,
-// however, since most of time used by the program is writing GIF,
+// however, since most of the time used by the program is writing GIF,
 // I won't spend much human time doing that.
 
 

@@ -30,7 +30,7 @@ void debug_lengthCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<double>(F, t0, t1, N));  // Simpson's method
-		//updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
+		//updateValue(1, NIntegrate_trapezoid<double>(F, t0, t1, N));  // trapezoid method
 		//updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
 		//updateValue(7, NIntegrate_quad2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
 		//updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([](double t) { return 1.; }, C, t0, t1, N));  // O(N⁻²) method on curve
@@ -46,7 +46,7 @@ void debug_lengthCalcTest() {
 	printf("\n");
 }
 
-// moment of inertia of a quadratic parametric curve with unit line density
+// moment of inertia of a quadratic parametric curve with a unit line density
 void debug_mInertiaCalcTest() {
 	auto time0 = NTime::now();
 	const auto C = [](double t)->vec2 { return vec2(2, 1) + vec2(-2, 2)*t + vec2(-1, -3)*(t*t); };
@@ -66,7 +66,7 @@ void debug_mInertiaCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<double>(F, t0, t1, N));  // Simpson's method
-		//updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
+		//updateValue(1, NIntegrate_trapezoid<double>(F, t0, t1, N));  // trapezoid method
 		//updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
 		//updateValue(7, NIntegrate_quad2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
 		//updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([&](double t) { return C(t).sqr(); }, C, t0, t1, N));  // O(N⁻²) method on curve
@@ -82,7 +82,7 @@ void debug_mInertiaCalcTest() {
 	printf("\n");
 }
 
-// integrate position on a line spiral, varible is 3d vector, result is the center of mass multiplied by the mass
+// integrate position (3d vector) on a spiral, the result is the center of mass multiplied by the mass
 void debug_centerCalcTest() {
 	auto time0 = NTime::now();
 	const auto C = [](double t)->vec3 { return vec3(cos(t), sin(t), .5*t*t); };
@@ -102,7 +102,7 @@ void debug_centerCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<vec3>(F, t0, t1, N));  // Simpson's method
-		//updateValue(1, NIntegrate_trapzoid<vec3>(F, t0, t1, N));  // trapzoid method
+		//updateValue(1, NIntegrate_trapezoid<vec3>(F, t0, t1, N));  // trapezoid method
 		//updateValue(2, NIntegrate_midpoint<vec3>(F, t0, t1, N));  // midpoint rectangle method
 		//updateValue(7, NIntegrate_quad2<vec3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
 		//updateValue(3, NIntegrate_AL_midpoint_t<vec3, vec3>([&](double t) { return C(t); }, C, t0, t1, N));  // O(N⁻²) method on curve
@@ -149,7 +149,7 @@ void debug_inertiaTCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<mat3>(F, t0, t1, N));  // Simpson's method
-		//updateValue(1, NIntegrate_trapzoid<mat3>(F, t0, t1, N));  // trapzoid method
+		//updateValue(1, NIntegrate_trapezoid<mat3>(F, t0, t1, N));  // trapezoid method
 		//updateValue(2, NIntegrate_midpoint<mat3>(F, t0, t1, N));  // midpoint rectangle method
 		//updateValue(7, NIntegrate_quad2<mat3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
 		//updateValue(3, NIntegrate_AL_midpoint_t<mat3, vec3>([&](double t)->mat3 { return M(C(t)); }, C, t0, t1, N));  // O(N⁻²) method on curve

@@ -33,7 +33,7 @@ double buffer0[W*H], buffer[W*H], bufferv[W*H], buffervx[W*H], buffervy[W*H];
 #define fromScreen(x,y) ((vec2(x,-y)+vec2(-.5*W,.5*H-.5))*(1./Scale))
 
 // painting functions
-// this part is long and unrelated so I move function body to the end of this file
+// this part is long and unrelated so I move the function bodies to the end of this file
 void drawAxis(double width, COLOR col, bool axis, bool grid);
 void drawDot(vec2 c, double r, COLOR col);
 void drawLine(vec2 p, vec2 q, COLOR col);

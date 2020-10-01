@@ -145,7 +145,7 @@ int solveQuartic_dg(double k4, double k3, double k2, double k1, double k0, doubl
 // Solve an arbitrary degree polynomial using bisection method
 // O(N²) or O(N²logN), numerically stable when the polynomial does not have multiple roots
 
-// N: degree of the polynomial
+// N: the degree of the polynomial
 // C: lowest degree term comes first, allocate to N+1
 // R: allocate to at least N for safety
 // the result will be naturally sorted in increasing order

@@ -20,7 +20,7 @@
 // VIEWPORT / NAVIGATION:
 // A viewport center highlighted in magenta is visible when dragging/holding control keys
 // There is a small model of x,y,z axes (RGB) on the top-right of the window
-// Click and drag to rotate the scene around viewport center (raw/patch)
+// Click and drag to rotate the scene around the viewport center (raw/patch)
 // Scroll to zoom in/out
 // Shift+Drag to adjust camera roll
 // Shift+Scroll to adjust camera distance (perspective)
@@ -30,10 +30,10 @@
 // Press Numpad decimal key to move viewport center to the center of the object (center of its bounding box)
 // Press Numpad0 to move viewport center to the coordinate origin
 // The function of a single press of Numpad keys is the same as that in Blender 2.80
-//   - Numpad1: Move camera to negative y direction (look at positive y)
-//   - Numpad3: Move camera to positive x direction (look at negative x)
-//   - Numpad7: Move camera to positive z direction (look down, x-axis at right)
-//   - Numpad9: Move camera to negative z direction (look up, x-axis at right)
+//   - Numpad1: Move camera to negative y-direction (look at positive y)
+//   - Numpad3: Move camera to positive x-direction (look at negative x)
+//   - Numpad7: Move camera to positive z-direction (look down, x-axis at right)
+//   - Numpad9: Move camera to negative z-direction (look up, x-axis at right)
 //   - Numpad5: Switch between orthographic and perspective projections
 //   - Numpad4: Rotate camera position horizontally around viewport center for 15 degrees (clockwise)
 //   - Numpad6: Rotate camera position horizontally by 15 degrees (counterclockwise)
@@ -42,7 +42,7 @@
 // WSAD keys are supported but not recommended (may be used along with Alt+Click)
 // Press Home key or Ctrl+0 to reset viewport to default
 // To-do list:
-//   - Rotation and zooming that changes the position of viewport center but not camera (Shift+Numpad)
+//   - Rotation and zooming that changes the position of the viewport center but not the camera (Shift+Numpad)
 //   - Moving camera along xOy plane but not changing the viewport center (Ctrl+Shift+Drag)
 //   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
 //   - Dynamic translation and zooming based on the position of the camera and viewport center
@@ -63,9 +63,9 @@
 //   - Point cloud: no fill or stroke, use filling color to plot vertices
 // Press X to hide/show axis
 // Press G to hide/show grid ([-10,10] with grid width 1)
-//   - By default there are larger and smaller gridlines if the object is too large or small; Press F or Shift+G to turn on/off this feature
+//   - By default there are larger and smaller grid lines if the object is too large or small; Press F or Shift+G to turn on/off this feature
 //   - Press H to show/hide gridlines on xOz and yOz planes
-// Right click shape to read the coordinates of clicked point from windows title; right click empty space or press Esc to return to normal
+// Right-click the shape to read the coordinates of the clicked point from windows title; right click empty space or press Esc to return to normal
 // Press B to switch to/out dark background
 // Press M to show/hide highlighting of the object's center of mass (orange)
 // Press I to show/hide highlighting of the object's inertia tensor
@@ -93,7 +93,7 @@
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
-// Press Ctrl+S to save edited object
+// Press Ctrl+S to save an edited object
 // Press F5 to reload object from file, Shift+F5 or F9 to reload without resetting the current viewport
 // Press F1 to set window to topmost or non-topmost
 // Hold Alt key to modify object:
@@ -102,11 +102,11 @@
 //   - Press arrow keys to move object left/right/front/back (in screen coordinate)
 //   - Press Numpad5 to translate object so that its center coincident with the origin
 //   - Press plus/minus keys or scroll mouse wheel to scale the object about its center
-//   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along z-axis, about the xOy plane
+//   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along the z-axis, about the xOy plane
 // To-do list:
 //   - Report error if the file contains NAN/INF values
 //   - Alt+Numpad0 to move the object to the first quadrant (x-y only)
-//   - Shortcuts to rotate object to make its principle axes axis-oriented
+//   - Shortcuts to rotate the object to make its principal axes axis-oriented
 //   - Nonlinear transforms
 //   - Reflection
 //   - Mouse-involved editings (eg. dragging, scrolling)
@@ -152,7 +152,7 @@ wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 #define WinW_Max 3840
 #define WinH_Max 2160
 
-void Init();  // called before window is created
+void Init();  // called before the window is created
 void render();
 void WindowResize(int _oldW, int _oldH, int _W, int _H);
 void WindowClose();
@@ -326,7 +326,7 @@ void calcBoundingBox() {
 		BMax = pMax(pMax(BMax, T[i].a), pMax(T[i].b, T[i].c));
 	}
 }
-// physics, requires surface to be closed with outward normals
+// physics, requires the surface to be closed with outward normals
 void calcVolumeCenterInertia() {
 	// Assume the object to be uniform density
 	// I might have a bug
@@ -534,7 +534,7 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 				for (int y = y0; y <= y1; y++, xf += slope) {
 					x = (int)(xf + 0.5);
 					if (x >= 0 && x < _WIN_W) {
-						// the stroking bug isn't trivil to fix (at least for me)
+						// the stroking bug isn't trivial to fix (at least for me)
 						// (x,y) isn't always inside the triangle
 						if (0) {
 							vec2 p(x, y);
@@ -686,7 +686,7 @@ void render() {
 	// highlight center
 	if (Ctrl || Shift || Alt || mouse_down) drawCross3D(Center, 6, 0xFF00FF);
 
-	// render point of readed value
+	// render point of the read value
 	if (!isnan(readedValue.sqr())) {
 		// draw a circle
 		drawCircle((Tr*readedValue).xy(), 3, 0xFFFF00);
@@ -891,7 +891,7 @@ void MouseDownR(int _X, int _Y) {
 void MouseUpR(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 
-	// read value from the (graph?!)
+	// read values from the (graph?!)
 	{
 		vec3 rd = scrDir(Cursor);
 		double t = rayIntersect(CamP, rd);

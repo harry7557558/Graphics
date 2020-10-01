@@ -40,10 +40,10 @@ T NIntegrate_quad2(Fun f, double a, double b, int N) {
 	return s * (dx / 2.);
 }
 
-// standard trapzoid method
+// standard trapezoid method
 // Estimated error: (b-a)²/12 |f'(b)-f'(a)| N⁻²
 template<typename T, typename Fun>
-T NIntegrate_trapzoid(Fun f, double a, double b, int N) {
+T NIntegrate_trapezoid(Fun f, double a, double b, int N) {
 	double dx = (b - a) / N;
 	T s(0.);
 	for (int i = 1; i < N; i++) s += f(a + i * dx);
@@ -53,7 +53,7 @@ T NIntegrate_trapzoid(Fun f, double a, double b, int N) {
 
 // rectangle method, sample at midpoints
 // Estimated error: (b-a)²/24 |f'(b)-f'(a)| N⁻²
-// more accurate and portable than the trapzoid method
+// more accurate and portable than the trapezoid method
 template<typename T, typename Fun>
 T NIntegrate_midpoint(Fun f, double a, double b, int N) {
 	double dx = (b - a) / N;
