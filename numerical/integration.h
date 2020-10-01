@@ -89,19 +89,6 @@ T NIntegrate_rect_rand(Fun f, double a, double b, int N) {
 // Integral[f(t)dS, a, b], dS=length(dp/dt)dt;  O(N⁻²)
 template<typename T, typename vec, typename Fun/*T(double)*/, typename fun/*vec(double)*/>
 T NIntegrate_AL_midpoint_t(Fun f, fun p, double a, double b, int N) {
-#if 0
-	double dt = (b - a) / N, t;
-	a += .5*dt;
-	T r(0.);
-	vec p0 = p(a - dt), pc = p(a), p1;
-	for (int i = 0; i < N; i++) {
-		t = a + i * dt;
-		p1 = p(t + dt);
-		r += f(t) * length(p1 - p0);
-		p0 = pc, pc = p1;
-	}
-	return r * .5;
-#else
 	double dt = (b - a) / N;
 	T r(0.);
 	vec p0 = p(a);
@@ -113,25 +100,10 @@ T NIntegrate_AL_midpoint_t(Fun f, fun p, double a, double b, int N) {
 		p0 = p1;
 	}
 	return r;
-#endif
 }
 // Integral[f(p(t))dS, a, b];  same as the previous one
 template<typename T, typename vec, typename Fun/*T(vec)*/, typename fun/*vec(double)*/>
 T NIntegrate_AL_midpoint_p(Fun f, fun p, double a, double b, int N) {
-#if 0
-	double dt = (b - a) / N, t;
-	a += .5*dt;
-	T r(0.);
-	vec p0 = p(a - dt), pc = p(a), p1;
-	for (int i = 0; i < N; i++) {
-		t = a + i * dt;
-		p1 = p(t + dt);
-		// the ↓ only thing different from the previous function
-		r += f(pc) * length(p1 - p0);
-		p0 = pc, pc = p1;
-	}
-	return r * .5;
-#else
 	double dt = (b - a) / N;
 	T r(0.);
 	vec p0 = p(a);
@@ -143,7 +115,6 @@ T NIntegrate_AL_midpoint_p(Fun f, fun p, double a, double b, int N) {
 		p0 = p1;
 	}
 	return r;
-#endif
 }
 // Integral[f(t)dS, a, b];  derived from Simpson, O(N⁻⁴)
 template<typename T, typename vec, typename Fun/*T(double)*/, typename fun/*vec(double)*/>
