@@ -30,7 +30,7 @@ T NIntegrate_Simpson(Fun f, double a, double b, int N) {
 // Gaussian quadrature with 2 samples per subinterval
 // Estimated error: (b-a)⁴/270 |f"'(b)-f"'(a)| N⁻⁴
 template<typename T, typename Fun>
-T NIntegrate_Gaussian2(Fun f, double a, double b, int N) {
+T NIntegrate_quad2(Fun f, double a, double b, int N) {
 	double dx = (b - a) / (N >>= 1);
 	T s(0.);
 	const double d0 = 0.21132486540518711775, d1 = 0.78867513459481288225;  // (1±1/sqrt(3))/2
@@ -89,6 +89,7 @@ T NIntegrate_rect_rand(Fun f, double a, double b, int N) {
 // Integral[f(t)dS, a, b], dS=length(dp/dt)dt;  O(N⁻²)
 template<typename T, typename vec, typename Fun/*T(double)*/, typename fun/*vec(double)*/>
 T NIntegrate_AL_midpoint_t(Fun f, fun p, double a, double b, int N) {
+#if 0
 	double dt = (b - a) / N, t;
 	a += .5*dt;
 	T r(0.);
@@ -100,10 +101,24 @@ T NIntegrate_AL_midpoint_t(Fun f, fun p, double a, double b, int N) {
 		p0 = pc, pc = p1;
 	}
 	return r * .5;
+#else
+	double dt = (b - a) / N;
+	T r(0.);
+	vec p0 = p(a);
+	for (int i = 1; i <= N; i++) {
+		vec p1 = p(a + i * dt);
+		T val = f(a + (i - .5)*dt);
+		double dl = length(p1 - p0);
+		r += val * dl;
+		p0 = p1;
+	}
+	return r;
+#endif
 }
 // Integral[f(p(t))dS, a, b];  same as the previous one
 template<typename T, typename vec, typename Fun/*T(vec)*/, typename fun/*vec(double)*/>
 T NIntegrate_AL_midpoint_p(Fun f, fun p, double a, double b, int N) {
+#if 0
 	double dt = (b - a) / N, t;
 	a += .5*dt;
 	T r(0.);
@@ -116,10 +131,25 @@ T NIntegrate_AL_midpoint_p(Fun f, fun p, double a, double b, int N) {
 		p0 = pc, pc = p1;
 	}
 	return r * .5;
+#else
+	double dt = (b - a) / N;
+	T r(0.);
+	vec p0 = p(a);
+	for (int i = 1; i <= N; i++) {
+		vec p1 = p(a + i * dt);
+		T val = f((p0 + p1)*0.5);
+		double dl = length(p1 - p0);
+		r += val * dl;
+		p0 = p1;
+	}
+	return r;
+#endif
 }
 // Integral[f(t)dS, a, b];  derived from Simpson, O(N⁻⁴)
 template<typename T, typename vec, typename Fun/*T(double)*/, typename fun/*vec(double)*/>
 T NIntegrate_AL_Simpson_t(Fun f, fun p, double a, double b, int N) {
+#if 1
+	// O(N^4), with samples outside the interval
 	double dt = (b - a) / (N >>= 1);
 	T r(0.);
 	vec p00 = p(a - dt), pc0 = p(a - .5*dt), p0 = p(a), pc = p(a + .5*dt), p1 = p(a + dt), pc1, p11;  // position samples with delta 0.5*dt
@@ -133,6 +163,42 @@ T NIntegrate_AL_Simpson_t(Fun f, fun p, double a, double b, int N) {
 		p00 = p0, pc0 = pc, p0 = p1, pc = pc1, p1 = p11; v0 = v1;
 	}
 	return r * (1. / 36.);
+#elif 1
+	// test O(N^2)
+	double dt = (b - a) / (N >>= 1);
+	T s(0.);
+	for (int i = 0; i < N; i++) {
+		const double d0 = 0.21132486540518711775, d1 = 0.78867513459481288225;
+		double t0 = a + (i + d0)*dt, t1 = a + (i + d1)*dt;
+		vec p0 = p(t0), p1 = p(t1);
+		T v0 = f(t0), v1 = f(t1);
+		s += (v0 + v1)*(0.5*length(p1 - p0) / (d1 - d0));
+	}
+	return s;
+#else
+	// test O(N^2)
+	double dt = (b - a) / (N >>= 1);
+	T s(0.);
+	for (int i = 0; i < N; i++) {
+		const double d0 = 0.112701665379258311482073, dc = 0.5, d1 = 0.887298334620741688517927;
+		const double w0 = 5. / 18., wc = 4. / 9., w1 = 5. / 18.;
+		double t0 = a + (i + d0)*dt, tc = a + (i + dc)*dt, t1 = a + (i + d1)*dt;
+		vec p0 = p(t0), pc = p(tc), p1 = p(t1);
+		T v0 = f(t0), vc = f(tc), v1 = f(t1);
+
+		double det = (t0 - tc)*(t0 - t1)*(tc - t1);
+		vec _m = 2 * (p0 * (tc - t1) + pc * (t1 - t0) + p1 * (t0 - tc)) / det;
+		vec _b = -(p0 * (tc*tc - t1 * t1) + pc * (t1*t1 - t0 * t0) + p1 * (t0*t0 - tc * tc)) / det;
+		vec dp0 = _m * t0 + _b, dpc = _m * tc + _b, dp1 = _m * t1 + _b;
+		//vec dp01 = p0 * (2 * d0 - (tc + t1)) / ((t0 - tc)*(t0 - t1)) + pc * (2 * d0 - (tc + t1)) / ((tc - t0)*(tc - t1)) + p1 * (2 * d0 - (t0 + tc)) / ((t1 - t0)*(t1 - tc));
+		//if (length(dp01 - dp0) > 1e-3) throw(1);
+
+		//vec dp0 = (pc - p0) / (dc - d0), dpc = (p1 - p0) / (d1 - d0), dp1 = (p1 - pc) / (d1 - dc);
+
+		s += v0 * length(dp0)*w0 + vc * length(dpc)*wc + v1 * length(dp1)*w1;
+	}
+	return s * dt;
+#endif
 }
 // Integral[f(p(t))dS, a, b];
 template<typename T, typename vec, typename Fun/*T(vec)*/, typename fun/*vec(double)*/>

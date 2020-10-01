@@ -30,13 +30,13 @@ void debug_lengthCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<double>(F, t0, t1, N));  // Simpson's method
-		updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
-		updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
-		updateValue(7, NIntegrate_Gaussian2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
-		updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([](double t) { return 1.; }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
+		//updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
+		//updateValue(7, NIntegrate_quad2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
+		//updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([](double t) { return 1.; }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(5, NIntegrate_AL_midpoint_p<double, vec2>([](vec2 p) { return 1.; }, C, t0, t1, N));  // O(N⁻²) method on curve
 		updateValue(4, NIntegrate_AL_Simpson_t<double, vec2>([](double t) { return 1.; }, C, t0, t1, N));  // O(N⁻⁴) method on curve
-		updateValue(5, NIntegrate_AL_midpoint_p<double, vec2>([](vec2 p) { return 1.; }, C, t0, t1, N));  // O(N⁻²) method on curve, should be identical as the previous
-		updateValue(6, NIntegrate_AL_Simpson_p<double, vec2>([](vec2 p) { return 1.; }, C, t0, t1, N));  // O(N⁻⁴) method on curve, should be identical as the previous
+		//updateValue(6, NIntegrate_AL_Simpson_p<double, vec2>([](vec2 p) { return 1.; }, C, t0, t1, N));  // O(N⁻⁴) method on curve
 		printf("\n");
 	}
 	printf("GL\t");
@@ -66,13 +66,13 @@ void debug_mInertiaCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<double>(F, t0, t1, N));  // Simpson's method
-		updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
-		updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
-		updateValue(7, NIntegrate_Gaussian2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
-		updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([&](double t) { return C(t).sqr(); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(1, NIntegrate_trapzoid<double>(F, t0, t1, N));  // trapzoid method
+		//updateValue(2, NIntegrate_midpoint<double>(F, t0, t1, N));  // midpoint rectangle method
+		//updateValue(7, NIntegrate_quad2<double>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
+		//updateValue(3, NIntegrate_AL_midpoint_t<double, vec2>([&](double t) { return C(t).sqr(); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(5, NIntegrate_AL_midpoint_p<double, vec2>([](vec2 p) { return p.sqr(); }, C, t0, t1, N));  // O(N⁻²) method on curve
 		updateValue(4, NIntegrate_AL_Simpson_t<double, vec2>([&](double t) { return C(t).sqr(); }, C, t0, t1, N));  // O(N⁻⁴) method on curve
-		updateValue(5, NIntegrate_AL_midpoint_p<double, vec2>([](vec2 p) { return p.sqr(); }, C, t0, t1, N));  // O(N⁻²) method on curve, should be identical as the previous
-		updateValue(6, NIntegrate_AL_Simpson_p<double, vec2>([](vec2 p) { return p.sqr(); }, C, t0, t1, N));  // O(N⁻⁴) method on curve, should be identical as the previous
+		//updateValue(6, NIntegrate_AL_Simpson_p<double, vec2>([](vec2 p) { return p.sqr(); }, C, t0, t1, N));  // O(N⁻⁴) method on curve
 		printf("\n");
 	}
 	printf("GL\t");
@@ -102,13 +102,13 @@ void debug_centerCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<vec3>(F, t0, t1, N));  // Simpson's method
-		updateValue(1, NIntegrate_trapzoid<vec3>(F, t0, t1, N));  // trapzoid method
-		updateValue(2, NIntegrate_midpoint<vec3>(F, t0, t1, N));  // midpoint rectangle method
-		updateValue(7, NIntegrate_Gaussian2<vec3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
-		updateValue(3, NIntegrate_AL_midpoint_t<vec3, vec3>([&](double t) { return C(t); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(1, NIntegrate_trapzoid<vec3>(F, t0, t1, N));  // trapzoid method
+		//updateValue(2, NIntegrate_midpoint<vec3>(F, t0, t1, N));  // midpoint rectangle method
+		//updateValue(7, NIntegrate_quad2<vec3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
+		//updateValue(3, NIntegrate_AL_midpoint_t<vec3, vec3>([&](double t) { return C(t); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(5, NIntegrate_AL_midpoint_p<vec3, vec3>([](vec3 p) { return p; }, C, t0, t1, N));  // O(N⁻²) method on curve
 		updateValue(4, NIntegrate_AL_Simpson_t<vec3, vec3>([&](double t) { return C(t); }, C, t0, t1, N));  // O(N⁻⁴) method on curve
-		updateValue(5, NIntegrate_AL_midpoint_p<vec3, vec3>([](vec3 p) { return p; }, C, t0, t1, N));  // O(N⁻²) method on curve, should be identical as the previous
-		updateValue(6, NIntegrate_AL_Simpson_p<vec3, vec3>([](vec3 p) { return p; }, C, t0, t1, N));  // O(N⁻⁴) method on curve, should be identical as the previous
+		//updateValue(6, NIntegrate_AL_Simpson_p<vec3, vec3>([](vec3 p) { return p; }, C, t0, t1, N));  // O(N⁻⁴) method on curve
 		printf("\n");
 	}
 	printf("GL\t");
@@ -149,13 +149,13 @@ void debug_inertiaTCalcTest() {
 		int N = 1 << i;
 		printf("%d\t", N);
 		updateValue(0, NIntegrate_Simpson<mat3>(F, t0, t1, N));  // Simpson's method
-		updateValue(1, NIntegrate_trapzoid<mat3>(F, t0, t1, N));  // trapzoid method
-		updateValue(2, NIntegrate_midpoint<mat3>(F, t0, t1, N));  // midpoint rectangle method
-		updateValue(7, NIntegrate_Gaussian2<mat3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
-		updateValue(3, NIntegrate_AL_midpoint_t<mat3, vec3>([&](double t)->mat3 { return M(C(t)); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(1, NIntegrate_trapzoid<mat3>(F, t0, t1, N));  // trapzoid method
+		//updateValue(2, NIntegrate_midpoint<mat3>(F, t0, t1, N));  // midpoint rectangle method
+		//updateValue(7, NIntegrate_quad2<mat3>(F, t0, t1, N));  // Gaussian quadrature with 2 samples
+		//updateValue(3, NIntegrate_AL_midpoint_t<mat3, vec3>([&](double t)->mat3 { return M(C(t)); }, C, t0, t1, N));  // O(N⁻²) method on curve
+		//updateValue(5, NIntegrate_AL_midpoint_p<mat3, vec3>([&](vec3 p)->mat3 { return M(p); }, C, t0, t1, N));  // O(N⁻²) method on curve
 		updateValue(4, NIntegrate_AL_Simpson_t<mat3, vec3>([&](double t)->mat3 { return M(C(t)); }, C, t0, t1, N));  // O(N⁻⁴) method on curve
-		updateValue(5, NIntegrate_AL_midpoint_p<mat3, vec3>([&](vec3 p)->mat3 { return M(p); }, C, t0, t1, N));  // O(N⁻²) method on curve, should be identical as the previous
-		updateValue(6, NIntegrate_AL_Simpson_p<mat3, vec3>([&](vec3 p)->mat3 { return M(p); }, C, t0, t1, N));  // O(N⁻⁴) method on curve, should be identical as the previous
+		//updateValue(6, NIntegrate_AL_Simpson_p<mat3, vec3>([&](vec3 p)->mat3 { return M(p); }, C, t0, t1, N));  // O(N⁻⁴) method on curve
 		printf("\n");
 	}
 	printf("GL\t");
