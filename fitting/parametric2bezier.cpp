@@ -85,25 +85,6 @@ double distCubic2(cubicCurve c, vec2 p) {
 	return md;
 };
 
-// loss function for curve fitting
-template<typename Fun>
-double loss(Fun S, vec2 A, vec2 B, vec2 C, vec2 D, double t0, double t1) {
-	cubicCurve bc = bezierAlg(A, B, C, D);
-#if 0
-	return NIntegrate_AL_Simpson_p<double, vec2>([&](vec2 p) {
-		return distCubic2(bc, p);
-	}, S, t0, t1, 48);
-#else
-	const double eps = 1e-6*(t1 - t0);
-	return NIntegrate_GL32<double>([&](double t) {
-		double val = distCubic2(bc, S(t));
-		double dL = length(S(t + eps) - S(t - eps)) / (2.*eps);
-		return val * dL;
-	}, t0, t1);
-#endif
-	// not a good loss function
-	// an idea for improvement is integrating the area between the curves
-}
 
 
 // curve fitting, return loss
@@ -112,10 +93,25 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 	double *lengthC = nullptr) {
 	int callCount = 0;  // test
 
+	// pre-computing for numerical integral
+	double dt = t1 - t0, eps = 1e-6*dt;
+	vec2 P[32]; double dL[32];
+	for (int i = 0; i < 32; i++) {
+		double t = t0 + NIntegrate_GL32_S[i] * dt;
+		P[i] = C.p(t);
+		dL[i] = length(C.p(t + eps) - C.p(t - eps)) / (2.*eps);
+		dL[i] *= NIntegrate_GL32_W[i];
+	}
+
+	// not a good loss function
+	// an idea for improvement is integrating the area between the curves
 	auto cost = [&](double u, double v) {
 		callCount++;
-		vec2 P = P0 + T0 * u, Q = P1 - T1 * v;
-		return loss(C.p, P0, P, Q, P1, t0, t1);
+		cubicCurve bc = bezierAlg(P0, P0 + T0 * u, P1 - T1 * v, P1);
+		double s(0.);
+		for (int i = 0; i < 32; i++)
+			s += distCubic2(bc, P[i]) * dL[i];
+		return s * dt;
 	};
 
 	double clength = calcLength(C.p, t0, t1, 48);
@@ -261,6 +257,7 @@ ParametricCurveL([](double x) { _return vec2(x, log(x + 1)); }, -0.99, 2.),  // 
 ParametricCurveL([](double x) { _return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5),  // too many curves
 ParametricCurveL([](double x) { _return vec2(x, x*x*x - x); }, -2, 2),
 ParametricCurveL([](double x) { _return vec2(.5*x, 0.04*(x*x*x*x + 2.*x*x*x - 6.*x*x - x + 1.)); }, -4., 4.),
+#if 1
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*a; }, 0, 6.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a); }, -PI, 4.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),  // too slow
@@ -269,6 +266,7 @@ ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(-exp(10.*(sin(20.*a) - 1)) + 1.8); }, -PI, 4.*PI),  // too slow and too many curves
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.06*exp(0.25*a)*(pow(0.6*asin(sin(10.*a)) - .05, 8.) + 0.8); }, -PI, 4.*PI),  // too slow and too many curves
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(0.1*(asin(sin(10.*a)) + asin(sin(30.*a))) + 1.); }, -PI, 4.*PI),  // too slow and too many curves; contains non-differentiable points
+#endif
 ParametricCurveL([](double t) { _return vec2(.1*t + .3*cos(t), sin(t)); }, -13., 14.),
 ParametricCurveL([](double t) { _return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI),
 ParametricCurveL([](double a) { _return(sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI),
@@ -298,12 +296,14 @@ ParametricCurveL([](double t) { _return vec2(-1.2*cos(t) + cos(1.2*t), -1.2*sin(
 ParametricCurveL([](double t) { _return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(t) + sin(1.9*t))*.5; }, 0., 20.*PI),  // too slow
 ParametricCurveL([](double t) { _return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI),
 ParametricCurveL([](double t) { _return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI),  // too slow
+#if 1
 ParametricCurveL([](double t) { _return vec2(cos(t) - pow(cos(40.*t), 3.), sin(40.*t) - pow(sin(t), 4.) + .5)*.8; }, 0., 2.*PI),  // tooo slow
 ParametricCurveL([](double t) { _return vec2(cos(60.*t) - 1.6*pow(cos(t), 3.), sin(60.*t) - pow(sin(t), 3.))*.6; }, 0., 2.*PI),  // tooo slow
 ParametricCurveL([](double t) { _return vec2(cos(t) - cos(t)*sin(60.*t), 2.*sin(t) - sin(60.*t))*.5; }, 0., 2.*PI),  // tooo slow
 ParametricCurveL([](double t) { _return vec2(cos(80.*t) - 1.4*cos(t)*sin(2.*t), 2.*sin(t) - sin(80.*t))*.5; }, 0., 2.*PI),  // tooo slow
 ParametricCurveL([](double a) { _return 0.3*(exp(sin(a)) - 2.*cos(4.*a) + sin((2.*a - PI) / 24.))*vec2(cos(a), sin(a)); }, -8.*PI, 8.*PI),  // too slow
 ParametricCurveL([](double t) { _return vec2(.04041 + .6156*cos(t) - .3412*sin(t) + .1344*cos(2.*t) - .1224*sin(2.*t) + .08335*cos(3.*t) + .2634*sin(3.*t) - .07623*cos(4.*t) - .09188*sin(4.*t) + .01339*cos(5.*t) - .01866*sin(5.*t) + .1631*cos(6.*t) + .006984*sin(6.*t) + .02867*cos(7.*t) - .01512*sin(7.*t) + .00989*cos(8.*t) + .02405*sin(8.*t) + .002186*cos(9.*t), +.04205 + .2141*cos(t) + .4436*sin(t) + .1148*cos(2.*t) - .146*sin(2.*t) - .09506*cos(3.*t) - .06217*sin(3.*t) - .0758*cos(4.*t) - .02987*sin(4.*t) + .2293*cos(5.*t) + .1629*sin(5.*t) + .005689*cos(6.*t) + .07154*sin(6.*t) - .02175*cos(7.*t) + .1169*sin(7.*t) - .01123*cos(8.*t) + .02682*sin(8.*t) - .01068*cos(9.*t)); }, 0., 2.*PI),
+#endif
 };
 
 
@@ -356,9 +356,6 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		err = sqrt(err / clength);
 		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
-		fprintf(stderr, "%lf secs\n", time_elapsed);
-
-		fprintf(stderr, "%d curves\n", sp.size());
 
 		printf("M%lg,%lg\n", P0.x, P0.y);
 		for (int i = 0, l = sp.size(); i < l; i++) {
@@ -369,9 +366,9 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 		// anchor points
 		{
-			printf("<g class='anchors' style='stroke:black;opacity:0.4' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>\n");
+			printf("<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>\n");
 			auto line = [](vec2 a, vec2 b) {
-				printf("<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' />\n", a.x, a.y, b.x, b.y);
+				printf("<line x1='%lg' y1='%lg' x2='%lg' y2='%lg'/>\n", a.x, a.y, b.x, b.y);
 			};
 			for (int i = 0, l = sp.size(); i < l; i++) {
 				vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
@@ -396,7 +393,7 @@ int main(int argc, char** argv) {
 <ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse></marker>\n\
 <clipPath id='viewbox'><rect x='%lg' y='%lg' width='%lg' height='%lg' /></clipPath>\n\
 </defs>\n", -.5*W / SC, -.5*H / SC, W / SC, H / SC);
-	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}</style>\n");
+	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}.anchors{stroke:black;opacity:0.4;}</style>\n");
 
 	for (int i = 0; i < CSN; i++) {
 		int px = (i % 2)*W, py = (i / 2)*H;
@@ -405,17 +402,15 @@ int main(int argc, char** argv) {
 		printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' clip-path='url(#viewbox)' style='stroke-width:%lgpx;stroke:black;fill:none;'>\n", SC, -SC, px + .5*W, py + .5*H, 1.0 / SC);
 		fprintf(stderr, "#%d\n", i);
 		int spn; double err, time_elapsed;
+		distCubic2_callCount = 0, Parametric_callCount = 0;
 		drawVectorizeCurve(Cs[i], spn, err, time_elapsed);
 		printf("</g>\n");
 		printf("<text x='%d' y='%d'>#%d  %d %s   Err: %lf%s   %.3lgsecs</text>\n", px + 10, py + 20, i
 			, spn, spn > 1 ? "pieces" : "piece", err, isnan(err) ? "" : "est.", time_elapsed);
+		printf("<text x='%d' y='%d'>DB %.1lfk    PE %.1lfk</text>\n", px + 10, py + 40, .001*distCubic2_callCount, .001*Parametric_callCount);
 	}
 
 	printf("</svg>");
-
-	fprintf(stderr, "\n");
-	fprintf(stderr, "%d [distCubic2]\n", distCubic2_callCount);
-	fprintf(stderr, "%d [ParametricCurve]\n", Parametric_callCount);
 
 	return 0;
 }
