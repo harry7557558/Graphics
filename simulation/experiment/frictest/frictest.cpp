@@ -11,6 +11,9 @@
 // the pink curve is the relation between the position of the spring end (red dot) and the block's velocity
 // the red dot is moving at a constant velocity
 // the pulling velocity is set to 1m/s, the v-t graph should coincide with the pink curve (depend on the unit of the scale)
+// the lowest horizontal dashed line indicates the unit velocity (pulling velocity)
+
+// To-do: analytical solution for all linear cases
 
 
 #include <stdio.h>
@@ -25,17 +28,19 @@
 // object parameters - all in SI unit
 namespace param {
 	const double m = 0.2;  // mass of the block
-	const double v = 1.0;  // pulling velocity
-	const double k = 1.0;  // spring constant: T=k(l-l₀)
+	const double v = 1.0;  // pulling velocity, 1.0m/s
+	const double k = 1.0;  // spring constant: tension=k*length
 	const double N = 9.8*m;   // normal force
+	// friction models
 	const double fs = 0.5*N;  // constant static friction
 	const double fk = 0.3*N;  // constant kinetic friction
-	// other friction models
 	const auto f_reciprocal = [](double v) { return 0.5 / (abs(v) + 1.) * N; };
 	const auto f_rational = [](double v) { return (0.5 / (abs(v) + 1.) + .1*abs(v)) * N; };
 	const auto f_rational2 = [](double v) { return (0.5 / (abs(v) + 1.) + .1*v*v) * N; };
 	const auto f_linear = [](double v) { return 0.2*v*N; };
 	const auto f_quadratic = [](double v) { return 0.2*v*v*N; };
+	const auto f_invquadratic = [](double v) { return 0.5*N / (v*v + 1.); };
+	const auto f_invquadraticlinear = [](double v) { return 0.5*N / (v*v + 1.) + 0.1*v*v; };
 }
 
 // numerical solver parameters
@@ -75,7 +80,7 @@ double dsdt_staticfrict(state s, double t) {
 	double T = param::k * (param::v*t - s.x);
 	return T - sign(s.v)*(abs(s.v) < 0.05 ? param::fs : param::fk);
 }
-// friction models
+// other friction models
 double dsdt_reciprocalfrict(state s, double t) {
 	double T = param::k * (param::v*t - s.x);
 	return T - sign(s.v)*param::f_reciprocal(s.v);
@@ -96,6 +101,15 @@ double dsdt_quadratic(state s, double t) {
 	double T = param::k * (param::v*t - s.x);
 	return T - sign(s.v)*param::f_quadratic(s.v);
 }
+double dsdt_invquadratic(state s, double t) {
+	double T = param::k * (param::v*t - s.x);
+	return T - sign(s.v)*param::f_invquadratic(s.v);
+}
+double dsdt_invquadraticlinear(state s, double t) {
+	double T = param::k * (param::v*t - s.x);
+	return T - sign(s.v)*param::f_invquadraticlinear(s.v);
+}
+
 
 
 // simulation function
@@ -114,7 +128,9 @@ void solve_path(double(*dsdt)(state, double), statet S[solver::N + 1]) {
 	S[solver::N] = statet{ st.x, st.v, solver::t_end };
 }
 
-// analytical solution to no friction case
+
+
+// analytical solution to no friction cases
 void nofriction_analysol(statet S[solver::N + 1]) {
 	using namespace param;
 	double lambda = sqrt(k / m);
@@ -125,6 +141,21 @@ void nofriction_analysol(statet S[solver::N + 1]) {
 		S[i].t = t;
 	}
 }
+// previous solution function plus a time shifting
+void constfriction_analysol(statet S[solver::N + 1]) {
+	using namespace param;
+	double lambda = sqrt(k / m);
+	double shift = fk / (k*v);
+	for (int i = 0; i <= solver::N; i++) {
+		double t = i * solver::dt - shift;
+		if (t < 0.) S[i].x = S[i].v = 0.;
+		else
+			S[i].x = v * t - v * sin(lambda*t) / lambda,
+			S[i].v = v - v * cos(lambda*t);
+		S[i].t = t + shift;
+	}
+}
+
 
 
 
@@ -210,72 +241,65 @@ void writeSVGBlock(const statet S[solver::N]) {
 
 }
 void writeSVG() {
-	using namespace SVG;
 	statet S[solver::N + 1];
 
-	int IMG_H = HW * 8 + 40;
+	// list of friction models
+	const int CASE_N = 10;
+	double(*Model[CASE_N])(state, double) = {
+		dsdt_nofrict,
+		dsdt_constfrict,
+		dsdt_staticfrict,
+		dsdt_reciprocalfrict,
+		dsdt_rationalfrict,
+		dsdt_rational2frict,
+		dsdt_linear,
+		dsdt_quadratic,
+		dsdt_invquadratic,
+		dsdt_invquadraticlinear
+	};
+	const char description[CASE_N][256] = {
+		"No friction",
+		"Constant friction (μ=0.3)",
+		"Static and kinetic friction (μ[s]=0.5 and μ[k]=0.3; threshold: 0.05m/s)",
+		"μ(v) = 0.5/(v+1)",
+		"μ(v) = 0.5/(v+1) + 0.1v",
+		"μ(v) = 0.5/(v+1) + 0.1v²",
+		"μ(v) = 0.2v",
+		"μ(v) = 0.2v²",
+		"μ(v) = 0.5/(v²+1)",
+		"μ(v) = 0.5/(v²+1)+0.1v²"
+	};
+
+	// batch simulating
+	using namespace SVG;
+	int IMG_H = HW * CASE_N + 40;
 	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='%d' height='%d'>\n", W, IMG_H);
 	printf("<rect width='%d' height='%d' style='fill:white;stroke:none;'/>\n\n", W, IMG_H);
 
 	int Height = 0;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_nofrict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>No friction</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_constfrict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>Constant friction (f=0.3N)</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_staticfrict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>Static and kinetic friction (fs=0.5N, fk=0.3N; threshold: 0.05m/s)</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_reciprocalfrict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>μ(v) = 0.5/(v+1)</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_rationalfrict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>μ(v) = 0.5/(v+1) + 0.1v</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_rational2frict, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>μ(v) = 0.5/(v+1) + 0.1v²</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_linear, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>μ(v) = 0.2v</text>\n");
-	printf("</g>\n");
-
-	Height += HW;
-	printf("<g transform='translate(0 %d)'>\n", Height);
-	solve_path(dsdt_quadratic, S);
-	writeSVGBlock(S);
-	printf("<text x='10' y='20'>μ(v) = 0.2v²</text>\n");
-	printf("</g>\n");
+	for (int T = 0; T < CASE_N; T++) {
+		printf("<g transform='translate(0 %d)'>\n", Height);
+		solve_path(Model[T], S);
+		writeSVGBlock(S);
+		printf("<text x='10' y='20'>%s</text>\n", description[T]);
+		printf("</g>\n");
+		Height += HW;
+	}
 
 	printf("</svg>");
 }
 
+
+
+// test function
+void testAccuracy() {
+	statet S[solver::N + 1], SA[solver::N + 1];
+	solve_path(dsdt_constfrict, S);
+	constfriction_analysol(SA);
+	for (int i = 0; i <= solver::N; i++) {
+		printf("%lg\t%lg\t%lg\n", abs(S[i].x - SA[i].x), abs(S[i].v - SA[i].v), abs(S[i].t - SA[i].t));
+	}
+}
 
 
 int main(int argc, char* argv[]) {
