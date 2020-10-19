@@ -349,8 +349,8 @@ template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
 //  - only defined inside the parametric interval
 //  - shortcuts for periodic/symmetric functions
 //  - analytical derivative is known
-const int CSN = 102;  // number of test functions
-const int CS0 = 0, CS1 = 102;  // only test a range of functions
+const int CSN = 114;  // number of test functions
+const int CS0 = 0, CS1 = 114;  // only test a range of functions
 #define _disabled  /* mark cases that cause infinite loop/stack overflow */
 const std::vector<int> _disabled_list({ 59, 62, 63, 64, 65, 67, 68, 69, 70, 71 });
 const ParametricCurveL Cs[CSN] = {
@@ -456,13 +456,25 @@ ParametricCurveL([](double t) { _return vec2(cos(t),0.618*cos(2.*t)) + 0.618*vec
 ParametricCurveL([](double t) { _return vec2(cos(1.12*t),sin(t)) + .5*vec2(cos(60.*t),-pow(sin(60.*t),2.)); }, 0., 2.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t),sin(t)) + vec2(cos(60.*t),sin(60.*t))*.5; }, 0., 2.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t) + .2*sin(20.*t), sin(t) + .2*cos(20.*t)) * .02*t; }, 0., 20.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*.08*floor(a); }, 0., 6.*PI),
 ParametricCurveL([](double x) { _return vec2(x, sin(x) + sin(10.*x) + sin(100.*x))*.4; }, -5., 5.),
+ParametricCurveL([](double x) { _return vec2(x, .5*(sin(40.*x) + sin(45.*x))); }, -2.5, 2.5),
 ParametricCurveL([](double a) { _return vec2(cos(a),sin(a))*(2.0*Sum([&](int n) { return exp2(-n)*sin(exp2(n)*a); }, 1, 10)); }, 0., 2.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a) + .3)*(2.0*Sum([&](int n) { return exp2(-n)*cos(exp2(n)*a); }, 1, 16)); }, 0., 2.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a),-sin(a))*1.2*(sin(a) + Sum([&](int n) { return exp2(-n)*cos(exp2(n)*a); }, 1, 10)) + vec2(0.,.6); }, 0., 2.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(0.1*exp(.25*a)) + vec2(.08*exp(.2*a)*Sum([&](int n) { return exp2(-n)*pow(cos(exp2(n)*a),2.); }, 1, 10)); }, 0., 12.),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .4*Sum([&](int n) { return sin(5.*n*a) / n; }, 1, 11, 2)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .3*Sum([&](int n) { return sin(5.*n*a) / n; }, 1, 10, 1)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .5*Sum([&](int n) { return sin(5.*n*n*a) / (n*n); }, 1, 3, 1)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .4*Sum([&](int n) { return (n & 2 ? -1. : 1.)*sin(5.*n*a) / (n*n); }, 1, 21, 2)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + 3.*Sum([&](int n) { return (n & 2 ? -1. : 1.)*cos(6.*n*a) / (n*n); }, 3, 21, 2)); }, 0, 2.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.9 + .15*Sum([&](int n) { return (cos(8.*n*(a + .1)) + cos(8.*n*(a - .1))) / n; }, 1, 11, 2)); }, 0, 2.*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.005*exp(.25*t)*(1. + Sum([&](int n) { return pow(cos(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.006*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.007*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*n*t), 2.) / (n*n); }, 1, 5, 1)); }, 0, 6.*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*exp2(n)*t), 2.) / exp2(n); }, 1, 5, 1)); }, 0, 6.*PI),
 #pragma endregion  $ 78-102
-};
+	};
 
 
 
@@ -591,10 +603,11 @@ int main(int argc, char** argv) {
 		printf("<!-- Test Path #%d -->\n", i);
 		printf("<rect x='%d' y='%d' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", px, py, W, H);
 		printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' clip-path='url(#viewbox)' style='stroke-width:%lgpx;stroke:black;fill:none;'>\n", SC, -SC, px + .5*W, py + .5*H, 1.0 / SC);
-		fprintf(stderr, "#%d\n", i);
+		fprintf(stderr, "Case %3d - ", i);
 		int spn; double err = abs(NAN), time_elapsed = 0.;
 		distCubic2_callCount = 0, Parametric_callCount = 0;
 		drawVectorizeCurve(Cs[i], spn, err, time_elapsed, i);
+		fprintf(stderr, "%.1lfms\n", 1000 * time_elapsed);
 		printf("</g>\n");
 		if (1) {
 			printf("<text x='%d' y='%d'>#%d  %d %s   Err: %lf%s   %.3lgsecs</text>\n", px + 10, py + 20, i
