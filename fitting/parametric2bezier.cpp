@@ -72,6 +72,7 @@ bool bisectNAN(const Fun &P, double t0, double t1, vec2 p0, vec2 p1, double &t, 
 
 struct cubicBezier {
 	vec2 A, B, C, D;
+	cubicBezier toSegment(bool comfirm) { if (comfirm) B = C = vec2(NAN); return *this; }
 };
 struct cubicCurve {
 	vec2 c0, c1, c2, c3;  // c0 + c1 t + c2 t² + c3 t³, 0 < t < 1
@@ -118,7 +119,7 @@ double distCubic2(cubicCurve c, vec2 p) {
 // curve fitting, return loss
 template<typename ParamCurve>
 double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1, vec2 &uv,
-	double *lengthC = nullptr) {
+	double *lengthC = nullptr, double *sample_radius = nullptr, double lod_radius = 0.) {
 	int callCount = 0;  // test
 
 	// pre-computing for numerical integral
@@ -133,6 +134,7 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 
 	// not a good loss function
 	// an idea for improvement is integrating the area between the curves
+	// another idea is to break if the samples don't look good
 	auto cost = [&](double u, double v) {
 		callCount++;
 		cubicCurve bc = bezierAlg(P0, P0 + T0 * u, P1 - T1 * v, P1);
@@ -148,6 +150,21 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 	double clength = 0.;
 	for (int i = 0; i < 32; i++) clength += dL[i];
 #endif
+
+	// calculate the "radius" of the samplings (for computing the level of details)
+	if (sample_radius) {
+		vec2 c(0.);
+		for (int i = 0; i < 32; i++) c += P[i];
+		c *= 1. / 32;
+		double mr = 0.;
+		for (int i = 0; i < 32; i++) mr = max(mr, (P[i] - c).sqr());
+		*sample_radius = sqrt(mr);
+		// so the following computations can be omitted
+		if (*sample_radius < lod_radius) {
+			T0 = T1 = P1 - P0;
+			return cost(.3, .3);
+		}
+	}
 
 	vec2 UV0[3] = {
 		uv,
@@ -169,9 +186,10 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 }
 // P0, P1: starting and ending points; T0, T1: tangent vector (derivative)
 // Error is calculated as the integral of shortest distance to the bezier curve respect to arc length of C
+// lod_radius: radius for the level of detail; use line segments instead of bezier curve for complicated/fractal curves (necessary)
 template<typename ParamCurve>
 std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1,
-	double allowed_err, double* Err = nullptr, double *LengthC = nullptr) {
+	double allowed_err, double lod_radius, double* Err = nullptr, double *LengthC = nullptr) {
 
 	std::vector<cubicBezier> res;
 	if (!(t1 > t0)) return res;
@@ -179,12 +197,13 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 
 	// try curve fitting
 	vec2 uv((C.t1 - C.t0) / 3.);
-	double err = fitPartCurve(C, P0, P1, T0, T1, t0, t1, uv);
+	double spr;
+	double err = fitPartCurve(C, P0, P1, T0, T1, t0, t1, uv, nullptr, &spr, lod_radius);
 	double aerr = sqrt(err / clength);
 	printerr("%lf\n", aerr);
 	// success
-	if (aerr < allowed_err) {
-		res.push_back(cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 });
+	if (aerr < allowed_err || spr < lod_radius) {
+		res.push_back(cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 }.toSegment(spr < lod_radius));
 		if (Err) *Err = err;
 		if (LengthC) *LengthC = clength;
 		return res;
@@ -198,15 +217,15 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 	vec2 Pc = C.p(tc);
 	vec2 Tc = (C.p(tc + eps) - C.p(tc - eps))*(.5 / eps);
 	vec2 uv0 = uv * .5, uv1 = uv * .5;
-	double cl0 = 0, cl1 = 0;
-	err = fitPartCurve(C, P0, Pc, T0, Tc, t0, tc, uv0, &cl0)
-		+ fitPartCurve(C, Pc, P1, Tc, T1, tc, t1, uv1, &cl1);
+	double cl0 = 0, cl1 = 0, spr0, spr1;
+	err = fitPartCurve(C, P0, Pc, T0, Tc, t0, tc, uv0, &cl0, &spr0, lod_radius)
+		+ fitPartCurve(C, Pc, P1, Tc, T1, tc, t1, uv1, &cl1, &spr1, lod_radius);
 	clength = cl0 + cl1;
 	aerr = sqrt(err / clength);
 	printerr("%lf\n", aerr);
-	if (aerr < allowed_err) {
-		res.push_back(cubicBezier{ P0, P0 + T0 * uv0.x, Pc - Tc * uv0.y, Pc });
-		res.push_back(cubicBezier{ Pc, Pc + Tc * uv1.x, P1 - T1 * uv1.y, P1 });
+	if (aerr < allowed_err || max(spr0, spr1) < lod_radius) {
+		res.push_back(cubicBezier{ P0, P0 + T0 * uv0.x, Pc - Tc * uv0.y, Pc }.toSegment(spr0 < lod_radius));
+		res.push_back(cubicBezier{ Pc, Pc + Tc * uv1.x, P1 - T1 * uv1.y, P1 }.toSegment(spr1 < lod_radius));
 		if (Err) *Err = err;
 		if (LengthC) *LengthC = clength;
 		return res;
@@ -218,17 +237,17 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 	vec2 Ta = (C.p(ta + eps) - C.p(ta - eps))*(.5 / eps);
 	vec2 Tb = (C.p(tb + eps) - C.p(tb - eps))*(.5 / eps);
 	vec2 uva = uv / 3., uvc = uv / 3., uvb = uv / 3.;
-	double cla, clc, clb;
-	err = fitPartCurve(C, P0, Pa, T0, Ta, t0, ta, uva, &cla)
-		+ fitPartCurve(C, Pa, Pb, Ta, Tb, ta, tb, uvc, &clc)
-		+ fitPartCurve(C, Pb, P1, Tb, T1, tb, t1, uvb, &clb);
+	double cla, clc, clb, spra, sprb, sprc;
+	err = fitPartCurve(C, P0, Pa, T0, Ta, t0, ta, uva, &cla, &spra, lod_radius)
+		+ fitPartCurve(C, Pa, Pb, Ta, Tb, ta, tb, uvc, &clc, &sprc, lod_radius)
+		+ fitPartCurve(C, Pb, P1, Tb, T1, tb, t1, uvb, &clb, &sprb, lod_radius);
 	clength = cla + clc + clb;
 	aerr = sqrt(err / clength);
 	printerr("%lf\n", aerr);
-	if (aerr < allowed_err) {
-		res.push_back(cubicBezier{ P0, P0 + T0 * uva.x, Pa - Ta * uva.y, Pa });
-		res.push_back(cubicBezier{ Pa, Pa + Ta * uvc.x, Pb - Tb * uvc.y, Pb });
-		res.push_back(cubicBezier{ Pb, Pb + Tb * uvb.x, P1 - T1 * uvb.y, P1 });
+	if (aerr < allowed_err || max(max(spra, sprb), sprc) < lod_radius) {
+		res.push_back(cubicBezier{ P0, P0 + T0 * uva.x, Pa - Ta * uva.y, Pa }.toSegment(spra < lod_radius));
+		res.push_back(cubicBezier{ Pa, Pa + Ta * uvc.x, Pb - Tb * uvc.y, Pb }.toSegment(sprc < lod_radius));
+		res.push_back(cubicBezier{ Pb, Pb + Tb * uvb.x, P1 - T1 * uvb.y, P1 }.toSegment(sprb < lod_radius));
 		if (Err) *Err = err;
 		if (LengthC) *LengthC = clength;
 		return res;
@@ -236,8 +255,8 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 
 	// split recursively
 	double err0, err1;
-	std::vector<cubicBezier> res0 = fitSpline(C, P0, Pc, T0, Tc, t0, tc, allowed_err, &err0, &cl0);
-	std::vector<cubicBezier> res1 = fitSpline(C, Pc, P1, Tc, T1, tc, t1, allowed_err, &err1, &cl1);
+	std::vector<cubicBezier> res0 = fitSpline(C, P0, Pc, T0, Tc, t0, tc, allowed_err, lod_radius, &err0, &cl0);
+	std::vector<cubicBezier> res1 = fitSpline(C, Pc, P1, Tc, T1, tc, t1, allowed_err, lod_radius, &err1, &cl1);
 	clength = cl0 + cl1;
 	err = err0 + err1, aerr = sqrt(err / clength);
 	printerr("%lf\n", aerr);
@@ -436,7 +455,7 @@ ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return (sin(PI*
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return exp(-n)*sin(exp(n)*(x + n)); }, 1, 5)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { double u = exp2(n)*x, v = u - floor(u); return exp2(-n)*mix(hashf(floor(u),-n), hashf(ceil(u),-n), v*v*(3. - 2.*v)); }, 1, 6)); }, -2.5, 2.5),
 #pragma endregion  $ 44-78
-#pragma region Complicated Curves (24)
+#pragma region Complicated Curves (36)
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(sin(10.*a) + 1.2); }, -PI, 4.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(pow(sin(10.*a), 10.) + 1.); }, -PI, 4.*PI),
@@ -473,8 +492,8 @@ ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.005*exp(.25*t)*(1.
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.006*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.007*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*n*t), 2.) / (n*n); }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*exp2(n)*t), 2.) / exp2(n); }, 1, 5, 1)); }, 0, 6.*PI),
-#pragma endregion  $ 78-102
-	};
+#pragma endregion  $ 78-114
+};
 
 
 
@@ -493,8 +512,8 @@ int _f_buffer_n = 0;
 auto _ = [&](double x) {
 	char c[256];
 	std::string s;
-	if (isnan(x)) s = "nan";
-	else if (x*x >= 1e12) s = "inf";
+	if (isnan(x)) s = true ? "nan" : "nan";
+	else if (x*x >= 1e12) s = true ? (x > 0. ? "1e6" : "-1e6") : "inf";
 	else if (x*x >= 1e8) s = std::to_string((int)round(x));
 	else if (x*x < 1e-8) s = "0";
 	else {
@@ -553,7 +572,7 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 		auto time0 = NTime::now();
 		double clength;
-		std::vector<cubicBezier> sp = fitSpline(C, P0, P1, T0, T1, C.t0, C.t1, 0.001, &err, &clength);
+		std::vector<cubicBezier> sp = fitSpline(C, P0, P1, T0, T1, C.t0, C.t1, 0.001, 0.01, &err, &clength);
 		err = sqrt(err / clength);
 		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
@@ -561,7 +580,8 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		printf("M%s,%s\n", _(P0.x), _(P0.y));
 		for (int i = 0; i < spn; i++) {
 			vec2 Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
-			printf("C%s,%s %s,%s %s,%s\n", _(Q0.x), _(Q0.y), _(Q1.x), _(Q1.y), _(P1.x), _(P1.y));
+			if (isNAV(Q0) && isNAV(Q1)) printf("L%s,%s", _(P1.x), _(P1.y));
+			else printf("C%s,%s %s,%s %s,%s", _(Q0.x), _(Q0.y), _(Q1.x), _(Q1.y), _(P1.x), _(P1.y));
 		}
 		printf("' stroke-width='1' vector-effect='non-scaling-stroke'/>\n");
 
@@ -569,7 +589,8 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		if (spn && spn < 100) {
 			printf("<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>\n");
 			auto line = [](vec2 a, vec2 b, const char end[] = "\n") {
-				printf("<line x1='%s' y1='%s' x2='%s' y2='%s'/>%s", _(a.x), _(a.y), _(b.x), _(b.y), end);
+				if (!(isNAV(a) || isNAV(b)))
+					printf("<line x1='%s' y1='%s' x2='%s' y2='%s'/>%s", _(a.x), _(a.y), _(b.x), _(b.y), end);
 			};
 			for (int i = 0; i < spn; i++) {
 				vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
