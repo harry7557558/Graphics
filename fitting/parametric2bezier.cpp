@@ -63,7 +63,10 @@ bool bisectNAN(const Fun &P, double t0, double t1, vec2 p0, vec2 p1, double &t, 
 		t = t0 + (0.49 + 0.02*random)*(t1 - t0), p = P(t);
 		if (isNAV(p)) t0 = t, p0 = p;
 		else t1 = t, p1 = p;
-		if (abs(t1 - t0) < eps) return true;
+		if (abs(t1 - t0) < eps) {
+			p = p1;
+			return true;
+		}
 	}
 	return false;
 }
@@ -117,8 +120,8 @@ double distCubic2(cubicCurve c, vec2 p) {
 
 
 // curve fitting, return loss
-template<typename ParamCurve>
-double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1, vec2 &uv,
+template<typename Fun>
+double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1, vec2 &uv,
 	double *lengthC = nullptr, double *sample_radius = nullptr, double lod_radius = 0.) {
 	int callCount = 0;  // test
 
@@ -127,8 +130,8 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 	vec2 P[32]; double dL[32];
 	for (int i = 0; i < 32; i++) {
 		double t = t0 + NIntegrate_GL32_S[i] * dt;
-		P[i] = C.p(t);
-		dL[i] = length(C.p(t + eps) - C.p(t - eps)) / (2.*eps);
+		P[i] = C(t);
+		dL[i] = length(C(t + eps) - C(t - eps)) / (2.*eps);
 		dL[i] *= NIntegrate_GL32_W[i] * dt;
 	}
 
@@ -145,7 +148,7 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 	};
 
 #if 1
-	double clength = calcLength(C.p, t0, t1, 48);
+	double clength = calcLength(C, t0, t1, 48);
 #else
 	double clength = 0.;
 	for (int i = 0; i < 32; i++) clength += dL[i];
@@ -187,16 +190,16 @@ double fitPartCurve(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0,
 // P0, P1: starting and ending points; T0, T1: tangent vector (derivative)
 // Error is calculated as the integral of shortest distance to the bezier curve respect to arc length of C
 // lod_radius: radius for the level of detail; use line segments instead of bezier curve for complicated/fractal curves (necessary)
-template<typename ParamCurve>
-std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1,
+template<typename Fun>
+std::vector<cubicBezier> fitSpline(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1,
 	double allowed_err, double lod_radius, double* Err = nullptr, double *LengthC = nullptr) {
 
 	std::vector<cubicBezier> res;
 	if (!(t1 > t0)) return res;
-	double clength = calcLength(C.p, t0, t1, 48);
+	double clength = calcLength(C, t0, t1, 48);
 
 	// try curve fitting
-	vec2 uv((C.t1 - C.t0) / 3.);
+	vec2 uv((t1 - t0) / 3.);
 	double spr;
 	double err = fitPartCurve(C, P0, P1, T0, T1, t0, t1, uv, nullptr, &spr, lod_radius);
 	double aerr = sqrt(err / clength);
@@ -214,8 +217,8 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 
 	// try splitting at the center
 	double tc = 0.5*(t0 + t1);
-	vec2 Pc = C.p(tc);
-	vec2 Tc = (C.p(tc + eps) - C.p(tc - eps))*(.5 / eps);
+	vec2 Pc = C(tc);
+	vec2 Tc = (C(tc + eps) - C(tc - eps))*(.5 / eps);
 	vec2 uv0 = uv * .5, uv1 = uv * .5;
 	double cl0 = 0, cl1 = 0, spr0, spr1;
 	err = fitPartCurve(C, P0, Pc, T0, Tc, t0, tc, uv0, &cl0, &spr0, lod_radius)
@@ -233,9 +236,9 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 
 	// try splitting into three arcs
 	double ta = (2.*t0 + t1) / 3., tb = (t0 + 2.*t1) / 3.;
-	vec2 Pa = C.p(ta), Pb = C.p(tb);
-	vec2 Ta = (C.p(ta + eps) - C.p(ta - eps))*(.5 / eps);
-	vec2 Tb = (C.p(tb + eps) - C.p(tb - eps))*(.5 / eps);
+	vec2 Pa = C(ta), Pb = C(tb);
+	vec2 Ta = (C(ta + eps) - C(ta - eps))*(.5 / eps);
+	vec2 Tb = (C(tb + eps) - C(tb - eps))*(.5 / eps);
 	vec2 uva = uv / 3., uvc = uv / 3., uvb = uv / 3.;
 	double cla, clc, clb, spra, sprb, sprc;
 	err = fitPartCurve(C, P0, Pa, T0, Ta, t0, ta, uva, &cla, &spra, lod_radius)
@@ -268,6 +271,108 @@ std::vector<cubicBezier> fitSpline(ParamCurve C, vec2 P0, vec2 P1, vec2 T0, vec2
 
 
 
+// split the curve by discontinuities, return parametric pairs [t0,t1]
+template<typename Fun>
+std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int mindif = 210/*2x3x5x7*/,
+	vec2 Bound0 = vec2(-INFINITY), vec2 Bound1 = vec2(INFINITY)) {
+
+	auto P = [&](double t)->vec2 {
+		vec2 p = C(t);
+		if (p.x<Bound0.x || p.x>Bound1.x) return vec2(NAN);
+		if (p.y<Bound0.y || p.y>Bound1.y) return vec2(NAN);
+		return p;
+	};
+
+	std::vector<vec2> ints;  // sample intervals
+	std::vector<vec2> res;  // result intervals
+	double dt = (t1 - t0) / mindif;
+
+	// samples
+	struct sample {
+		double t;  // parameter, t0+id*dt
+		vec2 p;  // value
+	};
+	std::vector<sample> Ss;
+	bool hasNAN = false;
+	for (int i = 0; i <= mindif; i++) {
+		double t = t0 + i * dt;
+		vec2 p = P(t);
+		hasNAN |= isNAV(p);
+		Ss.push_back(sample{ t, p });
+	}
+
+	// detect NAN
+	if (hasNAN) {
+		for (int i = 0; i < mindif; i++) {
+			sample s0 = Ss[i], s1 = Ss[i + 1];
+			if (isNAV(s0.p) && !isNAV(s1.p)) {
+				bisectNAN(P, s0.t, s1.t, s0.p, s1.p, s0.t, s0.p);
+			}
+			else if (!isNAV(s0.p) && isNAV(s1.p)) {
+				bisectNAN(P, s1.t, s0.t, s1.p, s0.p, s1.t, s1.p);
+			}
+			if (!isNAV(s0.p) && !isNAV(s1.p))
+				ints.push_back(vec2(s0.t, s1.t));
+		}
+		// merge non-NAN intervals
+		for (int i = 0, l = ints.size(); i < l; i++) {
+			if (res.empty() || res[res.size() - 1].y != ints[i].x)
+				res.push_back(ints[i]);
+			else res[res.size() - 1].y = ints[i].y;
+		}
+	}
+	else res.push_back(vec2(t0, t1));
+
+	ints = res;
+
+#if 0
+	if (!hasNAN) {
+		// calculate the derivatives from neighborhood samples
+		std::vector<sample> d1, d2, d3, d4;
+
+	}
+#endif
+
+	return res;
+
+}
+
+
+
+// this function does everything automatically
+template<typename ParamCurve>
+std::vector<cubicBezier> fitSpline_auto(ParamCurve C, vec2 B0, vec2 B1,
+	double allowed_err = 0.001, double lod_radius = 0.01, double* Err = nullptr, double *LengthC = nullptr) {
+
+	std::vector<vec2> Cs = splitDiscontinuity(C.p, C.t0, C.t1, 210, B0, B1);
+	int CsN = Cs.size();
+
+	std::vector<cubicBezier> Res;
+	double cumErr = 0., cumLength = 0.;
+
+	for (int i = 0; i < CsN; i++) {
+		double t0 = Cs[i].x + 1e-12, t1 = Cs[i].y - 1e-12;
+		const double eps = 0.0001;
+
+		vec2 P0 = C.p(t0);
+		vec2 P1 = C.p(t1);
+		vec2 T0 = (C.p(t0 + eps) - P0) / eps;
+		vec2 T1 = (P1 - C.p(t1 - eps)) / eps;
+
+		double err = 0., clen = 0.;
+		std::vector<cubicBezier> R = fitSpline(C.p, P0, P1, T0, T1, t0, t1, allowed_err, lod_radius, &err, &clen);
+		Res.insert(Res.end(), R.begin(), R.end());
+		cumErr += err, cumLength += clen;
+	}
+
+	if (Err) *Err = cumErr;
+	if (LengthC) *LengthC = cumLength;
+	return Res;
+}
+
+
+
+
 // this one is for reference
 // should have no problem with NAN
 struct segment {
@@ -282,7 +387,7 @@ struct segment {
 };
 template<typename ParamCurve>
 std::vector<segment> Param2Segments(ParamCurve C, vec2 P0, vec2 P1, double t0, double t1
-	, double allowed_err, int min_dif = 16, int max_recur = 24) {
+	, double allowed_err, int min_dif = 17, int max_recur = 24) {
 
 	// minimum number of pieces in initial splitting
 	if (min_dif > 1) {
@@ -325,7 +430,7 @@ std::vector<segment> Param2Segments(ParamCurve C, vec2 P0, vec2 P1, double t0, d
 	//if (hasNAN) mt = 0.5*(t0 + t1), mp = C(mt);
 
 	// if small enough, add the segment to the list
-	if (max_recur < 0 || (!hasNAN && err < allowed_err*allowed_err)) {
+	if (max_recur < 0 || (!hasNAN && err < allowed_err*allowed_err) || (t1 - t0 < 1e-12)) {
 		std::vector<segment> r;
 		if (!((s.b - s.a).sqr() > 1e-16))
 			return std::vector<segment>();
@@ -557,31 +662,51 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		fflush(stdout); //return;
 	}
 
-	if (std::find(_disabled_list.begin(), _disabled_list.end(), id) != _disabled_list.end()
+	// debug
+	if (0) {
+		std::vector<vec2> Ps = splitDiscontinuity(C.p, C.t0, C.t1, 210, vec2(-2.5, -1.7), vec2(2.5, 1.7));
+		int L = Ps.size();
+		for (int i = 0; i < L; i++) {
+			double t0 = Ps[i].x, t1 = Ps[i].y;
+			std::vector<segment> S = Param2Segments(C.p, C.p(t0), C.p(t1), t0, t1, 0.001, 16);
+			printf("<path d='");
+			vec2 old_pos(NAN); int spn = S.size();
+			for (int i = 0; i < spn; i++) {
+				segment s = S[i];
+				if (!((old_pos - s.a).sqr() < 1e-6)) printf("M%s,%s", _(s.a.x), _(s.a.y));
+				printf("L%s,%s", _(s.b.x), _(s.b.y));
+				old_pos = s.b;
+			}
+			printf("' style='stroke:%s;stroke-width:1px;fill:none' vector-effect='non-scaling-stroke'/>\n", i & 1 ? "#00F" : "#F00");
+		}
+		fflush(stdout); return;
+	}
+
+	//if (std::find(_disabled_list.begin(), _disabled_list.end(), id) != _disabled_list.end() \
 		&& !(spn *= 0)) return;
+
+	Parametric_callCount = 0;
 
 	// vectorized path
 	{
 		printf("<path class='vecpath' d='");
-		vec2 P0 = C.p(C.t0);
-		vec2 P1 = C.p(C.t1);
-		vec2 uv((C.t1 - C.t0) / 3.);
-		const double eps = 0.001;
-		vec2 T0 = (C.p(C.t0 + eps) - C.p(C.t0)) / eps;
-		vec2 T1 = (C.p(C.t1) - C.p(C.t1 - eps)) / eps;
 
 		auto time0 = NTime::now();
+		const vec2 RB = .5*vec2(W, H) / SC;
 		double clength;
-		std::vector<cubicBezier> sp = fitSpline(C, P0, P1, T0, T1, C.t0, C.t1, 0.001, 0.01, &err, &clength);
+		std::vector<cubicBezier> sp = fitSpline_auto(C, -RB, RB, 0.001, 0.01, &err, &clength);
 		err = sqrt(err / clength);
 		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
 
-		printf("M%s,%s\n", _(P0.x), _(P0.y));
+		vec2 oldP(NAN);
 		for (int i = 0; i < spn; i++) {
-			vec2 Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
+			vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
+			if (!((P0 - oldP).sqr() < 1e-12))
+				printf("M%s,%s\n", _(P0.x), _(P0.y));
 			if (isNAV(Q0) && isNAV(Q1)) printf("L%s,%s", _(P1.x), _(P1.y));
 			else printf("C%s,%s %s,%s %s,%s", _(Q0.x), _(Q0.y), _(Q1.x), _(Q1.y), _(P1.x), _(P1.y));
+			oldP = P1;
 		}
 		printf("' stroke-width='1' vector-effect='non-scaling-stroke'/>\n");
 
