@@ -352,7 +352,7 @@ std::vector<cubicBezier> fitSpline_auto(ParamCurve C, vec2 B0, vec2 B1,
 
 	for (int i = 0; i < CsN; i++) {
 		double t0 = Cs[i].x + 1e-12, t1 = Cs[i].y - 1e-12;
-		const double eps = 0.0001;
+		const double eps = 0.0001*(t1 - t0);
 
 		vec2 P0 = C.p(t0);
 		vec2 P1 = C.p(t1);
@@ -461,6 +461,8 @@ template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
 	return r;
 };
 
+double fract(double x) { return x - floor(x); }
+
 
 // Test equations - some from Wikipedia
 // Most are relatively cheap to evaluate
@@ -473,9 +475,8 @@ template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
 //  - only defined inside the parametric interval
 //  - shortcuts for periodic/symmetric functions
 //  - analytical derivative is known
-const int CSN = 114;  // number of test functions
-const int CS0 = 0, CS1 = 114;  // only test a range of functions
-#define _disabled  /* mark cases that cause infinite loop/stack overflow */
+const int CSN = 122;  // number of test functions
+const int CS0 = 0, CS1 = 122;  // only test a range of functions
 const std::vector<int> _disabled_list({ 59, 62, 63, 64, 65, 67, 68, 69, 70, 71 });
 const ParametricCurveL Cs[CSN] = {
 #pragma region General Tests (44)
@@ -524,7 +525,7 @@ ParametricCurveL([](double t) { _return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(
 ParametricCurveL([](double t) { _return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI),
 ParametricCurveL([](double t) { _return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI),
 #pragma endregion  $ 0-44
-#pragma region Ill-conditioned Functions (34)
+#pragma region Ill-conditioned Functions (42)
 ParametricCurveL([](double x) { _return vec2(x, log(x + 1)); }, -0.99, 2.),
 ParametricCurveL([](double x) { _return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5),
 ParametricCurveL([](double x) { _return vec2(x, sqrt(1. - x * x)); }, -1., 1.),
@@ -540,26 +541,34 @@ ParametricCurveL([](double x) { _return vec2(x, sqrt(x + 1.) - 1.); }, -1., 1.),
 ParametricCurveL([](double x) { _return vec2(x, cbrt(x)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(x)) - 1.); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(x) - 1.)); }, -2., 2.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, sqrt(abs(x) - 1.)); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, sqrt(abs(x) - 1.)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(abs(x) - 1.) - .5)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, pow(abs(cbrt(abs(abs(x) - 1.) - .5)), .2) * (abs(abs(x) - 1.) > .5 ? 1. : -1.)); }, -2., 2.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, log(exp(abs(x))*sin(x)) - 10.)*.1; }, -20., 20.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, log(abs(exp(abs(x))*sin(x))) - 10.)*.1; }, -20., 20.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, log(tgamma(x)))*.5; }, -4., 4.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, log(abs(tgamma(x))))*.5; }, -4., 4.),
+ParametricCurveL([](double x) { _return vec2(x, log(exp(abs(x))*sin(x)) - 10.)*.1; }, -20., 20.),
+ParametricCurveL([](double x) { _return vec2(x, log(abs(exp(abs(x))*sin(x))) - 10.)*.1; }, -20., 20.),
+ParametricCurveL([](double x) { _return vec2(x, log(tgamma(x)))*.5; }, -4., 4.),
+ParametricCurveL([](double x) { _return vec2(x, log(abs(tgamma(x))))*.5; }, -4., 4.),
 ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 1.),
-_disabled ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 2.),
-_disabled ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, -.25*PI, .75*PI),
-_disabled ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, 0., PI),
-_disabled ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), 1.)*pow(tan(t / 2.), 1.05) * 2. - vec2(0,1); }, 0., .5*PI),
-_disabled ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), sin(t))*pow(tan(t / 2.), 1.02) * 2. - vec2(0,1); }, 0., .5*PI),
+ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 2.),
+ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, -.25*PI, .75*PI),
+ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, 0., PI),
+ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), 1.)*pow(tan(t / 2.), 1.05) * 2. - vec2(0,1); }, 0., .5*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), sin(t))*pow(tan(t / 2.), 1.02) * 2. - vec2(0,1); }, 0., .5*PI),
+ParametricCurveL([](double x) { _return vec2(x, max(exp(.2*x), 2.*sin(10.*x)) - 1.); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, max(sin(10.5*x), cos(2.*x))); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, clamp(tan(10.*x), -1., 1.)); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, clamp(.2 / sin(10.*x), -1., 1.)); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, fract(10. / (x*x + 1.))); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, fract(pow(x,4.) - .1)); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, fract(sin(5.*x) / x)); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, fract(10.01*tanh(2.*x))); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(PI*n*x) / n; }, 1, 21, 2)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (PI*n); }, 1, 20)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (n*n); }, 1, 5)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return (sin(PI*n*x) - n * cos(PI*n*x)) / (n*(n*n + 1)); }, 1, 1001, 2)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return exp(-n)*sin(exp(n)*(x + n)); }, 1, 5)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { double u = exp2(n)*x, v = u - floor(u); return exp2(-n)*mix(hashf(floor(u),-n), hashf(ceil(u),-n), v*v*(3. - 2.*v)); }, 1, 6)); }, -2.5, 2.5),
-#pragma endregion  $ 44-78
+#pragma endregion  $ 44-86
 #pragma region Complicated Curves (36)
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(sin(10.*a) + 1.2); }, -PI, 4.*PI),
@@ -597,7 +606,7 @@ ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.005*exp(.25*t)*(1.
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.006*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.007*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*n*t), 2.) / (n*n); }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*exp2(n)*t), 2.) / exp2(n); }, 1, 5, 1)); }, 0, 6.*PI),
-#pragma endregion  $ 78-114
+#pragma endregion  $ 86-122
 };
 
 
@@ -681,9 +690,6 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		}
 		fflush(stdout); return;
 	}
-
-	//if (std::find(_disabled_list.begin(), _disabled_list.end(), id) != _disabled_list.end() \
-		&& !(spn *= 0)) return;
 
 	Parametric_callCount = 0;
 
