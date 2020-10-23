@@ -36,21 +36,6 @@ inline bool isNAV(vec2 p) {
 	return isnan(m) || m > 1e32;
 }
 
-// give a parametric curve, calculate its length
-template<typename Fun>
-double calcLength(const Fun &C, double t0, double t1, int N = 48) {
-	double l = NIntegrate_AL_Simpson_p<double, vec2>(
-		[](vec2 p) {return 1.; },
-		C, t0, t1, N);
-	if (isnan(0.*l)) {  // sketchy thing
-		const double eps = 1e-6*(t1 - t0);
-		return NIntegrate_GL48<double>([&](double t) {
-			return length(C(t + eps) - C(t - eps));
-		}, t0, t1) / (2.*eps);
-	}
-	if (l <= 0.0) l = 1e-6;  // u what
-	return l;
-}
 
 // P(t0) is NAN and P(t1) is not, find the t closest to t0 such that P(t) is not NAN
 template<typename Fun>
@@ -147,12 +132,9 @@ double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double
 		return s;
 	};
 
-#if 1
-	double clength = calcLength(C, t0, t1, 48);
-#else
+	// length of the curve
 	double clength = 0.;
 	for (int i = 0; i < 32; i++) clength += dL[i];
-#endif
 
 	// calculate the "radius" of the samplings (for computing the level of details)
 	if (sample_radius) {
@@ -196,12 +178,12 @@ std::vector<cubicBezier> fitSpline(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, do
 
 	std::vector<cubicBezier> res;
 	if (!(t1 > t0)) return res;
-	double clength = calcLength(C, t0, t1, 48);
+	double clength = 0.;
 
 	// try curve fitting
 	vec2 uv((t1 - t0) / 3.);
 	double spr;
-	double err = fitPartCurve(C, P0, P1, T0, T1, t0, t1, uv, nullptr, &spr, lod_radius);
+	double err = fitPartCurve(C, P0, P1, T0, T1, t0, t1, uv, &clength, &spr, lod_radius);
 	double aerr = sqrt(err / clength);
 	printerr("%lf\n", aerr);
 	// success
@@ -273,7 +255,7 @@ std::vector<cubicBezier> fitSpline(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, do
 
 // split the curve by discontinuities, return parametric pairs [t0,t1]
 template<typename Fun>
-std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int mindif = 210/*2x3x5x7*/,
+std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int mindif = 420/*2x2x3x5x7*/,
 	vec2 Bound0 = vec2(-INFINITY), vec2 Bound1 = vec2(INFINITY)) {
 
 	auto P = [&](double t)->vec2 {
@@ -323,15 +305,117 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 	}
 	else res.push_back(vec2(t0, t1));
 
-	ints = res;
+	ints.clear();
+	int TN = res.size();
+	for (int i = 0; i < TN; i++) ints.push_back(res[i] + vec2(1e-12, -1e-12));
+	res.clear();
 
-#if 0
-	if (!hasNAN) {
-		// calculate the derivatives from neighborhood samples
-		std::vector<sample> d1, d2, d3, d4;
 
+	// find jump discontinuity, assume v0,v1 are already evaluated
+	// t=NAN: not found; v=NAN: find NAN
+	auto findJump = [&](double &t0, double &t1, vec2 &v0, vec2 &v1, double eps = 1e-12) {
+		double dt = t1 - t0;
+		double dif0 = length(v1 - v0) / dt;
+		for (int i = 0; i < 60; i++) {
+			double tc = 0.5*(t0 + t1);
+			vec2 vc = P(tc);
+			dt *= .5;
+			double dif1 = (vc - v0).sqr() / dt;
+			double dif2 = (v1 - vc).sqr() / dt;
+			if (i > 2 && !(max(dif1, dif2) > 1.2*dif0)) break;
+			if (dif1 > dif2) {
+				t1 = tc, v1 = vc, dif0 = dif1;
+			}
+			else {
+				t0 = tc, v0 = vc, dif0 = dif2;
+			}
+			if (t1 - t0 < eps) return;
+			//if (dif0 > 1e6) return;
+		}
+		t0 = t1 = NAN;
+	};
+
+	for (int T = 0; T < TN; T++) {
+		double u0 = ints[T].x, u1 = ints[T].y;
+		int i0 = (int)ceil((u0 - t0 + 1e-6) / dt), i1 = (int)floor((u1 - t0 - 1e-6) / dt);
+		if (i0 > 0 && !isNAV(Ss[i0 - 1].p)) i0--;
+		if (i1 < mindif && !isNAV(Ss[i1 + 1].p)) i1++;
+		int di = i1 - i0;
+
+		// calculate the differences from neighborhood samples
+		std::vector<vec2> d1, d2, d3, d4;
+		{
+			for (int i = i0; i <= i1; i++) {
+				d1.push_back(i == 0 || i == mindif ? vec2(NAN) : .5 *(Ss[i + 1].p - Ss[i - 1].p) / dt);
+				//d1.push_back((i == 0 ? (Ss[1].p - Ss[0].p) : i == mindif ? (Ss[i].p - Ss[i - 1].p) \
+					: .5 *(Ss[i + 1].p - Ss[i - 1].p)) / dt);
+			}
+			for (int i = 0; i <= di; i++) {
+				d2.push_back((i == 0 ? (d1[1] - d1[0]) : i == di ? (d1[i] - d1[i - 1])
+					: .5 *(d1[i + 1] - d1[i - 1])) / dt);
+			}
+			for (int i = 0; i <= di; i++) {
+				d3.push_back((i == 0 ? (d2[1] - d2[0]) : i == di ? (d2[i] - d2[i - 1])
+					: .5 *(d2[i + 1] - d2[i - 1])) / dt);
+			}
+			for (int i = 0; i <= di; i++) {
+				d4.push_back((i == 0 ? (d3[1] - d3[0]) : i == di ? (d3[i] - d3[i - 1])
+					: .5 *(d3[i + 1] - d3[i - 1])) / dt);
+			}
+		}
+
+		// sort the 4th differences
+		struct sampled {
+			int id; double mag;
+		};
+		std::vector<sampled> d4s;
+		for (int i = 0; i <= di; i++) {
+			d4s.push_back(sampled{ i + i0, isNAV(d4[i]) ? -1. : length(d4[i]) });
+		}
+		std::sort(d4s.begin(), d4s.end(), [](sampled a, sampled b) { return a.mag > b.mag; });
+		for (int i = 0; i <= di; i++) {
+			//if (d4s[i].mag < 1e4) break;
+			//fprintf(stderr, "%d %lf %lf\n", i, Ss[d4s[i].id].t, d4s[i].mag);
+			//printf("<circle cx='%lf' cy='%lf' r='%lf'/>", Ss[d4s[i].id].p.x, Ss[d4s[i].id].p.y, 0.05 * d4s[i].mag / d4s[0].mag);
+		}
+
+		// find singularities
+		std::vector<vec2> sings;  // vec2(tl,tr)
+		int failcount = 0; const int maxfailcount = max(mindif / 10, 20);
+		for (int j = 0; failcount < maxfailcount && j <= di; j++) {
+			int i = d4s[j].id; double t = Ss[i].t;
+			double t0 = t - 1.5*dt, t1 = t + 1.5*dt;
+			//t0 = max(t0, u0), t1 = min(t1, u1);
+			vec2 v0 = P(t0), v1 = P(t1);
+			findJump(t0, t1, v0, v1);
+			if (isnan(t0) || isnan(t1)) {
+				failcount++;
+			}
+			else if (isNAV(v0) || isNAV(v1)) {
+				;
+			}
+			else {
+				sings.push_back(vec2(t0, t1));
+				failcount = 0;
+			}
+		}
+		std::sort(sings.begin(), sings.end(), [](vec2 a, vec2 b) {return a.x < b.x; });
+
+		// split the interval by singularities
+		sings.push_back(vec2(u1));
+		double tl = u0, tr = u0;
+		for (int i = 0, l = sings.size(); i < l; i++) {
+			double t0 = sings[i].x, t1 = sings[i].y;
+			if (!(t0 - tl < 1e-6)) {
+				//printf("<line x1='%lf' y1='%lf' x2='%lf' y2='%lf' style='stroke-width:0.05px;'/>", P(tl).x, P(tl).y, P(tr).x, P(tr).y);
+				res.push_back(vec2(tr + 1e-12, t0 - 1e-12));
+				tl = t0, tr = t1;
+			}
+			else {
+				if (t1 > tr) tr = t1;
+			}
+		}
 	}
-#endif
 
 	return res;
 
@@ -344,14 +428,14 @@ template<typename ParamCurve>
 std::vector<cubicBezier> fitSpline_auto(ParamCurve C, vec2 B0, vec2 B1,
 	double allowed_err = 0.001, double lod_radius = 0.01, double* Err = nullptr, double *LengthC = nullptr) {
 
-	std::vector<vec2> Cs = splitDiscontinuity(C.p, C.t0, C.t1, 210, B0, B1);
+	std::vector<vec2> Cs = splitDiscontinuity(C.p, C.t0, C.t1, 420, B0, B1);
 	int CsN = Cs.size();
 
 	std::vector<cubicBezier> Res;
 	double cumErr = 0., cumLength = 0.;
 
 	for (int i = 0; i < CsN; i++) {
-		double t0 = Cs[i].x + 1e-12, t1 = Cs[i].y - 1e-12;
+		double t0 = Cs[i].x, t1 = Cs[i].y;
 		const double eps = 0.0001*(t1 - t0);
 
 		vec2 P0 = C.p(t0);
@@ -475,8 +559,8 @@ double fract(double x) { return x - floor(x); }
 //  - only defined inside the parametric interval
 //  - shortcuts for periodic/symmetric functions
 //  - analytical derivative is known
-const int CSN = 122;  // number of test functions
-const int CS0 = 0, CS1 = 122;  // only test a range of functions
+const int CSN = 128;  // number of test functions
+const int CS0 = 0, CS1 = 128;  // only test a range of functions
 const std::vector<int> _disabled_list({ 59, 62, 63, 64, 65, 67, 68, 69, 70, 71 });
 const ParametricCurveL Cs[CSN] = {
 #pragma region General Tests (44)
@@ -525,7 +609,7 @@ ParametricCurveL([](double t) { _return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(
 ParametricCurveL([](double t) { _return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI),
 ParametricCurveL([](double t) { _return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI),
 #pragma endregion  $ 0-44
-#pragma region Ill-conditioned Functions (42)
+#pragma region Ill-conditioned Functions (48)
 ParametricCurveL([](double x) { _return vec2(x, log(x + 1)); }, -0.99, 2.),
 ParametricCurveL([](double x) { _return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5),
 ParametricCurveL([](double x) { _return vec2(x, sqrt(1. - x * x)); }, -1., 1.),
@@ -562,13 +646,19 @@ ParametricCurveL([](double x) { _return vec2(x, fract(10. / (x*x + 1.))); }, -2.
 ParametricCurveL([](double x) { _return vec2(x, fract(pow(x,4.) - .1)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, fract(sin(5.*x) / x)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, fract(10.01*tanh(2.*x))); }, -2., 2.),
+ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*.08*floor(a); }, 0., 6.*PI),
+ParametricCurveL([](double a) { _return vec2(cos(2.*PI*a), sin(2.*PI*a))*(.5*fract(20.*a) + .8); }, 0., 1.),
+ParametricCurveL([](double t) { _return vec2(cos(PI / 6.*floor(t)),sin(PI / 6.*floor(t))) + .2*vec2(cos(2.*PI*t),sin(2.*PI*t)); }, 0., 12.),
+ParametricCurveL([](double t) { _return vec2(cos(PI / 6.*floor(t)),sin(PI / 6.*floor(t))) + .2*vec2(cos(2.*PI*t),sin(2.*PI*t)) + .08*vec2(sin(11.*t),cos(10.*t)); }, 0., 12.),
+ParametricCurveL([](double t) { _return vec2(cos(2.*PI*t),sin(2.*PI*t))*.1*floor(t) + vec2(.5 - .05*floor(t)); }, 0., 12.),
+ParametricCurveL([](double t) { _return vec2(([&]() { vec2 p = vec2(cos(2.*PI*t),sin(2.*PI*t))*.1*floor(t) - vec2(.5 - .05*floor(t)); return p + .05*vec2(sin(10.*p.x), sin(10.*p.y)); })()); }, 0., 12.),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(PI*n*x) / n; }, 1, 21, 2)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (PI*n); }, 1, 20)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (n*n); }, 1, 5)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return (sin(PI*n*x) - n * cos(PI*n*x)) / (n*(n*n + 1)); }, 1, 1001, 2)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return exp(-n)*sin(exp(n)*(x + n)); }, 1, 5)); }, -2.5, 2.5),
 ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { double u = exp2(n)*x, v = u - floor(u); return exp2(-n)*mix(hashf(floor(u),-n), hashf(ceil(u),-n), v*v*(3. - 2.*v)); }, 1, 6)); }, -2.5, 2.5),
-#pragma endregion  $ 44-86
+#pragma endregion  $ 44-92
 #pragma region Complicated Curves (36)
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(sin(10.*a) + 1.2); }, -PI, 4.*PI),
@@ -589,7 +679,7 @@ ParametricCurveL([](double t) { _return vec2(cos(t),0.618*cos(2.*t)) + 0.618*vec
 ParametricCurveL([](double t) { _return vec2(cos(1.12*t),sin(t)) + .5*vec2(cos(60.*t),-pow(sin(60.*t),2.)); }, 0., 2.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t),sin(t)) + vec2(cos(60.*t),sin(60.*t))*.5; }, 0., 2.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t) + .2*sin(20.*t), sin(t) + .2*cos(20.*t)) * .02*t; }, 0., 20.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*.08*floor(a); }, 0., 6.*PI),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.35*(.1*(t + 1.) + pow(sin(10.*t),2.) + .1*pow(sin(100.*t),2.)); }, 0., 10.*PI),
 ParametricCurveL([](double x) { _return vec2(x, sin(x) + sin(10.*x) + sin(100.*x))*.4; }, -5., 5.),
 ParametricCurveL([](double x) { _return vec2(x, .5*(sin(40.*x) + sin(45.*x))); }, -2.5, 2.5),
 ParametricCurveL([](double a) { _return vec2(cos(a),sin(a))*(2.0*Sum([&](int n) { return exp2(-n)*sin(exp2(n)*a); }, 1, 10)); }, 0., 2.*PI),
@@ -606,7 +696,7 @@ ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.005*exp(.25*t)*(1.
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.006*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.007*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*n*t), 2.) / (n*n); }, 1, 5, 1)); }, 0, 6.*PI),
 ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*exp2(n)*t), 2.) / exp2(n); }, 1, 5, 1)); }, 0, 6.*PI),
-#pragma endregion  $ 86-122
+#pragma endregion  $ 92-128
 };
 
 
@@ -656,9 +746,9 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 	}
 
 	// discretized path
-	if (1) {
+	if (0) {
 		printf("<path class='segpath' d='");
-		std::vector<segment> S = Param2Segments(C.p, C.p(C.t0), C.p(C.t1), C.t0, C.t1, 0.01, 16);
+		std::vector<segment> S = Param2Segments(C.p, C.p(C.t0), C.p(C.t1), C.t0, C.t1, 0.01, 17);
 		vec2 old_pos(NAN);
 		spn = S.size();
 		for (int i = 0; i < spn; i++) {
@@ -673,11 +763,12 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 	// debug
 	if (0) {
-		std::vector<vec2> Ps = splitDiscontinuity(C.p, C.t0, C.t1, 210, vec2(-2.5, -1.7), vec2(2.5, 1.7));
-		int L = Ps.size();
-		for (int i = 0; i < L; i++) {
+		std::vector<vec2> Ps = splitDiscontinuity(C.p, C.t0, C.t1, 420, vec2(-2.5, -1.7), vec2(2.5, 1.7));
+		spn = 0;
+		for (int i = 0, L = Ps.size(); i < L; i++) {
 			double t0 = Ps[i].x, t1 = Ps[i].y;
-			std::vector<segment> S = Param2Segments(C.p, C.p(t0), C.p(t1), t0, t1, 0.001, 16);
+			std::vector<segment> S = Param2Segments(C.p, C.p(t0), C.p(t1), t0, t1, 0.001, 17);
+			spn += S.size();
 			printf("<path d='");
 			vec2 old_pos(NAN); int spn = S.size();
 			for (int i = 0; i < spn; i++) {
@@ -688,7 +779,7 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 			}
 			printf("' style='stroke:%s;stroke-width:1px;fill:none' vector-effect='non-scaling-stroke'/>\n", i & 1 ? "#00F" : "#F00");
 		}
-		fflush(stdout); return;
+		fflush(stdout); //return;
 	}
 
 	Parametric_callCount = 0;
