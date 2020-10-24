@@ -58,6 +58,8 @@ struct vec2 {
 	friend vec2 normalize(const vec2 &v) { double m = invsqrt(v.x*v.x + v.y*v.y); return vec2(v.x*m, v.y*m); }
 	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
 	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; }
+	friend double ndot(const vec2 &u, const vec2 &v) { return dot(u, v) * invsqrt(u.sqr()*v.sqr()); }
+	friend double ndet(const vec2 &u, const vec2 &v) { return det(u, v) * invsqrt(u.sqr()*v.sqr()); }
 
 	void operator += (const vec2 &v) { x += v.x, y += v.y; }
 	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }

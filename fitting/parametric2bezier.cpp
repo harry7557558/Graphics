@@ -104,7 +104,7 @@ double distCubic2(cubicCurve c, vec2 p) {
 
 
 
-// curve fitting, return loss
+// fit a curve interval using one cubic bezier curve
 template<typename Fun>
 double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1, vec2 &uv,
 	double *lengthC = nullptr, double *sample_radius = nullptr, double lod_radius = 0.) {
@@ -144,7 +144,7 @@ double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double
 		double mr = 0.;
 		for (int i = 0; i < 32; i++) mr = max(mr, (P[i] - c).sqr());
 		*sample_radius = sqrt(mr);
-		// so the following computations can be omitted
+		// so the following computations can be saved
 		if (*sample_radius < lod_radius) {
 			T0 = T1 = P1 - P0;
 			return cost(.3, .3);
@@ -167,8 +167,13 @@ double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double
 	printerr("%d\n", callCount);
 
 	if (lengthC) *lengthC = clength;
-	return cost(uv.x, uv.y);
+	double cst = cost(uv.x, uv.y);
+	if (cst < 1e-8*clength && !(abs(ndet(T0, P1 - P0)) > 1e-6) && !(abs(ndet(T1, P1 - P0)) > 1e-6)) {
+		uv = vec2(NAN);  // automatically becomes line segment
+	}
+	return cst;
 }
+
 // P0, P1: starting and ending points; T0, T1: tangent vector (derivative)
 // Error is calculated as the integral of shortest distance to the bezier curve respect to arc length of C
 // lod_radius: radius for the level of detail; use line segments instead of bezier curve for complicated/fractal curves (necessary)
@@ -319,18 +324,54 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 		for (int i = 0; i < 60; i++) {
 			double tc = 0.5*(t0 + t1);
 			vec2 vc = P(tc);
+			if (isNAV(vc)) throw(tc);
 			dt *= .5;
-			double dif1 = (vc - v0).sqr() / dt;
-			double dif2 = (v1 - vc).sqr() / dt;
+			double dif1 = length(vc - v0) / dt;
+			double dif2 = length(v1 - vc) / dt;
 			if (i > 2 && !(max(dif1, dif2) > 1.2*dif0)) break;
-			if (dif1 > dif2) {
-				t1 = tc, v1 = vc, dif0 = dif1;
+			if (dif1 > dif2) t1 = tc, v1 = vc, dif0 = dif1;
+			else t0 = tc, v0 = vc, dif0 = dif2;
+			if (t1 - t0 < eps) {
+				// it may still be a "vertical" interval
+				if (max(dif1, dif2) < 10.*min(dif1, dif2)) {
+					t0 = t1 = 0.5*(t0 + t1);
+				}
+				return;
+			}
+			//if (dif0 > 1e6) return;
+		}
+		t0 = t1 = NAN;
+	};
+
+	// find non-differentiable point (golden section search)
+	auto findC0 = [&](double &t0, double &t1, vec2 &v0, vec2 &v1, double eps = 1e-12) {
+		double dt2 = (t1 - t0)*(t1 - t0);
+		double tc = 0.5*(t0 + t1);
+		vec2 vc = P(tc); if (isNAV(vc)) throw(tc);
+		double dif = length(v0 + v1 - 2.*vc) / dt2;
+		for (int i = 0; i < 64; i++) {
+			double tc0 = 0.5*(t0 + tc), tc1 = 0.5*(tc + t1);
+			vec2 vc0 = P(tc0), vc1 = P(tc1);
+			if (isNAV(vc0)) throw(tc0);
+			if (isNAV(vc1)) throw(tc1);
+			dt2 *= .25;
+			double dif0 = length(v0 + vc - 2.*vc0) / dt2;
+			double dif1 = length(vc + v1 - 2.*vc1) / dt2;
+			double difc = length(vc0 + vc1 - 2.*vc) / dt2;
+			if (i > 2 && !(max(max(dif0, dif1), difc) > max(1.2*dif, 1e-6))) break;
+			if (difc >= dif0 && difc >= dif1) {
+				t0 = tc0, t1 = tc1, v0 = vc0, v1 = vc1;
+				dif = difc;
+			}
+			else if (dif0 > dif1) {
+				t1 = tc, tc = tc0, v1 = vc, vc = vc0;
+				dif = dif0;
 			}
 			else {
-				t0 = tc, v0 = vc, dif0 = dif2;
+				t0 = tc, tc = tc1, v0 = vc, vc = vc1;
+				dif = dif1;
 			}
 			if (t1 - t0 < eps) return;
-			//if (dif0 > 1e6) return;
 		}
 		t0 = t1 = NAN;
 	};
@@ -346,8 +387,8 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 		std::vector<vec2> d1, d2, d3, d4;
 		{
 			for (int i = i0; i <= i1; i++) {
-				d1.push_back(i == 0 || i == mindif ? vec2(NAN) : .5 *(Ss[i + 1].p - Ss[i - 1].p) / dt);
-				//d1.push_back((i == 0 ? (Ss[1].p - Ss[0].p) : i == mindif ? (Ss[i].p - Ss[i - 1].p) \
+				//d1.push_back(i == 0 || i == mindif ? vec2(NAN) : .5 *(Ss[i + 1].p - Ss[i - 1].p) / dt);
+				d1.push_back((i == 0 ? (Ss[1].p - Ss[0].p) : i == mindif ? (Ss[i].p - Ss[i - 1].p) \
 					: .5 *(Ss[i + 1].p - Ss[i - 1].p)) / dt);
 			}
 			for (int i = 0; i <= di; i++) {
@@ -375,7 +416,6 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 		std::sort(d4s.begin(), d4s.end(), [](sampled a, sampled b) { return a.mag > b.mag; });
 		for (int i = 0; i <= di; i++) {
 			//if (d4s[i].mag < 1e4) break;
-			//fprintf(stderr, "%d %lf %lf\n", i, Ss[d4s[i].id].t, d4s[i].mag);
 			//printf("<circle cx='%lf' cy='%lf' r='%lf'/>", Ss[d4s[i].id].p.x, Ss[d4s[i].id].p.y, 0.05 * d4s[i].mag / d4s[0].mag);
 		}
 
@@ -385,14 +425,26 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 		for (int j = 0; failcount < maxfailcount && j <= di; j++) {
 			int i = d4s[j].id; double t = Ss[i].t;
 			double t0 = t - 1.5*dt, t1 = t + 1.5*dt;
-			//t0 = max(t0, u0), t1 = min(t1, u1);
+			t0 = max(t0, u0), t1 = min(t1, u1);
 			vec2 v0 = P(t0), v1 = P(t1);
-			findJump(t0, t1, v0, v1);
+			double _t0 = t0, _t1 = t1; vec2 _v0 = v0, _v1 = v1;  // backup
+			double t_NAV = NAN;  // t that produces NAV
+			try { findJump(t0, t1, v0, v1); }  // detect jump discontinuity
+			catch (double tc) { t_NAV = tc; }
+			if ((isnan(t0) || isnan(t1)) && isnan(t_NAV)) {  // detect non-differentiable point
+				try { findC0(t0 = _t0, t1 = _t1, v0 = _v0, v1 = _v1); }
+				catch (double tc) { t_NAV = tc; }
+			}
+			if (!isnan(t_NAV)) {  // most commonly infinite discontinuity
+				double tl = max(t - 2.*dt, u0), tr = min(t + 2.*dt, u1);
+				vec2 pl = P(tl), pr = P(tr);
+				if (bisectNAN(P, t_NAV, tl, vec2(NAN), pl, tl, pl)
+					&& bisectNAN(P, t_NAV, tr, vec2(NAN), pr, tr, pr))
+					sings.push_back(vec2(tl, tr));
+				continue;
+			}
 			if (isnan(t0) || isnan(t1)) {
 				failcount++;
-			}
-			else if (isNAV(v0) || isNAV(v1)) {
-				;
 			}
 			else {
 				sings.push_back(vec2(t0, t1));
@@ -416,6 +468,7 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 			}
 		}
 	}
+	fprintf(stderr, "%d; ", res.size());
 
 	return res;
 
@@ -711,7 +764,7 @@ const int W = 600, H = 400;
 const double SC = 120.0;
 
 // double to string for printf
-std::string _f_buffer[0x10000];
+std::string _f_buffer[0x40000];
 int _f_buffer_n = 0;
 auto _ = [&](double x) {
 	char c[256];
@@ -735,8 +788,6 @@ auto _ = [&](double x) {
 
 void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double &time_elapsed, int id = -1) {
 
-	_f_buffer_n = 0;
-
 	// axis
 	{
 		printf("<g class='axes'>");
@@ -747,8 +798,9 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 	// discretized path
 	if (0) {
-		printf("<path class='segpath' d='");
+		_f_buffer_n = 0;
 		std::vector<segment> S = Param2Segments(C.p, C.p(C.t0), C.p(C.t1), C.t0, C.t1, 0.01, 17);
+		printf("<path class='segpath' d='");
 		vec2 old_pos(NAN);
 		spn = S.size();
 		for (int i = 0; i < spn; i++) {
@@ -763,6 +815,7 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 	// debug
 	if (0) {
+		_f_buffer_n = 0;
 		std::vector<vec2> Ps = splitDiscontinuity(C.p, C.t0, C.t1, 420, vec2(-2.5, -1.7), vec2(2.5, 1.7));
 		spn = 0;
 		for (int i = 0, L = Ps.size(); i < L; i++) {
@@ -779,15 +832,14 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 			}
 			printf("' style='stroke:%s;stroke-width:1px;fill:none' vector-effect='non-scaling-stroke'/>\n", i & 1 ? "#00F" : "#F00");
 		}
-		fflush(stdout); //return;
+		fflush(stdout); return;
 	}
 
 	Parametric_callCount = 0;
+	_f_buffer_n = 0;
 
 	// vectorized path
 	{
-		printf("<path class='vecpath' d='");
-
 		auto time0 = NTime::now();
 		const vec2 RB = .5*vec2(W, H) / SC;
 		double clength;
@@ -796,10 +848,11 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
 
+		printf("<path class='vecpath' d='");
 		vec2 oldP(NAN);
 		for (int i = 0; i < spn; i++) {
 			vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
-			if (!((P0 - oldP).sqr() < 1e-12))
+			if (!((P0 - oldP).sqr() < 1e-8))
 				printf("M%s,%s\n", _(P0.x), _(P0.y));
 			if (isNAV(Q0) && isNAV(Q1)) printf("L%s,%s", _(P1.x), _(P1.y));
 			else printf("C%s,%s %s,%s %s,%s", _(Q0.x), _(Q0.y), _(Q1.x), _(Q1.y), _(P1.x), _(P1.y));
@@ -808,7 +861,7 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		printf("' stroke-width='1' vector-effect='non-scaling-stroke'/>\n");
 
 		// anchor points
-		if (spn && spn < 100) {
+		if (spn && spn < 180) {
 			printf("<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>\n");
 			auto line = [](vec2 a, vec2 b, const char end[] = "\n") {
 				if (!(isNAV(a) || isNAV(b)))
@@ -837,7 +890,7 @@ int main(int argc, char** argv) {
 <ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse></marker>\n\
 <clipPath id='viewbox'><rect x='%lg' y='%lg' width='%lg' height='%lg' /></clipPath>\n\
 </defs>\n", -.5*W / SC, -.5*H / SC, W / SC, H / SC);
-	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}.anchors{stroke:black;opacity:0.4;}.segpath{stroke-width:3px;stroke:#ccc;}</style>\n");
+	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}.axes{stroke:gray;}.anchors{stroke:black;opacity:0.4;}.segpath{stroke-width:3px;stroke:#ccc;}</style>\n");
 
 	auto start_time = NTime::now();
 
