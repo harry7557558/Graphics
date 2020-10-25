@@ -16,20 +16,6 @@
 #define printerr(...) {}
 
 
-// Parametric curve class
-template<typename Fun>
-class ParametricCurve {
-public:
-	double t0, t1;  // parameter interval
-	const Fun p;  // equation
-	ParametricCurve(Fun p) :t0(NAN), t1(NAN), p(p) { }
-	ParametricCurve(Fun p, double t0, double t1) :t0(t0), t1(t1), p(p) { }
-	//ParametricCurve() :t0(NAN), t1(NAN) {}  // not recommended
-};
-typedef ParametricCurve<vec2(*)(double)> ParametricCurveP;
-typedef ParametricCurve<std::function<vec2(double)>> ParametricCurveL;
-
-
 
 inline bool isNAV(vec2 p) {
 	double m = p.sqr();
@@ -628,172 +614,9 @@ std::vector<segment> Param2Segments(ParamCurve C, vec2 P0, vec2 P1, double t0, d
 
 
 
+// include test cases
+#include "test_cases.h"
 
-
-// a call time counter for testing
-static uint32_t Parametric_callCount = 0;
-#define _return Parametric_callCount++; return
-
-// summation
-template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
-	double r = 0;
-	for (int n = n0; n <= n1; n += step) r += f(n);
-	return r;
-};
-
-double fract(double x) { return x - floor(x); }
-
-
-// Test equations - some from Wikipedia
-// Most are relatively cheap to evaluate
-//  - contains undefined points (0/0=c)
-//  - contains infinite discontinuities (c/0=inf)
-//  - contains jump discontinuities
-//  - continuous but non-differentiable at certain points
-//  - contains infinite-curvature points
-//  - complicated (requires more numerical integration samples)
-//  - only defined inside the parametric interval
-//  - shortcuts for periodic/symmetric functions
-//  - analytical derivative is known
-const int CSN = 128;  // number of test functions
-const int CS0 = 0, CS1 = 128;  // only test a range of functions
-const std::vector<int> _disabled_list({ 59, 62, 63, 64, 65, 67, 68, 69, 70, 71 });
-const ParametricCurveL Cs[CSN] = {
-#pragma region General Tests (44)
-ParametricCurveL([](double t) { _return vec2(sin(t), cos(t) + .5*sin(t)); }, -PI, PI),
-ParametricCurveL([](double t) { _return vec2(sin(t), 0.5*sin(2.*t)); }, -0.1, 2.*PI - 0.1),
-ParametricCurveL([](double t) { _return vec2(sin(t), cos(t))*cos(2 * t); }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(sin(t),cos(t))*cos(3.*t); }, 0, PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*sin(5.*t); }, 0, PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*sin(6.*t); }, 0, 2.*PI),
-ParametricCurveL([](double x) { _return vec2(x, exp(-x * x)); }, -1., 2.),
-ParametricCurveL([](double t) { _return vec2(sinh(t), cosh(t) - 1.); }, -1., 1.4),
-ParametricCurveL([](double x) { _return vec2(x, sin(5.*x)); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, x == 0. ? 1. : sin(2.*PI*x) / (2.*PI*x)); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, x*x*x - x); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(.5*x, 0.04*(x*x*x*x + 2.*x*x*x - 6.*x*x - x + 1.)); }, -4., 4.),
-ParametricCurveL([](double t) { _return vec2(cos(t) + .5*cos(2.*t), sin(t) + .5*sin(2.*t)); }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(2.*t), sin(2.*t))*sin(t); }, 0, PI),
-ParametricCurveL([](double t) { _return vec2(cos(2.*t), sin(2.*t))*sin(t); }, -1, 2 * PI - 1),
-ParametricCurveL([](double t) { _return vec2(cos(t) + cos(2.*t), sin(t) + sin(2.*t))*.5; }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, -.5*PI, 1.5*PI),
-ParametricCurveL([](double t) { _return vec2(cos(3.*t), sin(2.*t)); }, -PI + 1., PI + 1.),
-ParametricCurveL([](double t) { _return vec2(cos(5.*t + PI / 4.), sin(4.*t)); }, 1., 2.*PI + 1.),
-ParametricCurveL([](double a) { _return vec2(cos(a),sin(a)) * .8*(pow(cos(6.*a),2.) + .5); }, 0., 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(2.*PI*a),sin(2.*PI*a)) * pow(abs(1.2*a),3.8) + vec2(-.7,0.); }, -1., 1.),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*a; }, 0, 6.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a); }, -PI, 4.*PI),
-ParametricCurveL([](double t) { _return vec2(.1*t + .3*cos(t), sin(t)); }, -13., 14.),
-ParametricCurveL([](double t) { _return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI),
-ParametricCurveL([](double a) { _return(sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return(sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 3.*PI),
-ParametricCurveL([](double a) { _return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, -1, 2.*PI - 1.),
-ParametricCurveL([](double x) { _return vec2(x, exp(sin(x)) - 1.5); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, exp(sin(PI*x)) - 1.5); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, sin(sin(5.*x))); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, sin(10.*x*x)); }, -2, 2),
-ParametricCurveL([](double t) { _return vec2(cos(t) + .1*cos(10.*t), sin(t) + .1*sin(10.*t)); }, 0, 2.*PI),
-ParametricCurveL([](double x) { _return vec2(x, x*x - cos(10.*x) - 1.)*.5; }, -1.8, 2.),
-ParametricCurveL([](double t) { _return vec2(cos(4.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(-.7*cos(5.*t) + sin(t), cos(3.*t) + .7*sin(5.*t))*.8; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(1.5*cos(t) + cos(1.5*t), 1.5*sin(t) - sin(1.5*t))*.5; }, 0., 4.*PI),
-ParametricCurveL([](double t) { _return vec2(2.1*cos(t) + cos(2.1*t), 2.1*sin(t) - sin(2.1*t))*.5; }, 0., 10.*PI),
-ParametricCurveL([](double t) { _return vec2(-1.2*cos(t) + cos(1.2*t), -1.2*sin(t) + sin(1.2*t))*.5; }, 0., 10.*PI),
-ParametricCurveL([](double t) { _return vec2(-1.9*cos(t) + cos(1.9*t), -1.9*sin(t) + sin(1.9*t))*.5; }, 0., 20.*PI),
-ParametricCurveL([](double t) { _return vec2(-sin(t) - .3*cos(t), .1*sin(t) - .5*cos(t))*sin(5.*t) + vec2(0., 1. - .5*pow(sin(5.*t) - 1., 2.)); }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(sin(t) + .2*cos(30.*t)*sin(t), -.4*cos(t) - .1*cos(30.*t)*cos(t) + .2*sin(30.*t)); }, 0, 2.*PI),
-#pragma endregion  $ 0-44
-#pragma region Ill-conditioned Functions (48)
-ParametricCurveL([](double x) { _return vec2(x, log(x + 1)); }, -0.99, 2.),
-ParametricCurveL([](double x) { _return vec2(0.5*x - 1., 0.1*tgamma(x) - 1.); }, 0.05, 5),
-ParametricCurveL([](double x) { _return vec2(x, sqrt(1. - x * x)); }, -1., 1.),
-ParametricCurveL([](double x) { _return vec2(x, asin(x)*(2. / PI)); }, -1., 1.),
-ParametricCurveL([](double x) { _return vec2(x, abs(x - 0.123) - 1.); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, 0.1*tan(x)); }, -.499*PI, .499*PI),
-ParametricCurveL([](double x) { _return vec2(x, sin(10.*sqrt(x + 2.))); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, .5*acos(cos(5.*x)) - .25*PI); }, -2, 2),
-ParametricCurveL([](double x) { _return vec2(x, x - floor(x)); }, -2, 2),
-ParametricCurveL([](double t) { _return vec2(.1*floor(10.*t + 1.), sin(2.*PI*t)*(10.*t - floor(10.*t))); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, sin(x - 1) / log(x + PI)) * 0.5; }, -PI, PI),
-ParametricCurveL([](double x) { _return vec2(x, sqrt(x + 1.) - 1.); }, -1., 1.),
-ParametricCurveL([](double x) { _return vec2(x, cbrt(x)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(x)) - 1.); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(x) - 1.)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, sqrt(abs(x) - 1.)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, cbrt(abs(abs(x) - 1.) - .5)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, pow(abs(cbrt(abs(abs(x) - 1.) - .5)), .2) * (abs(abs(x) - 1.) > .5 ? 1. : -1.)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, log(exp(abs(x))*sin(x)) - 10.)*.1; }, -20., 20.),
-ParametricCurveL([](double x) { _return vec2(x, log(abs(exp(abs(x))*sin(x))) - 10.)*.1; }, -20., 20.),
-ParametricCurveL([](double x) { _return vec2(x, log(tgamma(x)))*.5; }, -4., 4.),
-ParametricCurveL([](double x) { _return vec2(x, log(abs(tgamma(x))))*.5; }, -4., 4.),
-ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 1.),
-ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 2.),
-ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, -.25*PI, .75*PI),
-ParametricCurveL([](double t) { _return vec2(tan(t), 1. / tan(t)); }, 0., PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), 1.)*pow(tan(t / 2.), 1.05) * 2. - vec2(0,1); }, 0., .5*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), sin(t))*pow(tan(t / 2.), 1.02) * 2. - vec2(0,1); }, 0., .5*PI),
-ParametricCurveL([](double x) { _return vec2(x, max(exp(.2*x), 2.*sin(10.*x)) - 1.); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, max(sin(10.5*x), cos(2.*x))); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, clamp(tan(10.*x), -1., 1.)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, clamp(.2 / sin(10.*x), -1., 1.)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, fract(10. / (x*x + 1.))); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, fract(pow(x,4.) - .1)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, fract(sin(5.*x) / x)); }, -2., 2.),
-ParametricCurveL([](double x) { _return vec2(x, fract(10.01*tanh(2.*x))); }, -2., 2.),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*.08*floor(a); }, 0., 6.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(2.*PI*a), sin(2.*PI*a))*(.5*fract(20.*a) + .8); }, 0., 1.),
-ParametricCurveL([](double t) { _return vec2(cos(PI / 6.*floor(t)),sin(PI / 6.*floor(t))) + .2*vec2(cos(2.*PI*t),sin(2.*PI*t)); }, 0., 12.),
-ParametricCurveL([](double t) { _return vec2(cos(PI / 6.*floor(t)),sin(PI / 6.*floor(t))) + .2*vec2(cos(2.*PI*t),sin(2.*PI*t)) + .08*vec2(sin(11.*t),cos(10.*t)); }, 0., 12.),
-ParametricCurveL([](double t) { _return vec2(cos(2.*PI*t),sin(2.*PI*t))*.1*floor(t) + vec2(.5 - .05*floor(t)); }, 0., 12.),
-ParametricCurveL([](double t) { _return vec2(([&]() { vec2 p = vec2(cos(2.*PI*t),sin(2.*PI*t))*.1*floor(t) - vec2(.5 - .05*floor(t)); return p + .05*vec2(sin(10.*p.x), sin(10.*p.y)); })()); }, 0., 12.),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(PI*n*x) / n; }, 1, 21, 2)); }, -2.5, 2.5),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (PI*n); }, 1, 20)); }, -2.5, 2.5),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return sin(2.*PI*n*x) / (n*n); }, 1, 5)); }, -2.5, 2.5),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return (sin(PI*n*x) - n * cos(PI*n*x)) / (n*(n*n + 1)); }, 1, 1001, 2)); }, -2.5, 2.5),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { return exp(-n)*sin(exp(n)*(x + n)); }, 1, 5)); }, -2.5, 2.5),
-ParametricCurveL([](double x) { _return vec2(x, Sum([&](int n) { double u = exp2(n)*x, v = u - floor(u); return exp2(-n)*mix(hashf(floor(u),-n), hashf(ceil(u),-n), v*v*(3. - 2.*v)); }, 1, 6)); }, -2.5, 2.5),
-#pragma endregion  $ 44-92
-#pragma region Complicated Curves (36)
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(1. - .2*exp(sin(10.*a))); }, -PI, 4.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(sin(10.*a) + 1.2); }, -PI, 4.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(pow(sin(10.*a), 10.) + 1.); }, -PI, 4.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.04*exp(0.25*a)*(-exp(10.*(sin(20.*a) - 1)) + 1.8); }, -PI, 4.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.06*exp(0.25*a)*(pow(0.6*asin(sin(10.*a)) - .05, 8.) + 0.8); }, -PI, 4.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*exp(0.25*a)*(0.1*(asin(sin(10.*a)) + asin(sin(30.*a))) + 1.); }, -PI, 4.*PI),
-ParametricCurveL([](double t) { _return vec2(.04041 + .6156*cos(t) - .3412*sin(t) + .1344*cos(2.*t) - .1224*sin(2.*t) + .08335*cos(3.*t) + .2634*sin(3.*t) - .07623*cos(4.*t) - .09188*sin(4.*t) + .01339*cos(5.*t) - .01866*sin(5.*t) + .1631*cos(6.*t) + .006984*sin(6.*t) + .02867*cos(7.*t) - .01512*sin(7.*t) + .00989*cos(8.*t) + .02405*sin(8.*t) + .002186*cos(9.*t), +.04205 + .2141*cos(t) + .4436*sin(t) + .1148*cos(2.*t) - .146*sin(2.*t) - .09506*cos(3.*t) - .06217*sin(3.*t) - .0758*cos(4.*t) - .02987*sin(4.*t) + .2293*cos(5.*t) + .1629*sin(5.*t) + .005689*cos(6.*t) + .07154*sin(6.*t) - .02175*cos(7.*t) + .1169*sin(7.*t) - .01123*cos(8.*t) + .02682*sin(8.*t) - .01068*cos(9.*t)); }, 0., 2.*PI),
-ParametricCurveL([](double a) { _return 0.3*(exp(sin(a)) - 2.*cos(4.*a) + sin((2.*a - PI) / 24.))*vec2(cos(a), sin(a)); }, -8.*PI, 8.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) - pow(cos(40.*t), 3.), sin(40.*t) - pow(sin(t), 4.) + .5)*.8; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(60.*t) - 1.6*pow(cos(t), 3.), sin(60.*t) - pow(sin(t), 3.))*.6; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) - cos(t)*sin(60.*t), 2.*sin(t) - sin(60.*t))*.5; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(80.*t) - 1.4*cos(t)*sin(2.*t), 2.*sin(t) - sin(80.*t))*.5; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(sin(3.*t) + sin(t),cos(3.*t))*.8 + vec2(sin(160.*t),cos(160.*t))*.4; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(3.*t),2.*cos(t))*.6 + vec2(cos(100.*t),sin(100.*t))*sin(t)*.6; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(1.8*cos(t), 0.6*cos(5.*t)) + vec2(cos(100.*t),sin(100.*t))*pow(abs(sin(t)),0.6)*0.6; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t),0.618*cos(2.*t)) + 0.618*vec2(cos(60.*t),sin(60.*t))*cos(2.*t); }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(1.12*t),sin(t)) + .5*vec2(cos(60.*t),-pow(sin(60.*t),2.)); }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t),sin(t)) + vec2(cos(60.*t),sin(60.*t))*.5; }, 0., 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t) + .2*sin(20.*t), sin(t) + .2*cos(20.*t)) * .02*t; }, 0., 20.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.35*(.1*(t + 1.) + pow(sin(10.*t),2.) + .1*pow(sin(100.*t),2.)); }, 0., 10.*PI),
-ParametricCurveL([](double x) { _return vec2(x, sin(x) + sin(10.*x) + sin(100.*x))*.4; }, -5., 5.),
-ParametricCurveL([](double x) { _return vec2(x, .5*(sin(40.*x) + sin(45.*x))); }, -2.5, 2.5),
-ParametricCurveL([](double a) { _return vec2(cos(a),sin(a))*(2.0*Sum([&](int n) { return exp2(-n)*sin(exp2(n)*a); }, 1, 10)); }, 0., 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a) + .3)*(2.0*Sum([&](int n) { return exp2(-n)*cos(exp2(n)*a); }, 1, 16)); }, 0., 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a),-sin(a))*1.2*(sin(a) + Sum([&](int n) { return exp2(-n)*cos(exp2(n)*a); }, 1, 10)) + vec2(0.,.6); }, 0., 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(0.1*exp(.25*a)) + vec2(.08*exp(.2*a)*Sum([&](int n) { return exp2(-n)*pow(cos(exp2(n)*a),2.); }, 1, 10)); }, 0., 12.),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .4*Sum([&](int n) { return sin(5.*n*a) / n; }, 1, 11, 2)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .3*Sum([&](int n) { return sin(5.*n*a) / n; }, 1, 10, 1)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .5*Sum([&](int n) { return sin(5.*n*n*a) / (n*n); }, 1, 3, 1)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + .4*Sum([&](int n) { return (n & 2 ? -1. : 1.)*sin(5.*n*a) / (n*n); }, 1, 21, 2)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.8 + 3.*Sum([&](int n) { return (n & 2 ? -1. : 1.)*cos(6.*n*a) / (n*n); }, 3, 21, 2)); }, 0, 2.*PI),
-ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*(.9 + .15*Sum([&](int n) { return (cos(8.*n*(a + .1)) + cos(8.*n*(a - .1))) / n; }, 1, 11, 2)); }, 0, 2.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.005*exp(.25*t)*(1. + Sum([&](int n) { return pow(cos(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.006*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*t), 2.) / n; }, 1, 5, 1)); }, 0, 6.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.007*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*n*n*t), 2.) / (n*n); }, 1, 5, 1)); }, 0, 6.*PI),
-ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1. + Sum([&](int n) { return pow(sin(5.*exp2(n)*t), 2.) / exp2(n); }, 1, 5, 1)); }, 0, 6.*PI),
-#pragma endregion  $ 92-128
-};
 
 
 
@@ -802,9 +625,19 @@ ParametricCurveL([](double t) { _return vec2(cos(t), sin(t))*.009*exp(.25*t)*(1.
 typedef std::chrono::high_resolution_clock NTime;
 typedef std::chrono::duration<double> fsec;
 
-// scaling coefficients as global constants
-const int W = 600, H = 400;
-const double SC = 120.0;
+// parameters of the output graph
+namespace SVG {
+	const int Graph_N = CS1 - CS0;  // number of function graphs
+	const int W = 600, H = 400;  // width and height of each function graph
+	const double SC = 120.0, invSC = 1.0 / SC;  // scale from function coordinate to screen coordinate
+	const vec2 Bound = 0.5 * vec2(W, H) * invSC;  // viewbox for each function graph: ±Bound
+	const int Chart_N = 7;  // number of statistic charts
+	const int Chart_W = 800, Chart_H = 300;  // width and height of each chart
+	const vec2 Chart_Margin = vec2(120, 60);  // horizontal and vertical margin of each chart
+	const int Width = 2 * W;  // width of the overall graph
+	const int Height_F = (int)(((Graph_N + 1) / 2)*H);  // total height of the function part
+	const int Height = Height_F + Chart_N * int(Chart_H + 2 * Chart_Margin.y) + 80;  // height of the overall graph
+}
 
 // double to string for printf
 std::string _f_buffer[0x40000];
@@ -829,13 +662,16 @@ auto _ = [&](double x) {
 };
 
 
+
+
+// fit a curve with the default parameter and write SVG element code to stdout
 void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double &time_elapsed, int id = -1) {
 
 	// axis
 	{
 		printf("<g class='axes'>");
-		printf("<line x1='%s' x2='%s' y1='0' y2='0'/><line x1='1' x2='1' y1='-.05' y2='.05'/>", _(-0.5*W / SC), _(0.5*W / SC));
-		printf("<line x1='0' x2='0' y1='%s' y2='%s'/><line x1='-.05' x2='.05' y1='1' y2='1'/>", _(-0.5*H / SC), _(0.5*H / SC));
+		printf("<line x1='%s' x2='%s' y1='0' y2='0'/><line x1='1' x2='1' y1='-.05' y2='.05'/>", _(-SVG::Bound.x), _(SVG::Bound.x));
+		printf("<line x1='0' x2='0' y1='%s' y2='%s'/><line x1='-.05' x2='.05' y1='1' y2='1'/>", _(-SVG::Bound.y), _(SVG::Bound.y));
 		printf("</g>\n");
 	}
 
@@ -879,14 +715,14 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 	}
 
 	Parametric_callCount = 0;
+	distCubic2_callCount = 0;
 	_f_buffer_n = 0;
 
 	// vectorized path
 	{
 		auto time0 = NTime::now();
-		const vec2 RB = .5*vec2(W, H) / SC;
 		double clength;
-		std::vector<cubicBezier> sp = fitSpline_auto(C, -RB, RB, 0.001, 0.01, &err, &clength);
+		std::vector<cubicBezier> sp = fitSpline_auto(C, -SVG::Bound, SVG::Bound, 0.001, 0.01, &err, &clength);
 		err = sqrt(err / clength);
 		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
@@ -922,30 +758,101 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 }
 
 
+// draw a chart and write SVG element code to stdout, assume data points are non-negative
+// when grid is negative: auto
+void drawChart(vec2 Data[SVG::Graph_N], const char x_name[], const char y_name[], vec2 grid, const char unit_x[] = "", const char unit_y[] = "") {
+	vec2 maxVal(0.);
+	for (int i = 0; i < SVG::Graph_N; i++) maxVal = pMax(maxVal, Data[i]);
+	if (grid.x < 0.) { grid.x = pow(-grid.x, floor(log(maxVal.x) / log(-grid.x))); }
+	if (grid.y < 0.) { grid.y = pow(-grid.y, floor(log(maxVal.y) / log(-grid.y))); }
+	vec2 Sc = vec2(SVG::Chart_W, SVG::Chart_H) / (maxVal = pMin(maxVal + grid, maxVal * 1.2));
+
+	// lables
+	printf("<g id='chart-lable'>\n");
+	printf("<text text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='%lg' y='%d'>%s</text>\n",
+		SVG::Chart_W*.5, SVG::Chart_H + 50, x_name);
+	printf("<text transform='translate(%d %lg) rotate(-90)' text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='0' y='0'>%s</text>\n",
+		-60, SVG::Chart_H*.5, y_name);
+	printf("</g>\n");
+
+	// scale
+	{
+		printf("<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:#ccc;fill:none;'/>\n", SVG::Chart_W, SVG::Chart_H);
+		printf("<g class='chart-scale'>\n");
+		printf("<path d='");
+		std::string lables = ""; char cbuf[1024];
+		for (int i = 0, imax = (int)floor(maxVal.x / grid.x); i <= imax; i++) {
+			double x = Sc.x * i * grid.x;
+			sprintf(cbuf, "<text text-anchor='middle' x='%.4lg' y='%d'>%.5lg%s</text>", x, SVG::Chart_H + 20, i*grid.x, unit_x);
+			lables += std::string(cbuf);
+			printf("M%.4lg,0v%d", x, SVG::Chart_H + 5);
+		}
+		for (int i = 0, imax = (int)floor(maxVal.y / grid.y); i <= imax; i++) {
+			double y = Sc.y * i * grid.y;
+			sprintf(cbuf, "<text text-anchor='end' x='%d' y='%.4lg'>%.5lg%s</text>", -10, SVG::Chart_H - (y - 5), i*grid.y, unit_y);
+			lables += std::string(cbuf);
+			printf("M%d,%.4lgh%d", -5, SVG::Chart_H - y, SVG::Chart_W + 5);
+		}
+		printf("' style='stroke-width:0.5;stroke:#888;fill:none;'/>\n");
+		printf("%s\n", &lables[0]);
+		printf("</g>\n");
+	}
+
+	// data points
+	printf("<g class='data-points' style='stroke:none;fill:black;'>");
+	for (int i = 0; i < SVG::Graph_N; i++) {
+		vec2 p = Data[i] * Sc;
+		printf("<circle cx='%lg' cy='%lg' r='3'/>", p.x, SVG::Chart_H - p.y);
+	}
+	printf("</g>\n");
+
+}
+
+
 int main(int argc, char** argv) {
 	// output format: SVG
 	freopen(argv[1], "wb", stdout);
-	printf("<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", 2 * W, (int)(((CS1 - CS0 + 1) / 2 + 0.2)*H));
+	printf("<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", SVG::Width, SVG::Height);
 	printf("<defs>\n\
 <marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
 <rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect></marker>\n\
 <marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'>\
 <ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse></marker>\n\
 <clipPath id='viewbox'><rect x='%lg' y='%lg' width='%lg' height='%lg' /></clipPath>\n\
-</defs>\n", -.5*W / SC, -.5*H / SC, W / SC, H / SC);
+<clipPath id='chartbox'><rect x='%lg' y='%lg' width='%lg' height='%lg' /></clipPath>\n\
+</defs>\n", -SVG::Bound.x, -SVG::Bound.y, 2.*SVG::Bound.x, 2.*SVG::Bound.y,
+-SVG::Chart_Margin.x, -SVG::Chart_Margin.y, SVG::Chart_W + 2 * SVG::Chart_Margin.x, SVG::Chart_H + 2 * SVG::Chart_Margin.y);
 	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}.axes{stroke:gray;}.anchors{stroke:black;opacity:0.4;}.segpath{stroke-width:3px;stroke:#ccc;}</style>\n");
+
+
+	// computing statistics
+	struct statistic {
+		int id;  // test case id
+		double time;  // time used
+		int curve_n;  // number of pieces in the final result
+		uint32_t sample;  // number of samples
+		uint32_t dist_call;  // number of Bezier curve distance calculations
+		double error;  // estimated error
+	};
+	std::vector<statistic> stats;
+	uint32_t distCubic2_callCount_max = 0;
+
 
 	auto start_time = NTime::now();
 
 	for (int i = CS0; i < CS1; i++) {
-		int px = ((i - CS0) % 2)*W, py = ((i - CS0) / 2)*H;
-		printf("<!-- Test Path #%d -->\n", i);
-		printf("<rect x='%d' y='%d' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", px, py, W, H);
-		printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' clip-path='url(#viewbox)' style='stroke-width:%lgpx;stroke:black;fill:none;'>\n", SC, -SC, px + .5*W, py + .5*H, 1.0 / SC);
+		int px = ((i - CS0) % 2)*SVG::W, py = ((i - CS0) / 2)*SVG::H;
+		printf("\n<!-- Test Case #%d -->\n", i);
+		printf("<rect x='%d' y='%d' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", px, py, SVG::W, SVG::H);
+		printf("<g transform='matrix(%lg,0,0,%lg,%lg,%lg)' clip-path='url(#viewbox)' style='stroke-width:%lgpx;stroke:black;fill:none;'>\n",
+			SVG::SC, -SVG::SC, px + .5*SVG::W, py + .5*SVG::H, 1.0 * SVG::invSC);
 		fprintf(stderr, "Case %3d - ", i);
-		int spn; double err = abs(NAN), time_elapsed = 0.;
-		distCubic2_callCount = 0, Parametric_callCount = 0;
+
+		int spn = 0;
+		double err = abs(NAN);
+		double time_elapsed = 0.;
 		drawVectorizeCurve(Cs[i], spn, err, time_elapsed, i);
+
 		fprintf(stderr, "%.1lfms\n", 1000 * time_elapsed);
 		printf("</g>\n");
 		if (1) {
@@ -954,12 +861,59 @@ int main(int argc, char** argv) {
 			printf("<text x='%d' y='%d' data-db='%d' data-pc='%d'>DB %.1lfk    PE %.1lfk</text>\n", px + 10, py + 40,
 				distCubic2_callCount, Parametric_callCount, .001*distCubic2_callCount, .001*Parametric_callCount);
 		}
+		stats.push_back(statistic{ i, time_elapsed, spn, Parametric_callCount, distCubic2_callCount, err });
+		distCubic2_callCount_max = max(distCubic2_callCount_max, distCubic2_callCount);
+		fflush(stdout);
 	}
 
 	double time_elapsed = fsec(NTime::now() - start_time).count();
 	fprintf(stderr, "\nTotal %lfsecs\n", time_elapsed);
 
+
+	// charts
+	{
+		vec2 Data[SVG::Graph_N];
+		bool use_M = distCubic2_callCount_max > 1000000;
+		printf("\n<!-- ID-Time graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].id, stats[i].time);
+		drawChart(Data, "Test case ID", "Computing Time (seconds)", vec2(4, -10));
+		printf("</g>\n");
+		printf("\n<!-- Piece-Time graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + SVG::Chart_H + 3 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, stats[i].time);
+		drawChart(Data, "Number of Final Curve Pieces", "Computing Time (seconds)", vec2(-5, -10));
+		printf("</g>\n");
+		printf("\n<!-- Sample-Time graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 2 * SVG::Chart_H + 5 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(1e-3 * stats[i].sample, stats[i].time);
+		drawChart(Data, "Parametric-callCount", "Computing Time (seconds)", vec2(-10, -10), "k");
+		printf("</g>\n");
+		printf("\n<!-- DistCall-Time graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 3 * SVG::Chart_H + 7 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2((use_M ? 1e-6 : 1e-3) * stats[i].dist_call, stats[i].time);
+		drawChart(Data, "distCubic2-callCount", "Computing Time (seconds)", vec2(-10, -10), use_M ? "M" : "k");
+		printf("</g>\n");
+		printf("\n<!-- Piece-Sample graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 4 * SVG::Chart_H + 9 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, 1e-3 * stats[i].sample);
+		drawChart(Data, "Number of Final Curve Pieces", "Parametric-callCount", vec2(-5, -10), "", "k");
+		printf("</g>\n");
+		printf("\n<!-- Piece-DistCall graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 5 * SVG::Chart_H + 11 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, (use_M ? 1e-6 : 1e-3) * stats[i].dist_call);
+		drawChart(Data, "Number of Final Curve Pieces", "distCubic2-callCount", vec2(-5, -10), "", use_M ? "M" : "k");
+		printf("</g>\n");
+		printf("\n<!-- Sample-DistCall graph -->\n");
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 6 * SVG::Chart_H + 13 * SVG::Chart_Margin.y);
+		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(1e-3 * stats[i].sample, (use_M ? 1e-6 : 1e-3) * stats[i].dist_call);
+		drawChart(Data, "Parametric-callCount", "distCubic2-callCount", vec2(-10, -10), "k", use_M ? "M" : "k");
+		printf("</g>\n");
+	}
+
+
 	printf("</svg>");
 
+	fclose(stdout);
 	return 0;
 }
