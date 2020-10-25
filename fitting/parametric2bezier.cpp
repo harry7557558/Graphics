@@ -317,7 +317,7 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 
 
 	// find jump discontinuity, assume v0,v1 are already evaluated
-	// t=NAN: not found; v=NAN: find NAN
+	// t=NAN: not found
 	auto findJump = [&](double &t0, double &t1, vec2 &v0, vec2 &v1, double eps = 1e-12) {
 		double dt = t1 - t0;
 		double dif0 = length(v1 - v0) / dt;
@@ -331,19 +331,13 @@ std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int min
 			if (i > 2 && !(max(dif1, dif2) > 1.2*dif0)) break;
 			if (dif1 > dif2) t1 = tc, v1 = vc, dif0 = dif1;
 			else t0 = tc, v0 = vc, dif0 = dif2;
-			if (t1 - t0 < eps) {
-				// it may still be a "vertical" interval
-				if (max(dif1, dif2) < 10.*min(dif1, dif2)) {
-					t0 = t1 = 0.5*(t0 + t1);
-				}
-				return;
-			}
+			if (t1 - t0 < eps) return;
 			//if (dif0 > 1e6) return;
 		}
 		t0 = t1 = NAN;
 	};
 
-	// find non-differentiable point (golden section search)
+	// find non-differentiable point
 	auto findC0 = [&](double &t0, double &t1, vec2 &v0, vec2 &v1, double eps = 1e-12) {
 		double dt2 = (t1 - t0)*(t1 - t0);
 		double tc = 0.5*(t0 + t1);
@@ -488,16 +482,65 @@ std::vector<cubicBezier> fitSpline_auto(ParamCurve C, vec2 B0, vec2 B1,
 	double cumErr = 0., cumLength = 0.;
 
 	for (int i = 0; i < CsN; i++) {
-		double t0 = Cs[i].x, t1 = Cs[i].y;
+		double t0 = Cs[i].x, t1 = Cs[i].y, _t0 = t0, _t1 = t1;
 		const double eps = 0.0001*(t1 - t0);
 
-		vec2 P0 = C.p(t0);
-		vec2 P1 = C.p(t1);
-		vec2 T0 = (C.p(t0 + eps) - P0) / eps;
-		vec2 T1 = (P1 - C.p(t1 - eps)) / eps;
+		auto P = C.p;
+		vec2 P0 = P(t0);
+		vec2 P1 = P(t1);
+		vec2 T0, T1;
+		auto calcTangent = [&]() {
+			T0 = (P(t0 + eps) - P0) / eps;
+			T1 = (P1 - P(t1 - eps)) / eps;
+		};
+		calcTangent();
+
+		// check endpoint singularities
+		vec2 U0 = (P(t0 + .5*eps) - P0) / (.5*eps);
+		vec2 U1 = (P1 - P(t1 - .5*eps)) / (.5*eps);
+		double M0 = U0.sqr() / T0.sqr(), M1 = U1.sqr() / T1.sqr();
+		bool M0_ok = abs(M0 - 1.) < .1, M1_ok = abs(M1 - 1.) < .1;
+		if (M0_ok && M1_ok);  // good-conditioned function
+		else if (isnan(M0) || isnan(M1)) {  // idk, barely cause problems
+			fprintf(stderr, "NAN %d; ", __LINE__);
+		}
+		else if (M0 < 1.1 && M1 < 1.1);  // zero-tangent, may be improved
+		else {  // remap
+			if (max(M0, M1) > 2.8) {  // very bad-conditioned parameters
+				fprintf(stderr, "High dif %lf; ", max(M0, M1));
+			}
+			// remap using power function
+			if (M1_ok && M0 > 1.) {
+				P = [&](double t) {
+					double mp = pow(t, M0);
+					return C.p(_t0 + (_t1 - _t0)*mp);
+				};
+				t0 = 0., t1 = 1.; calcTangent();
+			}
+			else if (M0_ok && M1 > 1.) {
+				P = [&](double t) {
+					double mp = 1. - pow(1. - t, M1);
+					return C.p(_t0 + (_t1 - _t0)*mp);
+				};
+				t0 = 0., t1 = 1.; calcTangent();
+			}
+			// warn that this remapping function is C0 continuous
+			else if (abs(M1 - M0) < .1) {
+				double k = sqrt(M0*M1);
+				P = [&](double t) {
+					double mp = t < .5 ? .5*pow(2.*t, k) : 1. - .5*pow(2.*(1 - t), k);
+					return C.p(_t0 + (_t1 - _t0)*mp);
+				};
+				t0 = 0., t1 = 1.; calcTangent();
+			}
+			// relatively rare but sometimes happen
+			else {
+				fprintf(stderr, "Remapping needed; ");
+			}
+		}
 
 		double err = 0., clen = 0.;
-		std::vector<cubicBezier> R = fitSpline(C.p, P0, P1, T0, T1, t0, t1, allowed_err, lod_radius, &err, &clen);
+		std::vector<cubicBezier> R = fitSpline(P, P0, P1, T0, T1, t0, t1, allowed_err, lod_radius, &err, &clen);
 		Res.insert(Res.end(), R.begin(), R.end());
 		cumErr += err, cumLength += clen;
 	}
