@@ -1,5 +1,5 @@
 // Curve fitting experiment - fit 2d parametric curves to cubic Bezier spline
-// SVG image is printed to stdout, and program outputs to stderr
+// SVG graphs to stdout, and program outputs to stderr
 
 #include <stdio.h>
 #include <functional>
@@ -10,7 +10,6 @@
 #include "numerical/integration.h"
 #include "numerical/optimization.h"
 #include "numerical/rootfinding.h"
-#include "numerical/random.h"
 
 #define printerr(...) fprintf(stderr, __VA_ARGS__)
 #define printerr(...) {}
@@ -244,9 +243,9 @@ std::vector<cubicBezier> fitSpline(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, do
 
 
 
-// split the curve by discontinuities, return parametric pairs [t0,t1]
+// split the curve by singularities, return parametric pairs [t0,t1]
 template<typename Fun>
-std::vector<vec2> splitDiscontinuity(const Fun &C, double t0, double t1, int mindif = 420/*2x2x3x5x7*/,
+std::vector<vec2> splitSingularity(const Fun &C, double t0, double t1, int mindif = 420/*2x2x3x5x7*/,
 	vec2 Bound0 = vec2(-INFINITY), vec2 Bound1 = vec2(INFINITY)) {
 
 	auto P = [&](double t)->vec2 {
@@ -461,7 +460,7 @@ template<typename ParamCurve>
 std::vector<cubicBezier> fitSpline_auto(ParamCurve C, vec2 B0, vec2 B1,
 	double allowed_err = 0.001, double lod_radius = 0.01, double* Err = nullptr, double *LengthC = nullptr) {
 
-	std::vector<vec2> Cs = splitDiscontinuity(C.p, C.t0, C.t1, 420, B0, B1);
+	std::vector<vec2> Cs = splitSingularity(C.p, C.t0, C.t1, 420, B0, B1);
 	int CsN = Cs.size();
 
 	std::vector<cubicBezier> Res;
@@ -665,7 +664,7 @@ auto _ = [&](double x) {
 
 
 // fit a curve with the default parameter and write SVG element code to stdout
-void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double &time_elapsed, int id = -1) {
+void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &time_elapsed, int id = -1) {
 
 	// axis
 	{
@@ -695,7 +694,7 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 	// debug
 	if (0) {
 		_f_buffer_n = 0;
-		std::vector<vec2> Ps = splitDiscontinuity(C.p, C.t0, C.t1, 420, vec2(-2.5, -1.7), vec2(2.5, 1.7));
+		std::vector<vec2> Ps = splitSingularity(C.p, C.t0, C.t1, 420, vec2(-2.5, -1.7), vec2(2.5, 1.7));
 		spn = 0;
 		for (int i = 0, L = Ps.size(); i < L; i++) {
 			double t0 = Ps[i].x, t1 = Ps[i].y;
@@ -732,23 +731,23 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 		for (int i = 0; i < spn; i++) {
 			vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
 			if (!((P0 - oldP).sqr() < 1e-8))
-				printf("M%s,%s\n", _(P0.x), _(P0.y));
+				printf("\nM%s,%s", _(P0.x), _(P0.y));
 			if (isNAV(Q0) && isNAV(Q1)) printf("L%s,%s", _(P1.x), _(P1.y));
 			else printf("C%s,%s %s,%s %s,%s", _(Q0.x), _(Q0.y), _(Q1.x), _(Q1.y), _(P1.x), _(P1.y));
 			oldP = P1;
 		}
-		printf("' stroke-width='1' vector-effect='non-scaling-stroke'/>\n");
+		printf("\n' stroke-width='1' vector-effect='non-scaling-stroke'/>\n");
 
 		// anchor points
 		if (spn && spn < 180) {
-			printf("<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>\n");
-			auto line = [](vec2 a, vec2 b, const char end[] = "\n") {
+			printf("<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>");
+			auto line = [](vec2 a, vec2 b) {
 				if (!(isNAV(a) || isNAV(b)))
-					printf("<line x1='%s' y1='%s' x2='%s' y2='%s'/>%s", _(a.x), _(a.y), _(b.x), _(b.y), end);
+					printf("<line x1='%s' y1='%s' x2='%s' y2='%s'/>", _(a.x), _(a.y), _(b.x), _(b.y));
 			};
 			for (int i = 0; i < spn; i++) {
 				vec2 P0 = sp[i].A, Q0 = sp[i].B, Q1 = sp[i].C, P1 = sp[i].D;
-				line(P0, Q0, ""); line(P1, Q1);
+				line(P0, Q0); line(P1, Q1);
 			}
 			printf("</g>\n");
 		}
@@ -759,44 +758,56 @@ void drawVectorizeCurve(const ParametricCurveL &C, int &spn, double &err, double
 
 
 // draw a chart and write SVG element code to stdout, assume data points are non-negative
-// when grid is negative: auto
-void drawChart(vec2 Data[SVG::Graph_N], const char x_name[], const char y_name[], vec2 grid, const char unit_x[] = "", const char unit_y[] = "") {
+// when grid is non-positive: automatically
+void drawChart(/*non-const warning*/vec2 Data[SVG::Graph_N], const char x_name[], const char y_name[], vec2 grid, const char unit_x[] = "", const char unit_y[] = "") {
+
+	// calculate maximum value for determining grid size
 	vec2 maxVal(0.);
 	for (int i = 0; i < SVG::Graph_N; i++) maxVal = pMax(maxVal, Data[i]);
-	if (grid.x < 0.) { grid.x = pow(-grid.x, floor(log(maxVal.x) / log(-grid.x))); }
-	if (grid.y < 0.) { grid.y = pow(-grid.y, floor(log(maxVal.y) / log(-grid.y))); }
+
+	// automatic k/M for large numbers
+	char unitx[2] = " ", unity[2] = " ";
+	vec2 Mc(1.);
+	unitx[0] = maxVal.x > 1e6 ? ('M' + char(Mc.x = 1e-6)) : maxVal.x > 1e3 ? ('k' + char(Mc.x = 1e-3)) : 0;
+	unity[0] = maxVal.y > 1e6 ? ('M' + char(Mc.y = 1e-6)) : maxVal.y > 1e3 ? ('k' + char(Mc.y = 1e-3)) : 0;
+	for (int i = 0; i < SVG::Graph_N; i++) Data[i] *= Mc;
+	maxVal *= Mc;
+
+	// automatic grid size
+	if (!(grid.x > 0.)) { double q = log10(maxVal.x), r = q - floor(q); grid.x = pow(10., floor(q)) * (r < .17 ? .1 : r < .5 ? .2 : r < .83 ? .5 : 1.); }
+	if (!(grid.y > 0.)) { double q = log10(maxVal.y), r = q - floor(q); grid.y = pow(10., floor(q)) * (r < .17 ? .2 : r < .5 ? .5 : r < .83 ? 1. : 2.); }
 	vec2 Sc = vec2(SVG::Chart_W, SVG::Chart_H) / (maxVal = pMin(maxVal + grid, maxVal * 1.2));
 
 	// lables
-	printf("<g id='chart-lable'>\n");
 	printf("<text text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='%lg' y='%d'>%s</text>\n",
 		SVG::Chart_W*.5, SVG::Chart_H + 50, x_name);
 	printf("<text transform='translate(%d %lg) rotate(-90)' text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='0' y='0'>%s</text>\n",
 		-60, SVG::Chart_H*.5, y_name);
-	printf("</g>\n");
 
 	// scale
-	{
-		printf("<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:#ccc;fill:none;'/>\n", SVG::Chart_W, SVG::Chart_H);
-		printf("<g class='chart-scale'>\n");
-		printf("<path d='");
-		std::string lables = ""; char cbuf[1024];
-		for (int i = 0, imax = (int)floor(maxVal.x / grid.x); i <= imax; i++) {
-			double x = Sc.x * i * grid.x;
-			sprintf(cbuf, "<text text-anchor='middle' x='%.4lg' y='%d'>%.5lg%s</text>", x, SVG::Chart_H + 20, i*grid.x, unit_x);
-			lables += std::string(cbuf);
-			printf("M%.4lg,0v%d", x, SVG::Chart_H + 5);
-		}
-		for (int i = 0, imax = (int)floor(maxVal.y / grid.y); i <= imax; i++) {
-			double y = Sc.y * i * grid.y;
-			sprintf(cbuf, "<text text-anchor='end' x='%d' y='%.4lg'>%.5lg%s</text>", -10, SVG::Chart_H - (y - 5), i*grid.y, unit_y);
-			lables += std::string(cbuf);
-			printf("M%d,%.4lgh%d", -5, SVG::Chart_H - y, SVG::Chart_W + 5);
-		}
-		printf("' style='stroke-width:0.5;stroke:#888;fill:none;'/>\n");
-		printf("%s\n", &lables[0]);
-		printf("</g>\n");
+	printf("<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:#ccc;fill:none;'/>\n", SVG::Chart_W, SVG::Chart_H);
+	printf("<g class='chart-scale'>\n");
+	printf("<path d='");
+	std::string lables = ""; char cbuf[1024];
+	for (int i = 0, imax = (int)floor(maxVal.x / grid.x); i <= imax; i++) {
+		double x = Sc.x * i * grid.x;
+		sprintf(cbuf, "<text text-anchor='middle' x='%.4lg' y='%d'>%.5lg%s%s</text>", x, SVG::Chart_H + 20, i*grid.x, unitx, unit_x);
+		lables += std::string(cbuf);
+		printf("M%.4lg,0v%d", x, SVG::Chart_H + 5);
 	}
+	for (int i = 0, imax = (int)floor(maxVal.y / grid.y); i <= imax; i++) {
+		double y = Sc.y * i * grid.y;
+		sprintf(cbuf, "<text text-anchor='end' x='%d' y='%.4lg'>%.5lg%s%s</text>", -10, SVG::Chart_H - (y - 5), i*grid.y, unity, unit_y);
+		lables += std::string(cbuf);
+		printf("M%d,%.4lgh%d", -5, SVG::Chart_H - y, SVG::Chart_W + 5);
+	}
+	printf("' style='stroke-width:0.5;stroke:#888;fill:none;'/>\n");
+	printf("%s\n", &lables[0]);
+	printf("</g>\n");
+
+	// prevent text selection
+	printf("<rect x='%lg' y='%lg' width='%lg' height='%lg' style='stroke:none;fill:#00000000;'/>\n",
+		-SVG::Chart_Margin.x, -SVG::Chart_Margin.y, SVG::Chart_W + SVG::Chart_Margin.x*2., SVG::Chart_H + SVG::Chart_Margin.y*2.);
 
 	// data points
 	printf("<g class='data-points' style='stroke:none;fill:black;'>");
@@ -825,7 +836,7 @@ int main(int argc, char** argv) {
 	printf("<style>text{font-size:13px;font-family:Arial;white-space:pre-wrap;}.axes{stroke:gray;}.anchors{stroke:black;opacity:0.4;}.segpath{stroke-width:3px;stroke:#ccc;}</style>\n");
 
 
-	// computing statistics
+	// computing cost statistics
 	struct statistic {
 		int id;  // test case id
 		double time;  // time used
@@ -851,7 +862,7 @@ int main(int argc, char** argv) {
 		int spn = 0;
 		double err = abs(NAN);
 		double time_elapsed = 0.;
-		drawVectorizeCurve(Cs[i], spn, err, time_elapsed, i);
+		drawFittedCurve(Cs[i], spn, err, time_elapsed, i);
 
 		fprintf(stderr, "%.1lfms\n", 1000 * time_elapsed);
 		printf("</g>\n");
@@ -870,49 +881,39 @@ int main(int argc, char** argv) {
 	fprintf(stderr, "\nTotal %lfsecs\n", time_elapsed);
 
 
-	// charts
+	// charts, somewhat messy
 	{
-		vec2 Data[SVG::Graph_N];
-		bool use_M = distCubic2_callCount_max > 1000000;
-		printf("\n<!-- ID-Time graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].id, stats[i].time);
-		drawChart(Data, "Test case ID", "Computing Time (seconds)", vec2(4, -10));
-		printf("</g>\n");
-		printf("\n<!-- Piece-Time graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + SVG::Chart_H + 3 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, stats[i].time);
-		drawChart(Data, "Number of Final Curve Pieces", "Computing Time (seconds)", vec2(-5, -10));
-		printf("</g>\n");
-		printf("\n<!-- Sample-Time graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 2 * SVG::Chart_H + 5 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(1e-3 * stats[i].sample, stats[i].time);
-		drawChart(Data, "Parametric-callCount", "Computing Time (seconds)", vec2(-10, -10), "k");
-		printf("</g>\n");
-		printf("\n<!-- DistCall-Time graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 3 * SVG::Chart_H + 7 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2((use_M ? 1e-6 : 1e-3) * stats[i].dist_call, stats[i].time);
-		drawChart(Data, "distCubic2-callCount", "Computing Time (seconds)", vec2(-10, -10), use_M ? "M" : "k");
-		printf("</g>\n");
-		printf("\n<!-- Piece-Sample graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 4 * SVG::Chart_H + 9 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, 1e-3 * stats[i].sample);
-		drawChart(Data, "Number of Final Curve Pieces", "Parametric-callCount", vec2(-5, -10), "", "k");
-		printf("</g>\n");
-		printf("\n<!-- Piece-DistCall graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 5 * SVG::Chart_H + 11 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(stats[i].curve_n, (use_M ? 1e-6 : 1e-3) * stats[i].dist_call);
-		drawChart(Data, "Number of Final Curve Pieces", "distCubic2-callCount", vec2(-5, -10), "", use_M ? "M" : "k");
-		printf("</g>\n");
-		printf("\n<!-- Sample-DistCall graph -->\n");
-		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>", SVG::Chart_Margin.x, SVG::Height_F + 6 * SVG::Chart_H + 13 * SVG::Chart_Margin.y);
-		for (int i = 0; i < SVG::Graph_N; i++) Data[i] = vec2(1e-3 * stats[i].sample, (use_M ? 1e-6 : 1e-3) * stats[i].dist_call);
-		drawChart(Data, "Parametric-callCount", "distCubic2-callCount", vec2(-10, -10), "k", use_M ? "M" : "k");
-		printf("</g>\n");
+		vec2 ChartData[SVG::Graph_N];
+
+#define drawIthChart(i, title, var1, var2, ...) \
+	do { \
+		printf("\n<!-- %s -->\n", title); \
+		printf("<g transform='translate(%lg %lg)' clip-path='url(#chartbox)'>\n", SVG::Chart_Margin.x, SVG::Height_F + i * SVG::Chart_H + (2 * i + 1) * SVG::Chart_Margin.y); \
+		for (int u = 0; u < SVG::Graph_N; u++) ChartData[u] = vec2(stats[u].##var1, stats[u].##var2); \
+		drawChart(ChartData, __VA_ARGS__); \
+		printf("</g>\n"); \
+	} while(0)
+
+		drawIthChart(0, "ID-Time graph", id, time,
+			"Test case ID", "Computing Time", vec2(SVG::Graph_N <= 20 ? 1 : 4, 0), "", "s");
+		drawIthChart(1, "Piece-Time graph", curve_n, time,
+			"Number of Final Curve Pieces", "Computing Time", vec2(0), "", "s");
+		drawIthChart(2, "Sample-Time graph", sample, time,
+			"Parametric-callCount", "Computing Time", vec2(0), "", "s");
+		drawIthChart(3, "DistCall-Time graph", dist_call, time,
+			"distCubic2-callCount", "Computing Time", vec2(0), "", "s");
+		drawIthChart(4, "Piece-Sample graph", curve_n, sample,
+			"Number of Final Curve Pieces", "Parametric-callCount", vec2(0), "", "");
+		drawIthChart(5, "Piece-DistCall graph", curve_n, dist_call,
+			"Number of Final Curve Pieces", "distCubic2-callCount", vec2(0), "", "");
+		drawIthChart(6, "Sample-DistCall graph", sample, dist_call,
+			"Parametric-callCount", "distCubic2-callCount", vec2(0), "", "");
+
+#undef drawIthChart
 	}
 
 
-	printf("</svg>");
+	printf("\n</svg>");
 
 	fclose(stdout);
 	return 0;

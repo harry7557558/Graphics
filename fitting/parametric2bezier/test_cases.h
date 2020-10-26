@@ -14,18 +14,18 @@ public:
 typedef ParametricCurve<vec2(*)(double)> ParametricCurveP;
 typedef ParametricCurve<std::function<vec2(double)>> ParametricCurveL;
 
-// functions for one-linerize
+// functions for one-linerization
 template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
 	double r = 0;
 	for (int n = n0; n <= n1; n += step) r += f(n);
 	return r;
 };
 double fract(double x) { return x - floor(x); }
+double hashf(double x, double y) { return fmod(sin(12.9898*x + 78.233*y + 1.) * 43758.5453, 1.); };
 
-// count the number of calls
+// count the number of function calls
 static uint32_t Parametric_callCount = 0;
 #define _return Parametric_callCount++; return
-
 
 
 // Test equations - some from Wikipedia
@@ -33,8 +33,8 @@ static uint32_t Parametric_callCount = 0;
 const int CSN = 128;  // number of test functions
 const int CS0 = 0, CS1 = 128;  // only test functions in this range when debugging
 
-// 0-43: General tests; 44-91: Ill-conditioned functions; 92-127: Complicated curves;
-// Test case ID: line_number - 40
+// 0-43: General tests; 44-91: Ill-conditioned functions; 92-127: Performance tests;
+// Test case ID: __LINE__ - 40
 
 const ParametricCurveL Cs[CSN] = {
 ParametricCurveL([](double t) { _return vec2(sin(t), cos(t) + .5*sin(t)); }, -PI, PI),
