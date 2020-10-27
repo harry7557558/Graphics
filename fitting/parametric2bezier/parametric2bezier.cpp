@@ -306,6 +306,7 @@ std::vector<vec2> splitSingularity(const Fun &C, double t0, double t1, int mindi
 	auto findJump = [&](double &t0, double &t1, vec2 &v0, vec2 &v1, double eps = 1e-12) {
 		double dt = t1 - t0;
 		double dif0 = length(v1 - v0) / dt;
+		double dist = dif0 * dt;
 		for (int i = 0; i < 60; i++) {
 			double tc = 0.5*(t0 + t1);
 			vec2 vc = P(tc);
@@ -316,8 +317,17 @@ std::vector<vec2> splitSingularity(const Fun &C, double t0, double t1, int mindi
 			if (i > 2 && !(max(dif1, dif2) > 1.2*dif0)) break;
 			if (dif1 > dif2) t1 = tc, v1 = vc, dif0 = dif1;
 			else t0 = tc, v0 = vc, dif0 = dif2;
-			if (t1 - t0 < eps) return;
-			//if (dif0 > 1e6) return;
+			double new_dist = dif0 * dt;
+			if (t1 - t0 < eps) {
+				// needs to makes sure there is a jump
+				if (new_dist / dist < 0.99) {
+					//fprintf(stderr, "%lf\n", (new_dist / dist));
+					if (!(t1 == t0 || i == 59)) continue;
+				}
+				//fprintf(stderr, "%lg\n", t1 - t0);
+				return;
+			}
+			dist = new_dist;
 		}
 		t0 = t1 = NAN;
 	};
@@ -435,15 +445,19 @@ std::vector<vec2> splitSingularity(const Fun &C, double t0, double t1, int mindi
 		// split the interval by singularities
 		sings.push_back(vec2(u1));
 		double tl = u0, tr = u0;
+		int add_count = 0;  // newly added interval count
 		for (int i = 0, l = sings.size(); i < l; i++) {
 			double t0 = sings[i].x, t1 = sings[i].y;
 			if (!(t0 - tl < 1e-6)) {
 				//printf("<line x1='%lf' y1='%lf' x2='%lf' y2='%lf' style='stroke-width:0.05px;'/>", P(tl).x, P(tl).y, P(tr).x, P(tr).y);
-				res.push_back(vec2(tr + 1e-12, t0 - 1e-12));
+				if (add_count != 0) res.back().y = tl;
+				res.push_back(vec2(tr, t0)); add_count++;
 				tl = t0, tr = t1;
 			}
 			else {
-				if (t1 > tr) tr = t1;
+				//if (t1 > tr) tr = t1;
+				if (t0 > tl) tl = t0;
+				if (t1 < tr) tr = t1;
 			}
 		}
 	}
@@ -674,10 +688,18 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 		printf("</g>\n");
 	}
 
+	// timer
+	auto time0 = NTime::now();
+	time_elapsed = 0.;
+	auto start_timer = [&]() { time0 = NTime::now(); };
+	auto end_timer = [&]() { time_elapsed += fsec(NTime::now() - time0).count(); };
+
 	// discretized path
 	if (0) {
 		_f_buffer_n = 0;
+		start_timer();
 		std::vector<segment> S = Param2Segments(C.p, C.p(C.t0), C.p(C.t1), C.t0, C.t1, 0.01, 17);
+		end_timer();
 		printf("<path class='segpath' d='");
 		vec2 old_pos(NAN);
 		spn = S.size();
@@ -694,10 +716,13 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 	// debug
 	if (0) {
 		_f_buffer_n = 0;
+		start_timer();
 		std::vector<vec2> Ps = splitSingularity(C.p, C.t0, C.t1, 420, vec2(-2.5, -1.7), vec2(2.5, 1.7));
+		end_timer();
 		spn = 0;
 		for (int i = 0, L = Ps.size(); i < L; i++) {
-			double t0 = Ps[i].x, t1 = Ps[i].y;
+			double t0 = Ps[i].x, t1 = Ps[i].y, dt = t1 - t0;
+			if (dt < 1e-4) fprintf(stderr, "dt=%lg\n", dt);
 			std::vector<segment> S = Param2Segments(C.p, C.p(t0), C.p(t1), t0, t1, 0.001, 17);
 			spn += S.size();
 			printf("<path d='");
@@ -719,11 +744,11 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 
 	// vectorized path
 	{
-		auto time0 = NTime::now();
 		double clength;
+		start_timer();
 		std::vector<cubicBezier> sp = fitSpline_auto(C, -SVG::Bound, SVG::Bound, 0.001, 0.01, &err, &clength);
+		end_timer();
 		err = sqrt(err / clength);
-		time_elapsed = fsec(NTime::now() - time0).count();
 		spn = sp.size();
 
 		printf("<path class='vecpath' d='");
@@ -776,6 +801,8 @@ void drawChart(/*non-const warning*/vec2 Data[SVG::Graph_N], const char x_name[]
 	// automatic grid size
 	if (!(grid.x > 0.)) { double q = log10(maxVal.x), r = q - floor(q); grid.x = pow(10., floor(q)) * (r < .17 ? .1 : r < .5 ? .2 : r < .83 ? .5 : 1.); }
 	if (!(grid.y > 0.)) { double q = log10(maxVal.y), r = q - floor(q); grid.y = pow(10., floor(q)) * (r < .17 ? .2 : r < .5 ? .5 : r < .83 ? 1. : 2.); }
+	if (maxVal.x == 0.) maxVal.x = grid.x = 1.;
+	if (maxVal.y == 0.) maxVal.y = grid.y = 1.;
 	vec2 Sc = vec2(SVG::Chart_W, SVG::Chart_H) / (maxVal = pMin(maxVal + grid, maxVal * 1.2));
 
 	// lables
@@ -895,7 +922,7 @@ int main(int argc, char** argv) {
 	} while(0)
 
 		drawIthChart(0, "ID-Time graph", id, time,
-			"Test case ID", "Computing Time", vec2(SVG::Graph_N <= 20 ? 1 : 4, 0), "", "s");
+			"Test case ID", "Computing Time", vec2(CS1 <= 20 ? 1 : 4, 0), "", "s");
 		drawIthChart(1, "Piece-Time graph", curve_n, time,
 			"Number of Final Curve Pieces", "Computing Time", vec2(0), "", "s");
 		drawIthChart(2, "Sample-Time graph", sample, time,
