@@ -559,7 +559,7 @@ struct segment {
 	double d2(vec2 p) { // square of distance to a point
 		vec2 ab = b - a, ap = p - a;
 		double m = dot(ab, ab);
-		if (m*m < 1e-12) return length(ap);
+		if (m*m < 1e-12) return ap.sqr();
 		double h = dot(ap, ab) / m;
 		return (ab * h - ap).sqr();
 	}
@@ -694,25 +694,6 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 	auto start_timer = [&]() { time0 = NTime::now(); };
 	auto end_timer = [&]() { time_elapsed += fsec(NTime::now() - time0).count(); };
 
-	// discretized path
-	if (0) {
-		_f_buffer_n = 0;
-		start_timer();
-		std::vector<segment> S = Param2Segments(C.p, C.p(C.t0), C.p(C.t1), C.t0, C.t1, 0.01, 17);
-		end_timer();
-		printf("<path class='segpath' d='");
-		vec2 old_pos(NAN);
-		spn = S.size();
-		for (int i = 0; i < spn; i++) {
-			segment s = S[i];
-			if (!((old_pos - s.a).sqr() < 1e-6)) printf("M%s,%s", _(s.a.x), _(s.a.y));
-			printf("L%s,%s", _(s.b.x), _(s.b.y));
-			old_pos = s.b;
-		}
-		printf("' vector-effect='non-scaling-stroke'/>\n");
-		fflush(stdout); //return;
-	}
-
 	// debug
 	if (0) {
 		_f_buffer_n = 0;
@@ -723,7 +704,9 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 		for (int i = 0, L = Ps.size(); i < L; i++) {
 			double t0 = Ps[i].x, t1 = Ps[i].y, dt = t1 - t0;
 			if (dt < 1e-4) fprintf(stderr, "dt=%lg\n", dt);
+			start_timer();
 			std::vector<segment> S = Param2Segments(C.p, C.p(t0), C.p(t1), t0, t1, 0.001, 17);
+			end_timer();
 			spn += S.size();
 			printf("<path d='");
 			vec2 old_pos(NAN); int spn = S.size();
@@ -922,7 +905,7 @@ int main(int argc, char** argv) {
 	} while(0)
 
 		drawIthChart(0, "ID-Time graph", id, time,
-			"Test case ID", "Computing Time", vec2(CS1 <= 20 ? 1 : 4, 0), "", "s");
+			"Test case ID", "Computing Time", vec2(CS1 <= 20 ? 1 : CS1 < 100 ? 4 : 8, 0), "", "s");
 		drawIthChart(1, "Piece-Time graph", curve_n, time,
 			"Number of Final Curve Pieces", "Computing Time", vec2(0), "", "s");
 		drawIthChart(2, "Sample-Time graph", sample, time,
