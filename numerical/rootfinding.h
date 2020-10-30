@@ -63,12 +63,14 @@ bool solveCubic(double a, double b, double c, double d, double &r, double &u, do
 // R may not be already sorted
 int solveQuartic(double k4, double k3, double k2, double k1, double k0, double R[4]) {
 	// Modified from https://www.shadertoy.com/view/3lj3DW
-	k3 /= (4.*k4), k2 /= (6.*k4), k1 /= (4.*k4), k0 /= k4;
-	double c2 = k2 - k3 * k3;
-	double c1 = k1 + k3 * (2.0*k3*k3 - 3.0*k2);
+	double invk4 = 1. / k4;
+	k3 *= .25*invk4, k2 *= (1. / 6.) * invk4, k1 *= .25*invk4, k0 *= invk4;
+	double k32 = k3 * k3;
+	double c2 = k2 - k32, c22 = c2 * c2;
+	double c1 = k1 + k3 * (2.0*k32 - 3.0*k2);
 	double c0 = (1. / 3.) * (k0 + k3 * (k3*(c2 + k2)*3.0 - 4.0*k1));
-	double q = c2 * c2 + c0;
-	double r = c2 * c2*c2 - 3.0*c0*c2 + c1 * c1;
+	double q = c22 + c0;
+	double r = c22 * c2 - 3.0*c0*c2 + c1 * c1;
 	double h = r * r - q * q*q;
 
 	if (h > 0.0) {  // 2 roots
@@ -209,8 +211,9 @@ int solvePolynomial_bisect(int N, const double* C, double* R,
 }
 
 // optimized for solving quintic polynomials
+// minimize=true: only bisect roots with positive derivative
 int solveQuintic_bisect(const double C[6], double R[5],
-	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15) {
+	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15, bool minimize = false) {
 
 	// find the roots of its derivative
 	double Cd[5] = { C[1], 2.*C[2], 3.*C[3], 4.*C[4], 5.*C[5] };
@@ -240,6 +243,7 @@ int solveQuintic_bisect(const double C[6], double R[5],
 		double y0 = C[0] + x0 * (C[1] + x0 * (C[2] + x0 * (C[3] + x0 * (C[4] + x0 * C[5]))));
 		double y1 = C[0] + x1 * (C[1] + x1 * (C[2] + x1 * (C[3] + x1 * (C[4] + x1 * C[5]))));
 		if ((y0 < 0) == (y1 < 0)) return NAN;
+		if (minimize && y1 < y0) return NAN;
 #if 0
 		// try Newton iteration
 		double x;
@@ -277,11 +281,10 @@ int solveQuintic_bisect(const double C[6], double R[5],
 		for (int i = 0; i < 60; i++) {
 			double y = C[0] + x * (C[1] + x * (C[2] + x * (C[3] + x * (C[4] + x * C[5]))));
 			double dy = (((Cd[4] * x + Cd[3])*x + Cd[2])*x + Cd[1])*x + Cd[0];
-			double dx = y / dy;
-			double x_new = x - dx;
+			double x_new = x - y / dy;
 			if (x_new > x0 && x_new < x1) {
 				x = x_new;
-				if (abs(dx) < eps) return x;
+				if (abs(y) < eps*abs(dy)) return x;
 			}
 			else {
 				if ((y < 0) ^ (y0 < 0)) y1 = y, x1 = x;
@@ -572,8 +575,8 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 #ifdef _DEBUG
 			fprintf(stderr, "%d iter(s)\n", dbg_count);  // should not exceed 4
 #endif
+			}
 		}
-	}
 
 	// not found
 	return NAN;
@@ -679,12 +682,12 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 #ifdef _DEBUG
 			fprintf(stderr, "%d iter(s)\n", dbg_count);  // should not exceed 8
 #endif
-		}
-	}
+				}
+			}
 
 	// not found
 	return NAN;
-}
+		}
 
 // iter=1 should be enough; default value is 2
 double refineRoot_TrigQuadratic(double k2, double k1, double k0, double c1, double c2, double w, double x, int iter = 2) {

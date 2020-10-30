@@ -10,7 +10,7 @@ public:
 	const Fun p;  // equation
 	ParametricCurve(Fun p) :t0(NAN), t1(NAN), p(p) { }
 	ParametricCurve(Fun p, double t0, double t1) :t0(t0), t1(t1), p(p) { }
-	ParametricCurve() :t0(NAN), t1(NAN) {}  // not recommended
+	//ParametricCurve() :t0(NAN), t1(NAN) {}  // not recommended
 };
 typedef ParametricCurve<vec2(*)(double)> ParametricCurveP;
 typedef ParametricCurve<std::function<vec2(double)>> ParametricCurveL;
@@ -23,6 +23,12 @@ typedef ParametricCurve<std::function<vec2(double)>> ParametricCurveL;
 template<typename Fun> double Sum(Fun f, int n0, int n1, int step = 1) {
 	double r = 0;
 	for (int n = n0; n <= n1; n += step) r += f(n);
+	return r;
+};
+// product
+template<typename Fun> double Prod(Fun f, int n0, int n1, int step = 1) {
+	double r = 1;
+	for (int n = n0; n <= n1; n += step) r *= f(n);
 	return r;
 };
 // sign function
@@ -62,9 +68,6 @@ static uint32_t Parametric_callCount = 0;
 
 
 
-
-
-
 /* Placeholder */
 
 /* For padding line number */
@@ -82,13 +85,10 @@ static uint32_t Parametric_callCount = 0;
 
 
 
-
-
-
 // Test equations - some from Wikipedia
 
-const int CSN = 182;  // number of test functions
-const int CS0 = 0, CS1 = 182;  // only test functions in this range when debugging
+const int CSN = 184;  // number of test functions
+const int CS0 = 0, CS1 = 184;  // only test functions in this range when debugging
 
 // 0-41: Basic tests; 42-137: Singularity tests; 138-181: Performance tests;
 // Test case ID: __LINE__ - 100
@@ -171,6 +171,8 @@ ParametricCurveL([](double x) { _return vec2(x, pow(abs(abs(abs(x) - 1.) - .5), 
 ParametricCurveL([](double x) { _return vec2(x, pow(abs(sin(10.*x) + cos(x)), .1)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, log(exp(abs(x))*sin(x)) - 10.)*.1; }, -20., 20.),
 ParametricCurveL([](double x) { _return vec2(x, log(abs(exp(abs(x))*sin(x))) - 10.)*.1; }, -20., 20.),
+ParametricCurveL([](double x) { _return vec2(x, ([&]() {double f = Prod([&](double n) {return x - n; }, -5, 5); return 0.1*sign(f)*log(f*f + 1.); })())*.3; }, -10., 10.),
+ParametricCurveL([](double x) { _return vec2(x, ([&]() {double f = Prod([&](double n) {return x - n; }, -10, 10); return 0.1*sign(f)*log(f*f + 1.); })())*.1; }, -30., 30.),
 ParametricCurveL([](double x) { _return vec2(x, sgnpow(log(abs(1. / tgamma(4.*x))),.1)); }, -2., 2.),
 ParametricCurveL([](double x) { _return vec2(x, pow(log(abs(1. / tgamma(4.*x)) + 1.),.1)); }, -2., 2.),
 ParametricCurveL([](double t) { _return vec2(cos(t) / sin(t), 1.)*pow(tan(t / 2.), 1.05) * 2. - vec2(0,1); }, 0., .5*PI),
