@@ -30,11 +30,8 @@ namespace svg_path_read {
 			return mat2x3(a*m.a + b * m.c, a*m.b + b * m.d, c*m.a + d * m.c, c*m.b + d * m.d,
 				a*m.x + b * m.y + x, c*m.x + d * m.y + y);
 		}
-		vec2 applyTo(const vec2 &v) const {
-			return vec2(a*v.x + b * v.y + x, c*v.x + d * v.y + y);
-		}
 		vec2 operator * (const vec2 &v) const {
-			return vec2(a*v.x + b * v.y, c*v.x + d * v.y);
+			return vec2(a*v.x + b * v.y + x, c*v.x + d * v.y + y);
 		}
 	};
 
@@ -56,7 +53,7 @@ namespace svg_path_read {
 		}
 	};
 	bezier3 fromSegment(vec2 A, vec2 B) {
-		return bezier3(A, .618*A + .382*B, .382*A + .618*B, B);
+		return bezier3(A, A + (1. / 3.)*(B - A), A + (2. / 3.)*(B - A), B);
 	}
 	bezier3 fromBezier2(vec2 A, vec2 B, vec2 C) {
 		return bezier3(A, A + (2. / 3.)*(B - A), C + (2. / 3.)*(B - C), C);
@@ -102,9 +99,9 @@ namespace svg_path_read {
 	bool parse_path(const std::string S, std::vector<bezier3> &V) {
 
 		// macros
-#define isFloat(c) ((c >= '0' && c <= '9') || c == '-' || c == '.')
+#define isFloat(c) (((c) >= '0' && (c) <= '9') || (c) == '-' || (c) == '+' || (c) == '.')
 #define readFloat(r) do { \
-			while (d < S.size() && (S[d] == ' ' || S[d] == ',')) d++; \
+			while (d < S.size() && ((S[d] > 0 && S[d] <= ' ') || S[d] == ',')) d++; \
 			if (d >= S.size() || !isFloat(S[d])) return false; \
 			unsigned sz; \
 			(r) = std::stod(&S[d], &sz); \
@@ -116,9 +113,9 @@ namespace svg_path_read {
 		char cmd = '\0';
 		vec2 P(0, 0), P0(0, 0), P1(NAN);
 		for (unsigned d = 0; d < S.size();) {
-			while (d < S.size() && (S[d] == ' ' || S[d] == ',')) d++;
+			while (d < S.size() && ((S[d] > 0 && S[d] <= ' ') || S[d] == ',')) d++;
 
-			if (std::string(fit_ellipse ? "MZLHVCSQT" : "MZLHVCSQTA").find(S[d] >= 'a' ? S[d] - 32 : S[d]) != -1) cmd = S[d], d++;
+			if (std::string(fit_ellipse ? "MZLHVCSQTA" : "MZLHVCSQT").find(S[d] >= 'a' ? S[d] - 32 : S[d]) != -1) cmd = S[d], d++;
 			else if (!isFloat(S[d])) return false;
 
 			switch (cmd) {

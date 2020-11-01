@@ -56,6 +56,7 @@ double calcGravPotential(const object &obj, vec2 g) {
 
 
 // simulated annealing, same as the one in balance_2d.cpp
+// (ironically, a brute-force search takes less samples to get more accurate estimates)
 
 vec2 minimizeGravPotential_SA(const object &Obj) {
 	// estimate the "radius" of the object
@@ -112,7 +113,7 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	printf("%d; ", evalCount);
 
 	// golden section search optimize further
-	double pd = 0.02*PI;
+	double pd = 0.05*PI;
 	double a0 = a - pd, a1 = a + pd, E0 = Fun(a0), E1 = Fun(a1);
 	a = GoldenSectionSearch_1d(Fun, a0, a1, E0, E1, 1e-6);
 
@@ -205,8 +206,12 @@ void writeObjs(const char* filename) {
 
 		// graph of potential function
 		fprintf(fp, "<path d='");
-		for (double a = 0.; a < 2.*PI; a += .01*PI)
-			fprintf(fp, "%c%.1lf,%.1lf", a == 0. ? 'M' : 'L', (.5*W / PI)*a, W - calcGravPotential(P, vec2(sin(a), cos(a))));
+		double minE = INFINITY, mina = NAN;  // record minimum value
+		for (double a = 0.; a < 2.*PI; a += .01*PI) {
+			double E = calcGravPotential(P, vec2(sin(a), cos(a)));
+			fprintf(fp, "%c%.1lf,%.1lf", a == 0. ? 'M' : 'L', (.5*W / PI)*a, W - E);
+			if (E < minE) minE = E, mina = atan2(sin(a), -cos(a));
+		}
 		fprintf(fp, "'/>\n");
 		// value
 		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='3' style='fill:#888;'/>\n", (.5*W / PI)*(PI - a + 2.*PI*(a > PI)), W - calcGravPotential(P, vec2(sin(a), -cos(a))));
@@ -224,12 +229,21 @@ void writeObjs(const char* filename) {
 			pathd += buf;
 			P0 = Vi.D;
 		}
+		if (length(P0 - P[0].A) < 1e-6)  // should be true
+			pathd.push_back('Z');
 		fprintf(fp, "<path transform='translate(0 %d) scale(1 -1) translate(%.1lf %.1lf)' d=\"", W, .5*W, .7*W);
 		fprintf(fp, &pathd[0]);
 		fprintf(fp, "\" style='stroke:#bbb;stroke-dasharray:5;fill:none;'/>\n");
 
-		// transformed shape
+		// optimal value
 		double miny = calcGravPotential(P, vec2(sin(a), -cos(a)));
+		if (minE < miny) {
+			fprintf(fp, "<path transform='translate(0 %d) scale(1 -1) translate(%.1lf %.1lf) rotate(%.3lf)' d='%s' style='stroke:#88f;stroke-dasharray:8;fill:none;'/>\n",
+				W, .5*W, minE, -180. / PI * mina, &pathd[0]);
+			fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='3' style='fill:#88f;'/>\n", (.5*W / PI)*(PI - mina + 2.*PI*(mina > PI)), W - minE);
+		}
+
+		// transformed shape
 		fprintf(fp, "<path transform='translate(0 %d) scale(1 -1) translate(%.1lf %.1lf) rotate(%.3lf)' d=\"", W, .5*W, miny, -180. / PI * a);
 		fprintf(fp, &pathd[0]);
 		fprintf(fp, "\" style='stroke:black;fill:#00000020;'/>\n");
