@@ -17,6 +17,7 @@
 // centered at the origin, represented as points that defined its convex hull
 typedef std::vector<vec2> object;
 std::vector<object> Objs;
+std::vector<double> Objs_R;  // size of each object, not used
 
 // rotation of the object, same index as Objs
 // rotate the object counter-clockwise by the number of radians should minimize the grav potential energy
@@ -121,23 +122,22 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	double a = 0.;  // configulation
 	double T = 100.0;  // temperature
 	double E = Fun(a);  // energy (gravitational potential)
-	double min_a = a, min_E = E;  // record minimum value encountered
-	const int max_iter = 120;  // number of iterations
+	double min_a = a, min_E = E, min_T = T;  // record minimum value encountered
+	const int max_iter = 180;  // number of iterations
 	const int max_try = 10;  // maximum number of samples per iteration
 	double T_decrease = 0.9;  // multiply temperature by this each time
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
-			rand = int32_t(seed1 = seed1 * 1664525u + 1013904223u) / 2147483648.;  // -1<=rand<1
+			rand = (int32_t(seed1 = seed1 * 1664525u + 1013904223u) + .5) / 2147483648.;  // -1<rand<1
 			double da = T * erfinv(rand);  // change of configulation
 			double a_new = a + da;
 			double E_new = Fun(a_new);
 			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
-			//printf("%lf\n", prob);
 			rand = (seed2 = seed2 * 1664525u + 1013904223u) / 4294967296.;  // 0<=rand<1
 			if (prob > rand) {  // jump
 				a = a_new, E = E_new;
 				if (E < min_E) {
-					min_a = a, min_E = E;
+					min_a = a, min_E = E, min_T = T;
 				}
 				break;
 			}
@@ -146,19 +146,21 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 		double prob = tanh((E - min_E) / R);
 		rand = (seed3 = seed3 * 1664525u + 1013904223u) / 4294967296.;
 		if (prob > rand) {
+			//T = min(min_T, max(T, 0.5 * (E - min_E) / R));
 			a = min_a, E = min_E;
 		}
 		// decrease temperature
 		T *= T_decrease;
+		if (T < 0.0003) break;
 	}
+	//if (min_E < E) a = min_a;
 
 	printf("%d; ", evalCount);
 
 	// golden section search optimize further
-	double pd = 0.2*PI;
+	double pd = 0.02*PI;
 	double a0 = a - pd, a1 = a + pd, E0 = Fun(a0), E1 = Fun(a1);
-	GoldenSectionSearch_1d(Fun, a0, a1, E0, E1, 1e-6);
-	a = .5*(a0 + a1);
+	a = GoldenSectionSearch_1d(Fun, a0, a1, E0, E1, 1e-6);
 
 	printf("%d evals\n", evalCount);
 	return vec2(cos(a), sin(a));
@@ -214,6 +216,7 @@ int loadObjs(const char* filename) {
 			vec2 dC = (dA / 3.)*(p + q);
 			A += dA, C += dC;
 		}
+		Objs_R.push_back(sqrt(abs(A) / PI));
 		C *= 1. / A;
 
 		// translate the shape so its center of mass is the origin
@@ -230,7 +233,7 @@ void writeObjs(const char* filename) {
 	FILE* fp = fopen(filename, "wb");
 	const int colspan = 4;  // colspan of the graph
 	const int W = 300;  // with and height of sub-graphs (square)
-	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", colspan*W, (Objs.size() / colspan)*W + 80);
+	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", colspan*W, ((Objs.size() - 1) / colspan + 1)*W + 80);
 	fprintf(fp, "<style>rect{stroke-width:1px;stroke:black;fill:white;}polygon{stroke:black;stroke-width:1px;fill:none;}line{stroke:black;stroke-width:1px;}path{stroke:gray;stroke-width:1px;fill:none;}</style>\n");
 	for (int T = 0, L = Objs.size(); T < L; T++) {
 		object P = Objs[T]; int PN = P.size();
@@ -238,7 +241,7 @@ void writeObjs(const char* filename) {
 		fprintf(fp, "<g transform='translate(%d,%d)'>\n", W*(T%colspan), W*(T / colspan));
 		fprintf(fp, "<rect x='0' y='0' width='%d' height='%d'/>\n", W, W);
 
-		// graph of object function
+		// graph of potential function
 		fprintf(fp, "<path d='");
 		for (double a = 0.; a < 2.*PI; a += .01*PI)
 			fprintf(fp, "%c%.1lf,%.1lf", a == 0. ? 'M' : 'L', (.5*W / PI)*a, W - calcGravPotential(P, vec2(sin(a), cos(a))));
@@ -248,20 +251,20 @@ void writeObjs(const char* filename) {
 		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='3' style='fill:#f66;'/>\n", (.5*W / PI)*(PI - a_sa + 2.*PI*(a_sa > PI)), W - calcGravPotential(P, vec2(sin(a_sa), -cos(a_sa))));
 
 		// reference shape (blue)
-		double miny = -calcGravPotential(P, vec2(sin(a_ex), -cos(a_ex)));
-		fprintf(fp, "<polygon transform='translate(%.1lf %.1lf) translate(0 %d) scale(1 -1) rotate(%.3lf)' points=\"", .5*W, miny, W, -180. / PI * a_ex);
+		double miny = calcGravPotential(P, vec2(sin(a_ex), -cos(a_ex)));
+		fprintf(fp, "<polygon transform='translate(0 %d) scale(1 -1) translate(%.1lf %.1lf) rotate(%.3lf)' points=\"", W, .5*W, miny, -180. / PI * a_ex);
 		for (int i = 0; i < PN; i++) fprintf(fp, "%.1lf %.1lf ", P[i].x, P[i].y);
 		fprintf(fp, "%.1lf %.1lf\" style='stroke-dasharray:5;stroke:blue;'/>\n", P[0].x, P[0].y);
 		// center of mass
-		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='2' style='fill:blue;'/>\n", .5*W, W + miny);
-		
+		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='2' style='fill:blue;'/>\n", .5*W, W - miny);
+
 		// numerically optimized shape (red)
-		miny = -calcGravPotential(P, vec2(sin(a_sa), -cos(a_sa)));
-		fprintf(fp, "<polygon transform='translate(%.1lf %.1lf) translate(0 %d) scale(1 -1) rotate(%.3lf)' points=\"", .5*W, miny, W, -180. / PI * a_sa);
+		miny = calcGravPotential(P, vec2(sin(a_sa), -cos(a_sa)));
+		fprintf(fp, "<polygon transform='translate(0 %d) scale(1 -1) translate(%.1lf %.1lf) rotate(%.3lf)' points=\"", W, .5*W, miny, -180. / PI * a_sa);
 		for (int i = 0; i < PN; i++) fprintf(fp, "%.1lf %.1lf ", P[i].x, P[i].y);
 		fprintf(fp, "%.1lf %.1lf\" style='stroke:red;'/>\n", P[0].x, P[0].y);
 		// center of mass
-		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='2' style='fill:red;'/>\n", .5*W, W + miny);
+		fprintf(fp, "<circle cx='%.1lf' cy='%.1lf' r='2' style='fill:red;'/>\n", .5*W, W - miny);
 
 		fprintf(fp, "</g>\n");
 	}

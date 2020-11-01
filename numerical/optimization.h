@@ -29,7 +29,7 @@
 // before calling this function: evaluate y0=F(x0) and y1=F(x1) and make sure y1<y0
 template<typename Fun> void bracketMinimum_1d(Fun F, double &x0, double &x1, double &y0, double &y1) { /* Not Implemented */ }
 // minimize a 1d function where a minimum is bracketed x0 and x1
-template<typename Fun> void GoldenSectionSearch_1d(Fun F, double &x0, double &x1, double &y0, double &y1, double eps = 1e-12) {
+template<typename Fun> double GoldenSectionSearch_1d(Fun F, double &x0, double &x1, double &y0, double &y1, double eps = 1e-12) {
 	const double g1 = 0.6180339887498949, g0 = 1.0 - g1;
 	double t0 = g1 * x0 + g0 * x1;
 	double t1 = g0 * x0 + g1 * x1;
@@ -47,6 +47,7 @@ template<typename Fun> void GoldenSectionSearch_1d(Fun F, double &x0, double &x1
 		}
 		if (x1 - x0 < eps) break;
 	}
+	return y0 < t1 ? t0 : t1;
 }
 
 
