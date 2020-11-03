@@ -118,7 +118,7 @@ double refineRoot_quartic(double c4, double c3, double c2, double c1, double c0,
 	double y = c0 + x * (c1 + x * (c2 + x * (c3 + x * c4)));
 	double dy = c1 + x * (2.*c2 + x * (3.*c3 + x * 4.*c4));
 	double dx = y / dy;
-	if (dx*dx < 1e-4) x -= dx;
+	/*if (dx*dx < 1e-4)*/ x -= dx;
 	return x;
 }
 
