@@ -9,6 +9,13 @@
 // otherwise, curve fitting will be applied
 
 
+// functions other than string parsing:
+
+// member functions of svg_path_read::bezier3;
+// double svg_path_read::calcArea(const std::vector<svg_path_read::bezier3> &p);
+// double svg_path_read::reversePath(std::vector<svg_path_read::bezier3> &p);
+
+
 
 #include <string>
 #include <vector>
@@ -50,6 +57,24 @@ namespace svg_path_read {
 		}
 		void applyMatrix(const mat2x3 &M) {
 			A = M * A, B = M * B, C = M * C, D = M * D;
+		}
+		vec2 eval(double t) const {
+			return A + t * (-3.*A + 3.*B + t * (3.*A - 6.*B + 3.*C + t * (-A + 3.*B - 3.*C + D)));
+		}
+		bezier3 reverse() const {
+			return bezier3(D, C, B, A);
+		}
+		bezier3 clipl(double t2) const {
+			vec2 A1 = A + t2 * (B - A), B1 = B + t2 * (C - B), C1 = C + t2 * (D - C);
+			vec2 A2 = A1 + t2 * (B1 - A1), B2 = B1 + t2 * (C1 - B1);
+			vec2 A3 = A2 + t2 * (B2 - A2);
+			return bezier3(A, A1, A2, A3);
+		}
+		bezier3 clipr(double t0) const {
+			vec2 D1 = C + t0 * (D - C), C1 = B + t0 * (C - B), B1 = A + t0 * (B - A);
+			vec2 D2 = C1 + t0 * (D1 - C1), C2 = B1 + t0 * (C1 - B1);
+			vec2 D3 = C2 + t0 * (D2 - C2);
+			return bezier3(D3, D2, D1, D);
 		}
 	};
 	bezier3 fromSegment(vec2 A, vec2 B) {
@@ -244,6 +269,27 @@ namespace svg_path_read {
 #undef isFloat
 #undef readFloat
 #undef readPoint
+	}
+
+
+	// divergence theorem, positive if ccw and negative if cw
+	// applies to enclosed and non-self-intersecting shapes
+	double calcArea(const std::vector<bezier3> &p) {
+		double S = 0.;
+		for (int i = 0, l = p.size(); i < l; i++) {
+			vec2 A = p[i].A, B = p[i].B, C = p[i].C, D = p[i].D;
+			double dS = .6*det(A, B) + .3*det(B, C) + .6*det(C, D) + .3*det(A, C) + .3*det(B, D) + .1*det(A, D);
+			S += dS;
+		}
+		return 0.5*S;
+	}
+
+	// reverse the direction of a path
+	void reversePath(std::vector<bezier3> &p) {
+		for (int i = 0, l = p.size(); i < l / 2; i++)
+			std::swap(p[i], p[l - i - 1]);
+		for (int i = 0, l = p.size(); i < l; i++)
+			p[i] = p[i].reverse();
 	}
 
 

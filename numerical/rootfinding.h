@@ -152,7 +152,12 @@ int solveQuartic_dg(double k4, double k3, double k2, double k1, double k0, doubl
 // R: allocate to at least N for safety
 // the result will be naturally sorted in increasing order
 int solvePolynomial_bisect(int N, const double* C, double* R,
-	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15) {
+	double x0 = -1e18, double x1 = 1e18, double eps = 1e-15, bool checkDegeneracy = false) {
+
+	// degenerated cases
+	// gamma function decreases performance, consider using a lookup table instead
+	if (checkDegeneracy)
+		while (N > 1 && C[N] * tgamma(N + 1) < 1. / max(max(abs(x0), abs(x1)), 1e8)) N--;
 
 	// low-degree cases
 	if (N == 0)
@@ -575,8 +580,8 @@ double solveTrigPoly(double k4, double k3, double k2, double k1, double k0, doub
 #ifdef _DEBUG
 			fprintf(stderr, "%d iter(s)\n", dbg_count);  // should not exceed 4
 #endif
-			}
 		}
+	}
 
 	// not found
 	return NAN;
@@ -682,12 +687,12 @@ double solveTrigPoly_smallw(double k4, double k3, double k2, double k1, double k
 #ifdef _DEBUG
 			fprintf(stderr, "%d iter(s)\n", dbg_count);  // should not exceed 8
 #endif
-				}
-			}
+		}
+	}
 
 	// not found
 	return NAN;
-		}
+}
 
 // iter=1 should be enough; default value is 2
 double refineRoot_TrigQuadratic(double k2, double k1, double k0, double c1, double c2, double w, double x, int iter = 2) {
