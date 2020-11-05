@@ -1,7 +1,8 @@
 // find the convex hull of a path enclosed by cubic Bezier curve
-// (almost) exact solution to the 2d balance problem
 
-// *INCOMPLETE*
+// as a temporary experiment to find the exact solution to the 2d balance problem,
+// (use to compare numerical solutions,)
+// does not work for all cases
 
 #include "numerical/geometry.h"
 #include "numerical/rootfinding.h"
@@ -16,7 +17,10 @@ std::vector<object> Objs, Objs_CH;
 
 // debug outputs
 void printBezier(bezier3 P) {
-	printf("(1-t)^{3}*(%lg,%lg)+3*t*(1-t)^{2}*(%lg,%lg)+3*t^{2}*(1-t)*(%lg,%lg)+t^{3}*(%lg,%lg)\n", P.A.x, P.A.y, P.B.x, P.B.y, P.C.x, P.C.y, P.D.x, P.D.y);
+	printf("(1-t)^3*(%lg,%lg)+3*t*(1-t)^2*(%lg,%lg)+3*t^2*(1-t)*(%lg,%lg)+t^3*(%lg,%lg)\n", P.A.x, P.A.y, P.B.x, P.B.y, P.C.x, P.C.y, P.D.x, P.D.y);
+}
+void printPath(bezier3 P) {
+	printf("M%lg,%lgC%lg,%lg %lg,%lg %lg,%lg\n", P.A.x, P.A.y, P.B.x, P.B.y, P.C.x, P.C.y, P.D.x, P.D.y);
 }
 void printPath(object u, const char* end = "\n", FILE* fp = stdout) {
 	int un = u.size();
@@ -62,6 +66,14 @@ bool isCompletelyIndir(bezier3 P, vec2 n, vec2 P0) {
 	double a = dot(P.A, n), b = dot(P.B, n), c = dot(P.C, n), d = dot(P.D, n);
 	if (a < th || d < th) return false;
 	double c0 = b - a, c1 = a - 2.*b + c, c2 = -a + 3.*b - 3.*c + d;
+	if (abs(c2) < 1e-8) {
+		double t = -c0 / (2.*c1);
+		if (t > 0. && t < 1.) {
+			double u = a + t * (-3.*a + 3.*b + t * (3.*a - 6.*b + 3.*c + t * (-a + 3.*b - 3.*c + d)));
+			if (u < th) return false;
+		}
+		return true;
+	}
 	double delta = c1 * c1 - c0 * c2;
 	if (delta < 0.) return true;
 	delta = sqrt(delta);
@@ -78,7 +90,7 @@ bool isCompletelyIndir(bezier3 P, vec2 n, vec2 P0) {
 	return true;
 }
 
-// give a cubic Bezier curve, find its ccw convex hull from start to end
+// give a cubic Bezier curve, find the shortest ccw convex path from start to end
 object clipSinglePath(bezier3 &c) {
 	// not sure if this always works
 
@@ -112,8 +124,8 @@ object clipSinglePath(bezier3 &c) {
 	return res;
 }
 
-// give two ccw cubic Bezier curves, find the ccw convex hull from the start of the first curve to the end of the second curve
-// return value: the lowest bit is true if the left part of c1 changed and the second bit is true if the right part of c2 changed
+// give two ccw cubic Bezier curves, find the shortest ccw convex path from the start of the first curve to the end of the second curve
+// return value: the lowest bit is true if the start of c1 changed and the second bit is true if the end of c2 changed
 int clipPath(bezier3 c1, bezier3 c2, object &res) {
 	using namespace svg_path_read;
 
@@ -186,7 +198,7 @@ int clipPath(bezier3 c1, bezier3 c2, object &res) {
 }
 
 
-// check the back of the path stack and make it go counter-clockwise
+// check the back of a path and make it go counter-clockwise
 void clipBack(object &C) {
 	if (C.size() >= 2) {
 		bezier3 c2 = C[C.size() - 1];
@@ -239,8 +251,8 @@ object list2object(obj_node* p) {
 	return C;
 }
 
-// similar to clipBack(), but checks between p and p->lst to make all neighborhood paths go ccw
-// returns any node in the result list (note that the parameter node may be deleted)
+// check the vertex between p and p->lst and make all neighborhood paths go ccw
+// returns any node in the result list (the parameter node p may be deleted)
 obj_node* clipList(obj_node *p, std::vector<obj_node*> *delete_list = nullptr) {
 
 	// store the "garbage" elements and "recycle" them later
@@ -292,9 +304,31 @@ obj_node* clipList(obj_node *p, std::vector<obj_node*> *delete_list = nullptr) {
 
 
 
+// calculate the angle turned of a ccw path, assume each individual piece are non-self-intersecting
+double angleTurned(const object &C) {
+	//for (int i = 0, l = C.size(); i < l; i++) printBezier(C[i]);
+	double a = 0;
+	for (int i = 0, l = C.size(); i < l; i++) {
+		vec2 d1 = normalize(C[i].B - C[i].A);
+		if (isnan(d1.sqr())) d1 = normalize(C[i].eval(1e-6) - C[i].A);
+		vec2 d2 = normalize(C[(i + 1) % l].B - C[(i + 1) % l].A);
+		if (isnan(d2.sqr())) d2 = normalize(C[(i + 1) % l].eval(1e-6) - C[(i + 1) % l].A);
+		double da = atan2(ndet(d1, d2), ndot(d1, d2));  // no nan please
+		a += da + (da < -1e-3 ? 2.*PI : 0.);
+	}
+	//printf("%lf\n", a);
+	return a;
+}
+
+
+
+#include "path/convex_hull_2d.h"
+
 // assume obj is a good conditioned shape
 // (connected, enclosed, counter-clockwise, no self-intersection)
 object convexHull(object P) {
+
+	//for (int i = 0; i < P.size(); i++) printBezier(P[i]);
 
 	// check ccw-ness for every single path
 	// note that a non-self-intersecting path may become self-intersecting after this
@@ -328,7 +362,47 @@ object convexHull(object P) {
 		C = list2object(Pl);
 	}
 
-	return C;
+	if (abs(angleTurned(C) - 2.*PI) < .01)
+		return C;
+
+	// path is self-intersecting
+
+	// first find the convex hull of a polygon
+	struct vertex : vec2 {
+		int cl, cr;  // index of neighborhood curves
+		vertex(vec2 p, int cl, int cr) :cl(cl), cr(cr) {
+			x = p.x, y = p.y;
+		}
+	};
+	P = C;
+	std::vector<vertex> Pv;
+	for (int i = 0, l = P.size(); i < l; i++)
+		Pv.push_back(vertex{ P[i].D, i, (i + 1) % l });
+	std::vector<vertex> Cv = convexHull_2d(Pv);
+
+	// does not always work; this test case brings it into an endless recursion:
+	// M242,182 C223,124 156,112 108,151 C60,190 64,266 153,275 C235,282 234,169 155,178 C75,187 129,257 165,234 C201,211 155,189 141,203 C128,217 148,222 155,219 C162,216 152,212 151,208 C151,204 174,207 167,218 C159,230 138,232 131,214 C123,197 155,186 177,194 C199,201 196,249 158,252 C120,254 99,239 98,203 C98,167 168,137 204,169 C239,200 249,254 206,290 C163,326 76,304 55,241 C34,178 68,128 112,99 C156,70 255,89 255,89 C255,89 262,103 260,134 C258,166 242,182 242,182
+
+	C.clear();
+	if (Cv[0].cl != Cv.back().cr) {
+		int i0 = Cv.back().cr, i1 = Cv[0].cl;  // between i0 and i1 are cut
+		object app; clipPath(P[i0], P[i1], app);
+		if (i0 < i1) i0 += P.size();
+		for (int i = i1 + 1; i < i0; i++) C.push_back(P[i%P.size()]);
+		C.insert(C.end(), app.begin(), app.end());
+		return convexHull(C);
+	}
+	int breakcount = 0;  // only allow 1 to avoid certain issue
+	for (int i = 0, l = Cv.size(); i < l; i++) {
+		vertex v0 = Cv[i], v1 = Cv[(i + 1) % l];
+		if (breakcount || v0.cr == v1.cl) C.push_back(P[v0.cr]);
+		else {
+			object app; clipPath(P[v0.cr], P[v1.cl], app);
+			C.insert(C.end(), app.begin(), app.end());
+			breakcount++;
+		}
+	}
+	return convexHull(C);
 }
 
 
@@ -348,37 +422,14 @@ int main(int argc, char* argv[]) {
 	int N = loadObjs(argv[1]);
 	Objs_CH = Objs;
 
-	Objs_CH.clear();
-	for (int i = 0, n = Objs.size(); i < n; i++) {
-		object P;
-		for (int j = 0, l = Objs[i].size(); j < l; j++) {
-			object app = clipSinglePath(Objs[i][j]);
-			P.insert(P.end(), app.begin(), app.end());
-		}
-		Objs_CH.push_back(P);
-		/*for (int j = 0, l = P.size(); j < l; j++) {
-			object p;
-			p.push_back(P[j]);
-			p.push_back(P[(j + 1) % l]);
-
-			vec2 MaxVal(maxDot(p, vec2(1, 0)), maxDot(p, vec2(0, 1)));
-			vec2 MinVal(-maxDot(p, vec2(-1, 0)), -maxDot(p, vec2(0, -1)));
-			for (int i = 0, l = p.size(); i < l; i++)
-				p[i].translate(-0.5*(MaxVal + MinVal)),
-				p[i].scale(vec2((160. / max(MaxVal.x - MinVal.x, MaxVal.y - MinVal.y))));
-			Objs_CH.push_back(p);
-		}*/
-	}
-	//Objs_CH = std::vector<object>(&Objs_CH[46], &Objs_CH[47]);
-
-	Objs = Objs_CH;
-
 	for (int i = 0; i < Objs.size(); i++) {
-	//for (int i = 16; i < 17; i++) {
+		//for (int i = 4; i < 5; i++) {
 		object v = Objs[i];
 		int vn = v.size();
 
 		//for (int i = 0; i < vn; i++) printBezier(v[i]);
+
+		printf("%d ", i);
 
 		object u = convexHull(v);
 		Objs_CH[i] = u;
@@ -428,7 +479,23 @@ int loadObjs(const char* filename) {
 		getline(ifs, s);
 		int b1 = s.find('"', 0), b2 = s.find('"', b1 + 1);
 		if (b1 == -1) break;
-		shape_str.push_back(s = s.substr(b1 + 1, b2 - b1 - 1));
+		s = s.substr(b1 + 1, b2 - b1 - 1);
+		while (1) {
+			int d = min((unsigned)s.find('M', 1), (unsigned)s.find('m', 1));
+			if (s[0] == 'm') s[0] = 'M';
+			if (d < s.size()) {
+				shape_str.push_back(s.substr(0, d) + 'Z');
+				s = s.substr(d, s.length() - d);
+			}
+			else {
+				shape_str.push_back(s + 'Z'); break;
+			}
+		}
+	}
+	//shape_str = std::vector<std::string>(&shape_str[90], &shape_str[100]);
+
+	for (int i = 0, l = shape_str.size(); i < l; i++) {
+		std::string s = shape_str[i];
 		object obj; svg_path_read::parse_path(s, obj);
 		vec2 MaxVal(maxDot(obj, vec2(1, 0)), maxDot(obj, vec2(0, 1)));
 		vec2 MinVal(maxDot(obj, vec2(-1, 0)), maxDot(obj, vec2(0, -1)));
@@ -445,8 +512,8 @@ int loadObjs(const char* filename) {
 
 void writeObjs(const char* filename) {
 	FILE* fp = fopen(filename, "wb");
-	const int colspan = 1;  // colspan of the graph
-	const int W = 400;  // with and height of sub-graphs (square)
+	const int colspan = 2;  // colspan of the graph
+	const int W = 600;  // with and height of sub-graphs (square)
 	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", colspan*W, ((Objs_CH.size() - 1) / colspan + 1)*W + 80);
 	fprintf(fp, "<style>rect{stroke-width:1px;stroke:black;fill:white;}path{stroke-width:1px;fill:none;}polyline{stroke:gray;fill:gray;}</style>\n");
 	fprintf(fp, "<defs><marker id='EA' viewBox='0 0 10 10' refX='10' refY='5' markerUnits='strokeWidth' orient='auto' markerWidth='10' markerHeight='10'><polyline points='10,5 0,10 4,5 0,0 10,5'></polyline></marker><marker id='SA' viewBox='0 0 10 10' refX='0' refY='5' markerUnits='strokeWidth' orient='auto' markerWidth='10' markerHeight='10'><polyline points='0,5 10,0 6,5 10,10 0,5'></polyline></marker></defs>\n");
@@ -454,20 +521,18 @@ void writeObjs(const char* filename) {
 		fprintf(fp, "<g transform='translate(%d,%d)'>\n", W*(T%colspan), W*(T / colspan));
 		//fprintf(fp, "<g transform='translate(%d,%d) translate(0,%d) scale(1,-1)'>\n", W*(T%colspan), W*(T / colspan), W);
 		fprintf(fp, "<rect x='0' y='0' width='%d' height='%d'/>\n", W, W);
-		fprintf(fp, "<path transform='translate(%.1lf %.1lf)' d='%s' stroke='gray'/>\n", \
+		fprintf(fp, "<path transform='translate(%.1lf %.1lf) scale(1,1)' d='%s' stroke='gray' vector-effect='non-scaling-stroke'/>\n", \
 			.5*W - shape_translate[T].x, .5*W - shape_translate[T].y, &shape_str[T][0]);
 		//for (int i = 0, PN = Objs[T].size(); i < PN; i++) \
-			fprintf(fp, "<path transform='translate(%.1lf %.1lf)' d='M%lf,%lf C%lf,%lf %lf,%lf %lf,%lf' stroke='gray' marker-end='url(#EA)'/>", \
+			fprintf(fp, "<path transform='translate(%.1lf %.1lf) scale(1,1)' d='M%lf,%lf C%lf,%lf %lf,%lf %lf,%lf' stroke='gray' vector-effect='non-scaling-stroke'/>", \
 				.5*W, .5*W, Objs[T][i].A.x, Objs[T][i].A.y, Objs[T][i].B.x, Objs[T][i].B.y, Objs[T][i].C.x, Objs[T][i].C.y, Objs[T][i].D.x, Objs[T][i].D.y);
-		if (!Objs_CH[T].empty()) {
-			fprintf(fp, "<path transform='translate(%.1lf %.1lf)' d='\n", .5*W, .5*W);
-			fprintf(fp, "M%lg,%lg", Objs_CH[T][0].A.x, Objs_CH[T][0].A.y);
-			for (int i = 0, PN = Objs_CH[T].size(); i < PN; i++) {
-				bezier3 Vi = Objs_CH[T][i];
-				fprintf(fp, "C%lg,%lg %lg,%lg %lg,%lg", Vi.B.x, Vi.B.y, Vi.C.x, Vi.C.y, Vi.D.x, Vi.D.y);
-			}
-			fprintf(fp, "' stroke='black'/>\n");
-		}
+		//for (int i = 0, PN = Objs_CH[T].size(); i < PN; i++) \
+			fprintf(fp, "<line transform='translate(%.1lf %.1lf)' x1='%lf' y1='%lf' x2='%lf' y2='%lf' stroke='#f22' marker-end='url(#EA)'/>", \
+				.5*W, .5*W, Objs_CH[T][i].A.x, Objs_CH[T][i].A.y, Objs_CH[T][i].D.x, Objs_CH[T][i].D.y);
+		for (int i = 0, PN = Objs_CH[T].size(); i < PN; i++) \
+			fprintf(fp, "<path transform='translate(%.1lf %.1lf) scale(1,1)' d='M%lf,%lf C%lf,%lf %lf,%lf %lf,%lf' stroke='%s' vector-effect='non-scaling-stroke'/>", \
+				.5*W, .5*W, Objs_CH[T][i].A.x, Objs_CH[T][i].A.y, Objs_CH[T][i].B.x, Objs_CH[T][i].B.y, Objs_CH[T][i].C.x, Objs_CH[T][i].C.y, Objs_CH[T][i].D.x, Objs_CH[T][i].D.y, \
+				i == 0 ? "green" : i & 1 ? "red" : "blue");
 		//fprintf(fp, "<circle cx='%lg' cy='%lg' r='5' style='fill:red;'/>\n", Objs[T][0].A.x + .5*W, Objs[T][0].A.y + .5*W);
 		//fprintf(fp, "<text x='0' y='0' transform='scale(1,-1)'>%d</text>\n", T);
 		fprintf(fp, "</g>\n");

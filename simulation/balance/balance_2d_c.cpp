@@ -9,9 +9,14 @@
 #include "numerical/random.h"
 #include "numerical/optimization.h"
 #include "numerical/integration.h"
+#include "numerical/rootfinding.h"
 
 #include "path/svg_path_read.h"
 typedef svg_path_read::bezier3 bezier3;
+
+namespace exact_solution {
+#include "bezier3_convex_hull.cpp"
+}
 
 
 
@@ -23,6 +28,7 @@ std::vector<object> Objs;
 // calculated rotation of the object, same index as Objs
 // rotate the object counter-clockwise by the number of radians should minimize its grav potential energy
 std::vector<double> rotangs;
+std::vector<double> rotangs_exact;  // exact reference solution
 
 
 // read/write data from/to file
@@ -123,14 +129,37 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 
 
 
+// reference solution
+vec2 minimizeGravPotential_exact(const object &Obj) {
+	object C = *(object*)&exact_solution::convexHull(*(exact_solution::object*)&Obj);
+	int Cn = C.size();
+	double miny = INFINITY; vec2 maxn(NAN);
+	for (int i = 0; i < Cn; i++) {
+		bezier3 b = C[i];
+		auto Fun = [&](double t) {
+			return calcGravPotential(object({ b }), normalize(b.eval(t)));
+		};
+		double t0 = 0., t1 = 1., y0 = Fun(t0), y1 = Fun(t1);
+		double t = GoldenSectionSearch_1d(Fun, t0, t1, y0, y1);
+		double y = Fun(t);
+		if (y < miny) {
+			miny = y;
+			maxn = normalize(b.eval(t));
+		}
+	}
+	return maxn;
+}
+
 
 
 int main(int argc, char* argv[]) {
 	int N = loadObjs(argv[1]);
 	for (int i = 0; i < N; i++) {
 		vec2 n = minimizeGravPotential_SA(Objs[i]);
-		double a = atan2(n.x, -n.y);
-		rotangs.push_back(a);
+		rotangs.push_back(atan2(n.x, -n.y));
+		n = i == 12 || i == 17 || i == 18 ? n :  // failed test cases
+			minimizeGravPotential_exact(Objs[i]);
+		rotangs_exact.push_back(atan2(n.x, -n.y));
 	}
 	writeObjs(argv[2]);
 	return 0;
@@ -185,6 +214,8 @@ int loadObjs(const char* filename) {
 		// translate the shape so its center of mass is the origin
 		for (int i = 0, n = obj.size(); i < n; i++)
 			obj[i].translate(-C), obj[i].scale(0.6*vec2(1, -1));
+		if (svg_path_read::calcArea(obj) < 0.)
+			svg_path_read::reversePath(obj);
 		Objs.push_back(obj);
 
 	}
@@ -198,7 +229,8 @@ void writeObjs(const char* filename) {
 	const int W = 300;  // with and height of sub-graphs (square)
 	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\n", colspan*W, ((Objs.size() - 1) / colspan + 1)*W + 80);
 	fprintf(fp, "<style>rect{stroke-width:1px;stroke:black;fill:white;}polygon{stroke:black;stroke-width:1px;fill:none;}line{stroke:black;stroke-width:1px;}path{stroke:gray;stroke-width:1px;fill:none;}</style>\n");
-	for (int T = 0, L = Objs.size(); T < L; T++) {
+	int T_max = std::min({ Objs.size(), rotangs.size(), rotangs_exact.size() });
+	for (int T = 0; T < T_max; T++) {
 		object P = Objs[T]; int PN = P.size();
 		double a = rotangs[T];
 		fprintf(fp, "<g transform='translate(%d,%d)'>\n", W*(T%colspan), W*(T / colspan));
@@ -211,6 +243,10 @@ void writeObjs(const char* filename) {
 			double E = calcGravPotential(P, vec2(sin(a), cos(a)));
 			fprintf(fp, "%c%.1lf,%.1lf", a == 0. ? 'M' : 'L', (.5*W / PI)*a, W - E);
 			if (E < minE) minE = E, mina = atan2(sin(a), -cos(a));
+		}
+		if (!(T == 12 || T == 17 || T == 18)) {
+			mina = rotangs_exact[T];
+			minE = calcGravPotential(P, vec2(sin(mina), -cos(mina)));
 		}
 		fprintf(fp, "'/>\n");
 		// value

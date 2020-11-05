@@ -61,6 +61,9 @@ namespace svg_path_read {
 		vec2 eval(double t) const {
 			return A + t * (-3.*A + 3.*B + t * (3.*A - 6.*B + 3.*C + t * (-A + 3.*B - 3.*C + D)));
 		}
+		vec2 evald(double t) const {
+			return (-A + B + t * (2.*A - 4.*B + 2.*C + t * (-A + 3.*B - 3.*C + D))) * 3.0;
+		}
 		bezier3 reverse() const {
 			return bezier3(D, C, B, A);
 		}
