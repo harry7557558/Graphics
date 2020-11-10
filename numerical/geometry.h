@@ -14,6 +14,7 @@
 #endif
 
 // defining max and min as macros may cause problems in standard libraries
+// NO `using namespace std;`
 #undef max
 #undef min
 template<typename T> inline T max(T x, T y) { return (x > y ? x : y); }
@@ -90,6 +91,13 @@ struct vec2 {
 	friend vec2 exp(const vec2 &a) { return vec2(exp(a.x), exp(a.y)); }
 	friend vec2 log(const vec2 &a) { return vec2(log(a.x), log(a.y)); }
 };
+
+vec2 sincos(double a) {
+	return vec2(sin(a), cos(a));
+}
+vec2 cossin(double a) {
+	return vec2(cos(a), sin(a));
+}
 
 
 // a more sketchy 3d vector template
@@ -183,6 +191,14 @@ mat3 axis_angle(vec3 n, double a) {
 double degree(double rad) {
 	return rad * (180. / PI);
 }
+
+
+
+struct triangle {
+	vec3 A, B, C;
+	void translate(vec3 d) { A += d, B += d, C += d; }
+	void applyMatrix(mat3 M) { A = M * A, B = M * B, C = M * C; }
+};
 
 
 #endif // __INC_GEOMETRY_H

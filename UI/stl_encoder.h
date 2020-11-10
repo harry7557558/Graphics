@@ -4,10 +4,16 @@
 
 #pragma once
 
+#ifndef _INC_STDIO
 #include <stdio.h>
+#endif
+#ifndef _STDINT
 #include <stdint.h>
+#endif
 
+#ifndef __INC_GEOMETRY_H
 #include "numerical/geometry.h"
+#endif
 
 
 #pragma pack(push, 1)
@@ -17,15 +23,18 @@ struct stl_vec3 {
 	float x, y, z;
 	stl_vec3() {}
 	stl_vec3(float x, float y, float z) :x(x), y(y), z(z) {}
-#ifdef __INC_GEOMETRY_H
 	stl_vec3(vec3 p) :x((float)p.x), y((float)p.y), z((float)p.z) {}
-#endif
 };
 
 // 50 bytes
 struct stl_triangle {
 	stl_vec3 n, a, b, c;
 	int16_t col = 0;
+	stl_triangle() {}
+	stl_triangle(triangle T) {
+		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C);
+		n = vec3(0.);
+	}
 };
 
 #pragma pack(pop)
@@ -82,6 +91,15 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 
 	fflush(fp);
 	return true;
+}
+
+bool writeSTL(FILE* fp, triangle data[], unsigned N,
+	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	stl_triangle* T = new stl_triangle[N];
+	if (!T) return false;
+	for (unsigned i = 0; i < N; i++)
+		T[i] = stl_triangle(data[i]);
+	return writeSTL(fp, T, N, header, correct_normal);
 }
 
 
