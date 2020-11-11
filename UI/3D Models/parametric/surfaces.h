@@ -180,7 +180,68 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 			-exp(1. - .5*v) + sin(u) + 0.1*sin(10.*u)*sin(20.*PI*v)*exp(v))*exp(v)
 			+ vec3(0, 0, 4.);
 	}, 0., 2.*PI, -4., 1., 100, 1000, "textured snail #2"),
+		
+	/*[16]*/ ParametricSurfaceL([](double u, double v) {
+		return exp(v) * vec3(
+			cossin(PI*3.*v)*(1. + cos(u)),
+			(exp(1. - v) - 2.) + exp(v)*sin(u));
+	}, 0., 2.*PI, -3., 1., 40, 200, "melon snail"),
 
+	/*[17]*/ ParametricSurfaceL([](double u, double v) {
+		vec3 p = exp(v) * vec3(
+			cossin(PI*3.*v)*(1. + cos(u)),
+			.55*(exp(1. - v) - 2.) + sin(u));
+		return p + vec3(0, 0, 3. - exp(-.55*p.z));
+	}, 0., 2.*PI, -3., 1., 40, 200, "bailer snail"),
 });
 
 
+
+
+
+// functions that may be useful for normalizing test shapes
+
+// calculate the center of mass of an object
+// assume the object is a surface with uniform surface density
+vec3 calcCOM_shell(const triangle* T, int N) {
+	double A = 0; vec3 C(0.);
+	for (int i = 0; i < N; i++) {
+		double dA = T[i].area();
+		vec3 dC = (1. / 3.)*(T[i].A + T[i].B + T[i].C);
+		A += dA, C += dA * dC;
+	}
+	return C * (1. / A);
+}
+
+// calculate the axis-aligned bounding box, return the center
+vec3 calcAABB(const triangle* T, int N, vec3* rad = 0) {
+	const vec3* P = (vec3*)T; N *= 3;
+	vec3 Min(INFINITY), Max(-INFINITY);
+	for (int i = 0; i < N; i++) {
+		Max = pMax(Max, P[i]);
+		Min = pMin(Min, P[i]);
+	}
+	if (rad) *rad = .5*(Max - Min);
+	return .5*(Max + Min);
+}
+
+// translate the object so its center is the origin
+void translateToCOM_shell(triangle* T, int N) {
+	vec3 D = -calcCOM_shell(T, N);
+	for (int i = 0; i < N; i++) T[i].translate(D);
+}
+void translateToAABBCenter(triangle* T, int N) {
+	vec3 D = -calcAABB(T, N);
+	for (int i = 0; i < N; i++) T[i].translate(D);
+}
+
+// calculate the maximum "radius" of the object from the origin
+double calcRadius(const triangle* T, int N) {
+	const vec3* P = (vec3*)T; N *= 3;
+	double maxR = 0.;
+	for (int i = 0; i < N; i++) {
+		double r = P[i].sqr();
+		if (r > maxR) maxR = r;
+	}
+	return sqrt(maxR);
+}

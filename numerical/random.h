@@ -79,5 +79,20 @@ vec3 rand3_f(double a, double b) { return vec3(randf(a, b), randf(a, b), randf(a
 mat3 randRotation() { return axis_angle(rand3(), randf(0, 2 * PI)); }  // not very efficient
 
 
+// same random functions with seed given
+inline uint32_t lcg_next(uint32_t &seed) {
+	return seed = seed * 1664525u + 1013904223u;
+}
+vec2 rand2(uint32_t seed) {
+	double a = seed * (2.*PI / 4294967296.);
+	return vec2(cos(a), sin(a));
+}
+vec3 rand3(uint32_t seed1, uint32_t seed2) {
+	double u = seed1 * (2.*PI / 4294967296.);  // 0-2π
+	double v = (.5 + (int32_t)seed2) * (1. / 2147483648.);  // -1-1
+	return vec3(vec2(cos(u), sin(u))*sqrt(1 - v * v), v);
+}
+
+
 #endif // __INC_RANDOM_H
 

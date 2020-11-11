@@ -113,7 +113,7 @@ struct vec3 {
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
 	vec3 operator * (const vec3 &v) const { return vec3(x*v.x, y*v.y, z*v.z); }  // element wise
 	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
-	double sqr() { return x * x + y * y + z * z; }
+	double sqr() const { return x * x + y * y + z * z; }
 	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
 	friend vec3 normalize(vec3 v) { double m = invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); return vec3(v.x*m, v.y*m, v.z*m); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
@@ -169,6 +169,7 @@ public:
 	mat3 operator * (double m) const { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] * m; return r; }
 	friend mat3 operator * (double a, const mat3 &m) { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = a * (&m.v[0][0])[i]; return r; }
 	friend double determinant(const mat3 &m) { return m.v[0][0] * (m.v[1][1] * m.v[2][2] - m.v[1][2] * m.v[2][1]) - m.v[0][1] * (m.v[1][0] * m.v[2][2] - m.v[1][2] * m.v[2][0]) + m.v[0][2] * (m.v[1][0] * m.v[2][1] - m.v[1][1] * m.v[2][0]); }
+	mat3 transpose() const { mat3 r; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) r.v[i][j] = v[j][i]; return r; }
 	friend double trace(const mat3 &m) { return m.v[0][0] + m.v[1][1] + m.v[2][2]; }
 	friend double sumsqr(const mat3 &m) { double r = 0; for (int i = 0; i < 9; i++) r += (&m.v[0][0])[i] * (&m.v[0][0])[i]; return r; }  // sum of square of elements
 
@@ -197,7 +198,9 @@ double degree(double rad) {
 struct triangle {
 	vec3 A, B, C;
 	void translate(vec3 d) { A += d, B += d, C += d; }
+	void scale(double s) { A *= s, B *= s, C *= s; }
 	void applyMatrix(mat3 M) { A = M * A, B = M * B, C = M * C; }
+	double area() const { return 0.5*length(cross(B - A, C - A)); }
 };
 
 
