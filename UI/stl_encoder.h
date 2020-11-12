@@ -138,7 +138,8 @@ void convertTriangles_color(std::vector<stl_triangle> &res, const triangle src[]
 	}
 }
 template<typename ColorFunction>  // vec3 ColorFunction(vec3 unit_normal)
-void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangle src[], unsigned N, ColorFunction ColorF) {
+void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangle src[], unsigned N,
+	ColorFunction ColorF = [](vec3 n) { return 0.5*n + vec3(.5); }) {
 	res.reserve(res.size() + N);
 	for (unsigned i = 0; i < N; i++) {
 		res.push_back(stl_triangle(src[i], ColorF(ncross(src[i].B - src[i].A, src[i].C - src[i].A))));
