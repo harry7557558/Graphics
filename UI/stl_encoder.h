@@ -10,6 +10,9 @@
 #ifndef _STDINT
 #include <stdint.h>
 #endif
+#ifndef _VECTOR_
+#include <vector>
+#endif
 
 #ifndef __INC_GEOMETRY_H
 #include "numerical/geometry.h"
@@ -34,6 +37,17 @@ struct stl_triangle {
 	stl_triangle(triangle T) {
 		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C);
 		n = vec3(0.);
+	}
+	stl_triangle(triangle T, vec3 col) {
+		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C), n = vec3(0.);
+		this->setColor(col);
+	}
+	void setColor(vec3 p) {
+		if (isnan(p.sqr())) col = 0;
+		uint16_t r = (uint16_t)(31.99 * clamp(p.x, 0., 1.));
+		uint16_t g = (uint16_t)(31.99 * clamp(p.y, 0., 1.));
+		uint16_t b = (uint16_t)(31.99 * clamp(p.z, 0., 1.));
+		col = (uint16_t)0b1000000000000000 | (r << 10) | (g << 5) | b;
 	}
 };
 
@@ -100,6 +114,35 @@ bool writeSTL(FILE* fp, triangle data[], unsigned N,
 	for (unsigned i = 0; i < N; i++)
 		T[i] = stl_triangle(data[i]);
 	return writeSTL(fp, T, N, header, correct_normal);
+}
+
+
+// write colored STL
+// vec3 ColorF(vec3)
+template<typename trig, typename ColorFunction>
+bool writeSTL_recolor(FILE* fp, trig data[], unsigned N,
+	const char header[80], const char* correct_normal, ColorFunction ColorF) {
+	stl_triangle* T = new stl_triangle[N];
+	if (!T) return false;
+	for (unsigned i = 0; i < N; i++) {
+		T[i] = stl_triangle(data[i], ColorF((1. / 3.)*(data[i].A + data[i].B + data[i].C)));
+	}
+	return writeSTL(fp, T, N, header, correct_normal);
+}
+// convert triangle arrays
+template<typename ColorFunction>  // vec3 ColorFunction(vec3 position)
+void convertTriangles_color(std::vector<stl_triangle> &res, const triangle src[], unsigned N, ColorFunction ColorF) {
+	res.reserve(res.size() + N);
+	for (unsigned i = 0; i < N; i++) {
+		res.push_back(stl_triangle(src[i], ColorF((1. / 3.)*(src[i].A + src[i].B + src[i].C))));
+	}
+}
+template<typename ColorFunction>  // vec3 ColorFunction(vec3 unit_normal)
+void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangle src[], unsigned N, ColorFunction ColorF) {
+	res.reserve(res.size() + N);
+	for (unsigned i = 0; i < N; i++) {
+		res.push_back(stl_triangle(src[i], ColorF(ncross(src[i].B - src[i].A, src[i].C - src[i].A))));
+	}
 }
 
 

@@ -13,7 +13,8 @@
 
 // Flaws:
 // Single-thread software rasterization that can be slow for models with >500k triangles
-// Not support colored STL
+// Windows only
+// Lack the option of reading numerical values
 // Code isn't very readable
 
 
@@ -55,12 +56,16 @@
 // Press C or Shift+C to switch to next/previous coloring mode
 //   - Default: silver-white Phong shading; if a triangle's normal faces backward from view, its color is dark brown
 //   - Normal color: the color of the triangles are based on their normals (independent to the viewport)
-//   - Heatmap: the color of the triangles only depend on the z-position of the triangle's center, useful for visualization
+//   - Heatmap: the color of the triangles only depend on the z-position of the triangle's center, useful for visualization of math functions
+//   - From file: see https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL, VisCAM and SolidView version; white if invalid
+//   - File+Phong: combine color loaded from file and Phong shading
 // Press Tab or Shift+Tab to switch to next/previous polygon rendering mode
 //   - Default: fill the faces by color mentioned above
 //   - Stroke: shaded faces with black strokes
 //   - Polygon: no fill, stroke the triangle using filling color
 //   - Point cloud: no fill or stroke, use filling color to plot vertices
+// Press (Shift+)N to switch normal calculation mode (for rendering only)
+//   - [0] n=[from file] [1] n=AB×AC [2] n=BCxBA [3] n=ACxAB
 // Press X to hide/show axis
 // Press G to hide/show grid ([-10,10] with grid width 1)
 //   - By default there are larger and smaller grid lines if the object is too large or small; Press F or Shift+G to turn on/off this feature
@@ -80,10 +85,9 @@
 //     - show grid on other planes
 //     - setAxisRatio
 //     - A (mandatory) clipping box
-//     - Right click to read value
-//   - Rendering with normal/color loaded from file
+//   - Pop out dialog box to show numerical informations of the object
 //   - Hide/unhide part of object
-//   - Visualization of the objects' bounding box
+//   - Visualization of the objects' bounding box/sphere
 //   - Visualization of the volume of the object
 //   - Semi-transparent shading
 //   - Outline rendering based on geometry
@@ -209,7 +213,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #include "numerical\geometry.h"  // vec2, vec3, mat3
 #include "numerical\eigensystem.h"  // EigenPairs_Jacobi
-typedef struct { vec3 a, b, c; } triangle;
+typedef struct { vec3 n, a, b, c; } stl_triangle;
+typedef int16_t stl_color;
+
+// covert stl_color to vec3
+// https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
+vec3 stlColor2vec3(stl_color c) {
+	if (c >= 0) return vec3(1.);  // otherwise, max 31/32=0.97
+	double r = ((uint32_t)c & (uint32_t)0b111110000000000) >> 10;
+	double g = ((uint32_t)c & (uint32_t)0b000001111100000) >> 5;
+	double b = ((uint32_t)c & (uint32_t)0b000000000011111);
+	return vec3(r, g, b) * (1. / 32.);
+}
+
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
@@ -304,6 +320,7 @@ vec3 readedValue = vec3(NAN);  // for reading values
 // rendering parameters
 int ShadeMode = 0;
 int RenderMode = 0;
+int NormalMode = 0;
 bool showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 bool showCOM = false, showInertia = false, TreatAsSolid = true;
 bool DarkBackground = false;
@@ -314,7 +331,8 @@ bool DarkBackground = false;
 #pragma region STL file
 
 WCHAR filename[MAX_PATH] = L"";
-int N; triangle *T = 0;
+int N; stl_triangle *T = 0;  // triangles
+vec3 *T_Color = 0; bool hasInvalidColor = false;  // color
 vec3 BMin, BMax;  // bounding box
 double Volume; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
@@ -603,27 +621,44 @@ void render() {
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
 
+	vec3 light = normalize(CamP - Center);  // pre-compute for Phong
+
 	// shape
 	for (int i = 0; i < N; i++) {
 		vec3 A = T[i].a, B = T[i].b, C = T[i].c;
-		vec3 n = normalize(cross(B - A, C - A));
-		vec3 c = 0.5*(n + vec3(1.0));  // default: shade by normal
-		switch ((ShadeMode % 3 + 3) % 3) {
+		vec3 n = NormalMode == 0 ? T[i].n :
+			NormalMode == 1 ? ncross(B - A, C - A) :
+			NormalMode == 2 ? ncross(C - B, A - B) :
+			NormalMode == 3 ? ncross(C - A, B - A) : vec3(0.);
+		vec3 c = T_Color[i];  // default: from file
+		switch (ShadeMode) {
 		case 0: {  // phong
-			vec3 light = normalize(CamP - Center);
 			double k = clamp(dot(n, light), 0., 1.);
 			vec3 d = normalize((A + B + C) / 3. - CamP);
-			double s = dot(d - (2 * dot(d, n))*n, light);
-			s = pow(max(s, 0.), 20.0);
-			c = vec3(0.1, 0.05, 0.05) + vec3(0.75, 0.75, 0.65)*k + vec3(0.15)*s;
+			double spc = dot(d - (2 * dot(d, n))*n, light);
+			spc = pow(max(spc, 0.), 20.0);
+			c = vec3(0.1, 0.05, 0.05) + vec3(0.75, 0.75, 0.65)*k + vec3(0.15)*spc;
 			break;
 		}
 		case 1: {  // shade by normal
-			break;  // nothing needs to be done
+			c = 0.5*(n + vec3(1.0));
+			break;
 		}
 		case 2: {  // height map, for visualization
 			double t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
 			if (!isnan(t)) c = ColorFunctions::Rainbow(t);
+			else c = 0.5*(n + vec3(1.0));  // otherwise: shade by normal
+			break;
+		}
+		case 3: {  // directly from file
+			break;  // nothing needs to be done here
+		}
+		case 4: {  // file + Phong
+			double k = min(abs(dot(n, light)), 1.);
+			vec3 d = normalize((A + B + C) / 3. - CamP);
+			double spc = dot(d - (2 * dot(d, n))*n, light);
+			spc = pow(max(spc, 0.), 20.0);
+			c *= 0.2 + 0.8*k + 0.2*spc;
 			break;
 		}
 		}
@@ -709,8 +744,23 @@ void render() {
 	// window title
 	double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - _iTimer).count();
 	WCHAR text[1024];
-	if (isnan(readedValue.sqr())) swprintf(text, L"%s [%d %s]   %dx%d %dfps", filename, N, TreatAsSolid ? L"solid" : L"shell", _WIN_W, _WIN_H, int(1.0 / time_elapsed));
-	else swprintf(text, L" (%lg, %lg, %lg)", readedValue.x, readedValue.y, readedValue.z);
+	if ((ShadeMode == 3 || ShadeMode == 4) && hasInvalidColor) {
+		swprintf(text, L"%s  - File contains invalid color information.", filename);
+	}
+	else if (isnan(readedValue.sqr())) {  // information
+		int lastslash = 0;
+		if (wcslen(filename) > 24)
+			for (int i = 0; filename[i]; i++)
+				if (filename[i] == '/' || filename[i] == '\\') lastslash = i + 1;
+		swprintf(text, L"%s [%d %s]  normal=%s   %dx%d %dfps",
+			&filename[lastslash],
+			N, TreatAsSolid ? L"solid" : L"shell",
+			NormalMode == 0 ? L"[file]" : NormalMode == 1 ? L"AB×AC" : NormalMode == 2 ? L"BC×BA" : NormalMode == 3 ? L"AC×AB" : L"ERROR!",
+			_WIN_W, _WIN_H, int(1.0 / time_elapsed));
+	}
+	else {  // read value
+		swprintf(text, L" (%lg, %lg, %lg)", readedValue.x, readedValue.y, readedValue.z);
+	}
 	SetWindowText(_HWND, text);
 	_iTimer = std::chrono::high_resolution_clock::now();
 }
@@ -722,15 +772,21 @@ bool readFile(const WCHAR* filename) {
 	FILE *fp = _wfopen(filename, L"rb"); if (!fp) return false;
 	char s[80]; if (fread(s, 1, 80, fp) != 80) return false;
 	if (fread(&N, sizeof(int), 1, fp) != 1) return false;
-	if (T) delete T;
-	try { T = new triangle[N]; }
+	try {
+		if (T) delete T; if (T_Color) delete T_Color;
+		T = new stl_triangle[N];
+		T_Color = new vec3[N];
+	}
 	catch (...) { T = 0; N = 0; return false; }
+	hasInvalidColor = false;
 	for (int i = 0; i < N; i++) {
 		float f[12];
 		if (fread(f, sizeof(float), 12, fp) != 12) return false;
 		double d[12]; for (int i = 0; i < 12; i++) d[i] = f[i];
-		T[i] = triangle{ vec3(d[3], d[4], d[5]), vec3(d[6], d[7], d[8]), vec3(d[9], d[10], d[11]) };
-		char c[2]; if (fread(c, 1, 2, fp) != 2) return false;
+		T[i] = stl_triangle{ vec3(d[0], d[1], d[2]), vec3(d[3], d[4], d[5]), vec3(d[6], d[7], d[8]), vec3(d[9], d[10], d[11]) };
+		stl_color col; if (fread(&col, 2, 1, fp) != 1) return false;
+		hasInvalidColor |= col >= 0;
+		T_Color[i] = stlColor2vec3(col);
 	}
 	return true;
 }
@@ -753,8 +809,14 @@ bool saveFile(const WCHAR* filename) {
 			f = float(p.y); fwrite(&f, 4, 1, fp);
 			f = float(p.z); fwrite(&f, 4, 1, fp);
 		};
-		writevec3(normalize(cross(T[i].b - T[i].a, T[i].c - T[i].a)));
-		writevec3(T[i].a); writevec3(T[i].b); writevec3(T[i].c);
+		vec3 A = T[i].a, B = T[i].b, C = T[i].c;
+		writevec3(
+			NormalMode == 0 ? T[i].n :
+			NormalMode == 1 ? ncross(B - A, C - A) :
+			NormalMode == 2 ? ncross(C - B, A - B) :
+			NormalMode == 3 ? ncross(C - A, B - A) : vec3(0.)
+		);
+		writevec3(A); writevec3(B); writevec3(C);
 		fputc(0, fp); fputc(0, fp);
 	}
 	return fclose(fp) == 0;
@@ -792,9 +854,14 @@ void setDefaultView() {
 	showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 	readedValue = vec3(NAN);
 	// do not reset color/rendering mode
+#if 0
+	if (hasInvalidColor) {
+		if (ShadeMode == 3 || ShadeMode == 4) ShadeMode = 0;
+}
+#endif
 }
 void Init() {
-	//wcscpy(filename, L"D:\\test.stl"); readFile(filename);
+	//wcscpy(filename, L"D:\\.stl"); readFile(filename);
 	wcscpy(filename, L"Press Ctrl+O to open a file.  ");
 	setDefaultView();
 }
@@ -947,14 +1014,9 @@ void KeyUp(WPARAM _KEY) {
 		Ctrl = false;
 	}
 	else {
-		if (_KEY == 'C') {
-			if (Shift) ShadeMode--;
-			else ShadeMode++;
-		}
-		if (_KEY == VK_TAB) {
-			if (Shift) RenderMode--;
-			else RenderMode++;
-		}
+		if (_KEY == 'C') ShadeMode = (ShadeMode + (Shift ? 4 : 1)) % 5;
+		if (_KEY == VK_TAB) RenderMode += Shift ? -1 : 1;
+		if (_KEY == 'N') NormalMode = (NormalMode + (Shift ? 3 : 1)) % 4;
 		if (_KEY == 'X') showAxis ^= 1;
 		if (_KEY == 'G') showGrid ^= !Shift, showMajorMinorGrids ^= Shift;
 		if (_KEY == 'F') showMajorMinorGrids ^= 1;
@@ -994,7 +1056,7 @@ void KeyUp(WPARAM _KEY) {
 			if (_KEY == VK_NUMPAD7) M = axis_angle(Center - CamP, -.025*PI);
 			if (_KEY == VK_NUMPAD9) M = axis_angle(Center - CamP, .025*PI);
 			for (int i = 0; i < N; i++) {
-				T[i] = triangle{ M*(T[i].a - Center) + Center, M*(T[i].b - Center) + Center, M*(T[i].c - Center) + Center };
+				T[i] = stl_triangle{ M*T[i].n, M*(T[i].a - Center) + Center, M*(T[i].b - Center) + Center, M*(T[i].c - Center) + Center };
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
