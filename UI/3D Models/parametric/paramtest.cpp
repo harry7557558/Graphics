@@ -14,11 +14,15 @@ std::vector<triangle> comps;
 
 
 
-int main() {
-	FILE* fp = fopen("D:\\test.stl", "wb");
+int main(int argc, char* argv[]) {
+	FILE* fp = fopen(argv[1], "wb");
 
-	for (int i = 0; i < 18; i++)
+#if 0
+	for (int i = 0; i < 20; i++)
 		ParamSurfaces[i].param2trigs(comps, 10.*vec3(i / 4, i % 4, 0.));
+#else
+	ParamSurfaces[19].param2trigs(comps);
+#endif
 
 	writeSTL(fp, &comps[0], comps.size(), nullptr, "bac");
 	fclose(fp);

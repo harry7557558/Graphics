@@ -374,19 +374,24 @@ int main(int argc, char* argv[]) {
 
 	auto start_time = std::chrono::high_resolution_clock::now();
 
-	for (int i = 0; i < 18; i++) {
+
+#if 1
+	// test all shapes
+	for (int i = 0; i < OBJ_N; i++) {
 		std::vector<vec3> points;
 		std::vector<triangle> trigs;
 		generateObject(i, trigs, &points);
 		balanceObject(points, trigs, vec3(i / 4, i % 4, 0));
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
 	}
+#endif
+
 
 	// visualization for debug
-	if (0) {
+	if (0) do {
 		std::vector<vec3> points;
 		std::vector<triangle> trigs;
-		generateObject(17, trigs, &points, true);
+		generateObject(19, trigs, &points, true);
 		if (SORT_POINTS) std::sort(points.begin(), points.end(),
 			[](vec3 a, vec3 b) {return a.sqr() > b.sqr(); });
 
@@ -399,12 +404,15 @@ int main(int argc, char* argv[]) {
 
 		balanceObject(points, trigs, vec3(0, rad, 0), 0);
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
-	}
+	} while (0);
 
+
+	// end timer
 	auto end_time = std::chrono::high_resolution_clock::now();
 	double time_elapsed = std::chrono::duration<double>(end_time - start_time).count();
 	printf("%lf secs\n", time_elapsed);
 
+	// write file
 	FILE* fp = fopen(argv[1], "wb");
 	convertTriangles_color_normal(scene_stl, &scene[0], scene.size(),
 		[](vec3 n) { return 0.5*n + vec3(.5); });
