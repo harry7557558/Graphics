@@ -42,6 +42,10 @@ struct stl_triangle {
 		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C), n = vec3(0.);
 		this->setColor(col);
 	}
+	stl_triangle(vec3 a, vec3 b, vec3 c, vec3 col = vec3(NAN)) {
+		this->a = stl_vec3(a), this->b = stl_vec3(b), this->c = stl_vec3(c), n = vec3(0.);
+		this->setColor(col);
+	}
 	void setColor(vec3 p) {
 		if (isnan(p.sqr())) col = 0;
 		uint16_t r = (uint16_t)(31.99 * clamp(p.x, 0., 1.));
@@ -151,51 +155,69 @@ void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangl
 
 // discretize a 2d function to an array of STL triangles
 // F(x, y)
+// allocate trigs to 2*xD*yD
 
 template<typename Fun>
 int stl_fun2trigs(Fun F, stl_triangle* trigs, double x0, double x1, double y0, double y1, int xD, int yD, double z_min = -INFINITY, double z_max = INFINITY) {
 	int CNT = 0;
 	double dx = (x1 - x0) / xD, dy = (y1 - y0) / yD;
 
-	// a sketchy function that returns a point with given x and y coordinates
-	auto funp = [&](double x, double y)->vec3 {
-		double z = clamp(F(x, y), z_min, z_max);
-		if (isnan(z)) z = 0.;
-		return vec3(x, y, z);
-	};
-
-	// store points calculated in the previous row
-	vec3 *ps = new vec3[xD + 1];
-	for (int i = 0; i <= xD; i++) ps[i] = funp(x0 + i * dx, y0);
-	vec3 p0, p1, p2, p3;
+	// samples
+	vec3 *S = new vec3[(xD + 1)*(yD + 1)];
+	double minz = z_max, maxz = z_min;
+	for (int j = 0; j <= yD; j++) {
+		double y = y0 + j * dy;
+		for (int i = 0; i <= xD; i++) {
+			double x = x0 + i * dx;
+			double z = F(x, y);
+			z = clamp(z, z_min, z_max);
+			S[j*(xD + 1) + i] = vec3(x, y, z);
+			if (z > maxz) maxz = z;
+			if (z < minz) minz = z;
+		}
+	}
 
 	// draw triangles
 	for (int j = 0; j < yD; j++) {
-		double y = y0 + j * dy;
-		vec3 px1_ = funp(x0, y + dy);
+		vec3 *Px0 = &S[j*(xD + 1)], *Px1 = Px0 + xD + 1;
 		for (int i = 0; i < xD; i++) {
-			// calculate/read points
-			double x = x0 + i * dx;
-			p0 = ps[i], p1 = ps[i + 1];
-			p2 = px1_, p3 = funp(x + dx, y + dy);
+			// read points
+			vec3 p00 = Px0[i], p10 = Px0[i + 1];
+			vec3 p01 = Px1[i], p11 = Px1[i + 1];
 			// construct triangles
 			stl_triangle T1, T2;
-			if (length(p2 - p1) < length(p3 - p0)) {
-				T1.a = p0, T1.b = p1, T1.c = p2, T1.n = ncross(p1 - p0, p2 - p0);
-				T2.a = p3, T2.b = p2, T2.c = p1, T2.n = ncross(p2 - p3, p1 - p3);
+			if ((p01 - p10).sqr() < (p11 - p00).sqr()) {
+				T1.a = p00, T1.b = p10, T1.c = p01, T1.n = ncross(p10 - p00, p01 - p00);
+				T2.a = p11, T2.b = p01, T2.c = p10, T2.n = ncross(p01 - p11, p10 - p11);
 			}
 			else {
-				T1.a = p0, T1.b = p1, T1.c = p3, T1.n = ncross(p1 - p0, p3 - p0);
-				T2.a = p0, T2.b = p3, T2.c = p2, T2.n = ncross(p3 - p0, p2 - p0);
+				T1.a = p00, T1.b = p10, T1.c = p11, T1.n = ncross(p10 - p00, p11 - p00);
+				T2.a = p00, T2.b = p11, T2.c = p01, T2.n = ncross(p11 - p00, p01 - p00);
 			}
 			trigs[CNT++] = T1, trigs[CNT++] = T2;
-			// update calculation results
-			px1_ = p3, ps[i] = p2;
 		}
-		ps[xD] = p3;
 	}
 
-	delete ps;
+
+	// set color
+#include "ui/colors/ColorFunctions.h"
+	double invdz = 1.0 / (maxz - minz);
+	if (!(invdz > 0. && invdz < 1e100)) invdz = 0.;
+	for (int i = 0; i < CNT; i++) {
+		double z = (1. / 3.)*(trigs[i].a.z + trigs[i].b.z + trigs[i].c.z);
+		if (isnan(z)) {
+			if (isnan(trigs[i].a.z)) trigs[i].a.z = clamp(0.f, (float)minz, (float)maxz);
+			if (isnan(trigs[i].b.z)) trigs[i].b.z = clamp(0.f, (float)minz, (float)maxz);
+			if (isnan(trigs[i].c.z)) trigs[i].c.z = clamp(0.f, (float)minz, (float)maxz);
+			trigs[i].setColor(vec3(0, 0.2, 0));  // dark green means NAN
+		}
+		else {
+			vec3 col = ColorFunctions::Rainbow((z - minz) * invdz);
+			trigs[i].setColor(col);
+		}
+	}
+
+	delete S;
 	return CNT;  // should be 2*xD*yD
 }
 
