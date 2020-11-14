@@ -14,11 +14,12 @@ int rootFinder_Bezier(double C[], double R[]);
 
 // calculate the square of distance to a cubic parametric curve
 // by finding the roots of a quintic polynomial
-double CubicCurveDistance2(vec2 C[4], vec2 P) {
+double CubicCurveDistance2(vec2 C[4], vec2 P, double *min_t = nullptr) {
 	vec2 c0 = C[0] - P, c1 = C[1], c2 = C[2], c3 = C[3];
 	vec2 p0 = c0;
 	vec2 p1 = c0 + c1 + c2 + c3;
 	double md = min(p0.sqr(), p1.sqr());
+	if (min_t) *min_t = p0.sqr() < p1.sqr() ? 0. : 1.;
 	double k[6];
 	k[5] = 3.*c3.sqr();
 	k[4] = 5.*dot(c2, c3);
@@ -32,7 +33,11 @@ double CubicCurveDistance2(vec2 C[4], vec2 P) {
 	for (int i = 0; i < NR; i++) {
 		double t = R[i];
 		vec2 b = c0 + t * (c1 + t * (c2 + t * c3));
-		md = min(md, b.sqr());
+		double d2 = b.sqr();
+		if (d2 < md) {
+			md = d2;
+			if (min_t) *min_t = t;
+		}
 	}
 	return md;
 }
