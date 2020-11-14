@@ -333,7 +333,7 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 
 	for (int iter = 0; iter < max_iter; iter++) {
 
-		// sort
+		// sort in increasing order
 		sample temp;
 		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
 		if (S[1].val > S[2].val) temp = S[1], S[1] = S[2], S[2] = temp;
@@ -382,7 +382,7 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		// compression
 		S[1].p = S[0].p + (S[1].p - S[0].p)*.5;
 		S[2].p = S[0].p + (S[2].p - S[0].p)*.5;
-
+		S[1].val = fun(S[1].p), S[2].val = fun(S[2].p);
 	}
 
 	return S[0].val < S[1].val && S[0].val < S[2].val ? S[0].p

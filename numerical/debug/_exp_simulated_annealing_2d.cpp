@@ -19,14 +19,11 @@ void drawDot(vec3 p, double r, vec3 col) {
 }
 
 
-// function to be minimized
+// function (continuous)
 // >>> DO NOT let the global minimum close to (0,0) cuz that's the initial guess <<<
-int sampleCount = 0;
-double Fun(vec2 p) {
+double Fun0(double x, double y) {
 	// not trying to knock the solver down
-	sampleCount++;
-	double x = p.x, y = p.y;
-#define sq(x) ((x)*(x))
+	auto sq = [](double x) { return x * x; };
 
 	/* Test */
 	//return log(sq(y - x * x) + sq(1 - x) + 1.) + .2*sin(5.*x)*cos(5.*y);
@@ -43,14 +40,48 @@ double Fun(vec2 p) {
 	/* Valley */
 	//return 3.*tanh(.5*sqrt(10.*sq(x - y * y) + sq(1 - y)));
 	//return 3.*tanh(.5*sqrt(10.*sq(x - y * y + 1.) + .1*sq(1 - y * y)) + .1*y);
-	return 3.*tanh(.1*sqrt(10.*sq(x - y * y + 1.) + .1*sq(1 - y * y)) + .1*y) + .1*asin(cos(5.*x))*sin(1.5*x + 5.*y);
+	//return 3.*tanh(.1*sqrt(10.*sq(x - y * y + 1.) + .1*sq(1 - y * y)) + .1*y) + .1*asin(cos(5.*x))*sin(1.5*x + 5.*y);
 	//return 3.*tanh(.1*pow(10.*sq(x*x + y * y - 10.) + x + .5*y + 5., .4));
 	//return 3.*tanh(.1*pow(10.*sq(x*x + y * y - 10.) + 2.*x + y + 10., .4)) + .1*sin(5.*x - 2.*y);
 	//return asinh(sq(y - x * (x*x - 3) - 1.)) + 0.1*abs(y);
 	//return asinh(sq(y - x * (x*x - 3) - 1.)) + 0.1*(sin(10.*y) + asin(cos(10.*x)) - 5.*x + y * y);
 	//return pow(abs(x * (x*x - y * y*y - 3.) + 3.*y + 1.) + 1., .25) - 1. + tanh(.5*sq(x - 1.) + sq(y - 3.));
 	//return pow(abs(x * (x*x - y * y*y - 3.) + 3.*y + 1.) + 1., .25) - 1. + tanh(.5*sq(x - 1.) + sq(y - 3.)) + .5*sin(x)*sin(2.*x)*sin(4.*x)*sin(8.*x)*cos(.7*y - x)*cos(3.*y)*cos(5.*y);
-	//return (tanh(abs(cos(x)*sin(y) + cos(2.*x - 1.) + sin(3.*y))) + 1.)*.5*log(10.*sq(y - x * x + 2.5) + sq(y - 1.5) - .2*x + 1.) + .05*acos(sin(5.*x - 7.*cos(3.*y)));
+	return (tanh(abs(cos(x)*sin(y) + cos(2.*x - 1.) + sin(3.*y))) + 1.)*.5*log(10.*sq(y - x * x + 2.5) + sq(y - 1.5) - .2*x + 1.) + .05*acos(sin(5.*x - 7.*cos(3.*y)));
+}
+
+
+// make the graph more consistant and the solver's life harder
+const double Rad = 5.;  // -Rad<x<Rad, -Rad<y<Rad
+const int Dif = 320;  // equal-spaced Dif×Dif sample grid
+double Grid[Dif + 1][Dif + 1];  // sample values
+void initGrid() {  // initialize a grid of samples
+	for (int j = 0; j <= Dif; j++) {
+		double y = -Rad + j * (2.*Rad) / Dif;
+		for (int i = 0; i <= Dif; i++) {
+			double x = -Rad + i * (2.*Rad) / Dif;
+			Grid[j][i] = Fun0(x, y);
+		}
+	}
+}
+int sampleCount = 0;
+double Fun(vec2 p) {  // lookup in the grid and interpolate the function
+	sampleCount++;
+	vec2 q = (p + vec2(Rad)) / (2.*Rad)*Dif;
+
+	int j0 = (int)floor(q.y);
+	int i0 = (int)floor(q.x);
+	int i = clamp(i0, 0, Dif - 1);
+	int j = clamp(j0, 0, Dif - 1);
+	// bilinear interpolation
+	double u0 = mix(Grid[j][i], Grid[j][i + 1], q.x - i);
+	double u1 = mix(Grid[j + 1][i], Grid[j + 1][i + 1], q.x - i);
+	double v = mix(u0, u1, q.y - j);
+	if (i0 < 0 || i0 >= Dif || j0 < 0 || j0 >= Dif) {  // smoothed blendings
+		return mix(v, Fun0(p.x, p.y),
+			clamp(max(abs(q.x - .5*Dif), abs(q.y - .5*Dif)) - .5*Dif, 0., 1.));
+	}
+	return v;
 }
 
 
@@ -67,12 +98,13 @@ void simulated_annealing_naive() {
 	uint32_t seed1 = 1, seed2 = 2, seed3 = 3;  // random number seeds
 	double rand;
 	vec2 x = vec2(0.);  // configulation
-	double T = 5.0;  // temperature
+	double T = 3.0;  // temperature
 	double E = Fun(x);  // energy (gravitational potential)
+	drawDot(vec3(x, E), .1*T, vec3(1, 0, 0));  // debug output
 	vec2 min_x = x; double min_E = E, min_T = T;  // record minimum value encountered
-	const int max_iter = 360;  // number of iterations
+	const int max_iter = 3600;  // number of iterations
 	const int max_try = 10;  // maximum number of samples per iteration
-	double T_decrease = 0.95;  // multiply temperature by this each time
+	double T_decrease = 0.98;  // multiply temperature by this each time
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = ((int32_t)lcg_next(seed1) + .5) / 2147483648.;  // -1<rand<1
@@ -86,8 +118,7 @@ void simulated_annealing_naive() {
 				if (E < min_E) {
 					min_x = x, min_E = E, min_T = T;  // update value
 				}
-				// debug output
-				drawDot(vec3(x, E), .1*T, vec3(1, 0, 0));
+				drawDot(vec3(x, E), .1*T, vec3(1, 0, 0));  // debug output
 				break;
 			}
 		}
@@ -103,8 +134,9 @@ void simulated_annealing_naive() {
 		if (T < 1e-6) break;
 	}
 
-	drawDot(vec3(x, E), 0.1, vec3(1, .5, 0));
+	drawDot(vec3(x, E), 0.05, vec3(1, .5, 0));
 	drawDot(vec3(x, E + 1.), 0.2, vec3(1, 1, 0));
+	drawDot(vec3(x, E + 5.), 0.5, vec3(1, 1, 0));
 	printf("(%lf,%lf,%lf)\n", x.x, x.y, E);
 	printf("%d samples\n", sampleCount);
 }
@@ -192,19 +224,22 @@ Finish:;
 	vec3 P = *(vec3*)&(S[0].val < S[1].val && S[0].val < S[2].val ? S[0]
 		: S[1].val < S[2].val ? S[1] : S[2]);
 
-	drawDot(P, 0.1, vec3(0, 1, 0.5));
+	drawDot(P, 0.05, vec3(0, 1, 0.5));
 	drawDot(P + vec3(0, 0, 1), 0.2, vec3(0, 1, 1));
+	drawDot(P + vec3(0, 0, 5), 0.5, vec3(0, 1, 1));
 	printf("(%lf,%lf,%lf)\n", P.x, P.y, P.z);
 	printf("%d samples\n", sampleCount);
 }
 
 
+
 int main(int argc, char* argv[]) {
+	initGrid();
+
 	// plot function
-	const int D = 320;
-	static stl_triangle trigs[2 * D*D];
-	stl_fun2trigs([](double x, double y) { return Fun(vec2(x, y)); }, trigs, -5., 5., -5., 5., D, D, -20., 20.);
-	STL.assign(&trigs[0], &trigs[2 * D*D]);
+	static stl_triangle trigs[2*Dif*Dif];
+	stl_fun2trigs([](double x, double y) { return Fun(vec2(x, y)); }, trigs, -Rad, Rad, -Rad, Rad, Dif, Dif, -20., 20.);
+	STL.assign(&trigs[0], &trigs[2 * Dif*Dif]);
 
 	// optimization
 	simulated_annealing_naive();

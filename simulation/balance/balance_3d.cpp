@@ -230,6 +230,8 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 		// compression
 		S[1].n = normalize(S[0].n + (S[1].n - S[0].n)*.5);
 		S[2].n = normalize(S[0].n + (S[2].n - S[0].n)*.5);
+		S[1].val = Fun(S[1].n);
+		S[2].val = Fun(S[2].n);
 	}
 
 	printf("%d samples\n", sampleCount);
@@ -391,7 +393,7 @@ int main(int argc, char* argv[]) {
 	if (0) do {
 		std::vector<vec3> points;
 		std::vector<triangle> trigs;
-		generateObject(19, trigs, &points, true);
+		generateObject(16, trigs, &points, true);
 		if (SORT_POINTS) std::sort(points.begin(), points.end(),
 			[](vec3 a, vec3 b) {return a.sqr() > b.sqr(); });
 

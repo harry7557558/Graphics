@@ -231,14 +231,14 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		return exp(v) * vec3(
 			cossin(PI*3.*v)*(1. + cos(u)),
 			(exp(1. - v) - 2.) + exp(v)*sin(u));
-	}, 0., 2.*PI, -3., 1., 60, 300, "melon snail"),
+	}, 0., 2.*PI, -3., 1., 60, 300, "melon shell"),
 
 	/*[17]*/ ParametricSurfaceL([](double u, double v) {
 		vec3 p = exp(v) * vec3(
 			cossin(PI*3.*v)*(1. + cos(u)),
 			.55*(exp(1. - v) - 2.) + sin(u));
 		return p + vec3(0, 0, 3. - exp(-.55*p.z));
-	}, 0., 2.*PI, -3., 1., 60, 300, "bailer snail"),
+	}, 0., 2.*PI, -3., 1., 60, 300, "bailer shell"),
 
 	/*[18]*/ ParametricSurfaceL([](double u, double v) {
 		vec2 cr(cos(u) + .2*sin(u)*sin(u), -1.3*sin(u) + cos(u)*cos(u));

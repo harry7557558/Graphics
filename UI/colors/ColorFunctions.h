@@ -1,5 +1,4 @@
 // You need a vec3 class to use this
-#pragma once
 class ColorFunctions {
 	static double clp(double x) {
 		return x<0.?0.:x>1.?1.:x;
