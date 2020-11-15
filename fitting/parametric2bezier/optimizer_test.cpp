@@ -51,7 +51,7 @@ double shortestPointOnCurve(cubicCurve c, vec2 p) {  // return the parameter
 // visualization functions
 struct curveInterval;
 void initSVG(const char* filename);
-void writeBlock(const std::vector<curveInterval> &val);
+void writeBlock(const std::vector<curveInterval> &val, const char msg[] = "");
 void endSVG();
 
 
@@ -124,7 +124,7 @@ std::vector<curveInterval> fitCurve_intError(std::vector<curveInterval> Pieces) 
 				s += distCubic2(C, P[i]) * dL[i];  // average error
 			return s + 1.0 * penalty + penaltyl;
 		}, UV0, 1e-6);
-		//printf("%d\n", sampleCount);  // 60-80
+		//printf("s=%d\n", sampleCount);  // 60-80
 
 		// output
 		Pieces[i].fit = cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 };
@@ -179,7 +179,7 @@ std::vector<curveInterval> fitCurve_maxError(std::vector<curveInterval> Pieces) 
 				maxerr = max(maxerr, distCubic2(C, P[i]));  // maximum error
 			return maxerr + 1.0 * penalty + penaltyl;
 		}, UV0, 1e-6);
-		//printf("%d\n", sampleCount);  // 70-90
+		//printf("s=%d\n", sampleCount);  // 70-90
 
 		// output
 		Pieces[i].fit = cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 };
@@ -242,7 +242,8 @@ vec2 fitCurve_minimizeParameterSumSqr(vec2 P0, vec2 P1, vec2 T0, vec2 T1, int N,
 	}
 	return M.inverse()*b;
 }
-std::vector<curveInterval> fitCurve_reParametrize(std::vector<curveInterval> Pieces) {
+std::vector<curveInterval> fitCurve_reParameterize(std::vector<curveInterval> Pieces,
+	bool weighted, bool chordLengthParameterization) {
 	distCubic2_callCount = 0;
 
 	int PN = Pieces.size();
@@ -251,7 +252,7 @@ std::vector<curveInterval> fitCurve_reParametrize(std::vector<curveInterval> Pie
 		cubicBezier c = Pieces[i].fit;
 		vec2 P0 = c.A, T0 = c.B - c.A, T1 = c.D - c.C, P1 = c.D;
 
-		// initial parametrization
+		// initial parameterization
 		const int N = 32;
 		vec2 Ps[N]; double ts[N], ws[N];
 		for (int i = 0; i < N; i++) {
@@ -259,6 +260,25 @@ std::vector<curveInterval> fitCurve_reParametrize(std::vector<curveInterval> Pie
 			Ps[i] = fun(t0 + a * dt);
 			ts[i] = a;
 			ws[i] = 1.;
+		}
+		// calculate weights
+		if (weighted) {
+			for (int i = 0; i < N; i++) {
+				vec2 p0 = i == 0 ? P0 : Ps[i - 1];
+				vec2 p1 = i == N - 1 ? P1 : Ps[i + 1];
+				ws[i] = length(p1 - p0) * .5*(N + 1);
+				//ws[i] = length(fun(t0 + ts[i] * dt + .001) - fun(t0 + ts[i] * dt - .001)) / (.002 / dt);
+			}
+		}
+		// chord-length parameterization
+		if (chordLengthParameterization) {
+			for (int i = 0; i < N; i++) {
+				vec2 p0 = i == 0 ? P0 : Ps[i - 1];
+				vec2 p1 = Ps[i];
+				ts[i] = length(p1 - p0) + (i == 0 ? 0. : ts[i - 1]);
+			}
+			double tsN = ts[N - 1] + length(P1 - Ps[N - 1]);
+			for (int i = 0; i < N; i++) ts[i] /= tsN;
 		}
 
 		// fitting and re-parametrization
@@ -297,6 +317,64 @@ std::vector<curveInterval> fitCurve_reParametrize(std::vector<curveInterval> Pie
 }
 
 
+// minimize the integral of error without tangent constraints
+// 3x+ more samples but the result is much better visually
+std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces) {
+	distCubic2_callCount = 0;
+
+	int PN = Pieces.size();
+	for (int i = 0; i < PN; i++) {
+		double t0 = Pieces[i].t0, t1 = Pieces[i].t1, dt = t1 - t0;
+		cubicBezier c = Pieces[i].fit;
+		vec2 P0 = c.A, T0 = c.B - c.A, T1 = c.D - c.C, P1 = c.D;
+
+		// pre-computing for numerical integral
+		double eps = 1e-5*dt;
+		vec2 P[32]; double dL[32];
+		for (int i = 0; i < 32; i++) {
+			double t = t0 + NIntegrate_GL32_S[i] * dt;
+			P[i] = fun(t);
+			dL[i] = length(fun(t + eps) - fun(t - eps)) / (2.*eps);
+			dL[i] *= NIntegrate_GL32_W[i] * dt;
+		}
+
+		// length of the curve
+		double clength = 0.;
+		for (int i = 0; i < 32; i++) clength += dL[i];
+
+		// downhill simplex optimization
+		// loss function is similar to that used in parametric2bezier.cpp
+		double Ts[5][4] = {
+			{ T0.x, T0.y, T1.x, T1.y }
+		};
+		double *Tp[5] = { Ts[0], Ts[1], Ts[2], Ts[3], Ts[4] };
+		setupInitialSimplex_regular(4, Tp[0], Tp, 0.1*pow(T0.sqr()*T1.sqr(), .25));
+		double val[5];
+		int sampleCount = 0;  // counter
+		int id = downhillSimplex(4, [&](double T[4]) {
+			sampleCount++;
+			vec2 T0(T[0], T[1]), T1(T[2], T[3]);
+			double penalty = 0.;  // negative penalty; use dot product between tangents instead maybe?
+			cubicCurve C = bezierAlg(P0, P0 + T0, P1 - T1, P1);
+			double blength = NIntegrate_GL24<double>([&](double t) { return length(C.c1 + t * (2.*C.c2 + t * 3.*C.c3)); }, 0., 1.);
+			double penaltyl = (blength - clength)*(blength - clength);  // difference in curve lengths penalty
+			double s(0.);
+			for (int i = 0; i < 32; i++)
+				s += distCubic2(C, P[i]) * dL[i];  // average error
+			return s + 1.0 * penalty + penaltyl;
+		}, Tp, val, false, 1e-8, false, 10);
+		//printf("s=%d\n", sampleCount);  // 80-120, larger with large step size
+
+		// output
+		Pieces[i].fit = cubicBezier{ P0, P0 + vec2(Tp[id][0], Tp[id][1]), P1 - vec2(Tp[id][2], Tp[id][3]), P1 };
+	}
+
+	printf("%d\n", distCubic2_callCount);
+	return Pieces;
+}
+
+
+
 
 
 
@@ -306,11 +384,17 @@ int main(int argc, char* argv[]) {
 	initSVG(argv[1]);
 
 	std::vector<curveInterval> pieces = initialGuess(10);
-	writeBlock(pieces);
+	writeBlock(pieces, "Initial guess");
 
-	writeBlock(fitCurve_intError(pieces));
-	writeBlock(fitCurve_maxError(pieces));
-	writeBlock(fitCurve_reParametrize(pieces));
+	writeBlock(fitCurve_intError(pieces), "Quadrature of square error");
+	writeBlock(fitCurve_maxError(pieces), "Max of square error");
+
+	writeBlock(fitCurve_reParameterize(pieces, false, false), "Re-parameterization");
+	writeBlock(fitCurve_reParameterize(pieces, true, false), "Weighted re-parameterization");
+	writeBlock(fitCurve_reParameterize(pieces, false, true), "Chord-length parameterization");
+	writeBlock(fitCurve_reParameterize(pieces, true, true), "Weighted chord-length parameterization");
+
+	writeBlock(fitCurve_intError_4(pieces), "Quadrature without tangent constraint");
 
 	endSVG();
 
@@ -322,7 +406,7 @@ int main(int argc, char* argv[]) {
 FILE* fp = 0;
 const double scale = 150.;  // scaling from graph to svg
 const int width = 360;  // width and height of each block
-const int colspan = 3;  // number of blocks in a row
+const int colspan = 4;  // number of blocks in a row
 int blockCount = 0;  // number of blocks writed
 void initSVG(const char* filename) {
 	fp = fopen(filename, "wb");
@@ -338,11 +422,11 @@ void initSVG(const char* filename) {
 	}
 	fprintf(fp, "z' style='stroke:#ccc;stroke-width:3px;fill:none;' vector-effect='non-scaling-stroke'/></defs>\n");
 }
-void writeBlock(const std::vector<curveInterval> &val) {
+void writeBlock(const std::vector<curveInterval> &val, const char message[]) {
 	fprintf(fp, "<g transform='translate(%d,%d)' clip-path='url(#viewbox)'>\n",
 		width*(blockCount%colspan), width*(blockCount / colspan));
 	fprintf(fp, "<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", width, width);
-	fprintf(fp, "<text x='10' y='20'>#%d</text>\n", blockCount + 1);
+	fprintf(fp, "<text x='10' y='20'>#%d %s</text>\n", blockCount, message);
 	fprintf(fp, "<g transform='matrix(%lg,0,0,%lg,%lg,%lg)'>\n", scale, -scale, .5*width, .5*width);
 	fprintf(fp, "<use x='0' y='0' xlink:href='#refgraph'/>\n");
 

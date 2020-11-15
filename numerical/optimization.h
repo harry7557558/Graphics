@@ -382,11 +382,168 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		// compression
 		S[1].p = S[0].p + (S[1].p - S[0].p)*.5;
 		S[2].p = S[0].p + (S[2].p - S[0].p)*.5;
-		S[1].val = fun(S[1].p), S[2].val = fun(S[2].p);
+		S[1].val = fun(S[1].p), S[2].val = fun(S[2].p); // may only need 1 evals?
 	}
 
 	return S[0].val < S[1].val && S[0].val < S[2].val ? S[0].p
 		: S[1].val < S[2].val ? S[1].p : S[2].p;
+}
+
+
+// K: number of dimensions, usually >2
+// @fun(double[K]): function to minimize
+// @P[K+1][K]: initial simplex; an array of double* that can be swapped easily
+// @val[K+1]: initial values
+// @initialized: set to false if val is not initialized
+// @least_square: set this to true if it is minimizing a least-square loss function (different termination condition, see code for details)
+// @terminate_count_break: break if the number of consecutive iterations with termination condition satisfied reaches this number
+// @refl_c,expd_c,ctrct_c,shrnk_c: factors of reflection/expansion/contraction/shrinking
+// return the index to the minimum value; Eg. fun(P[id])=val(id)
+template<typename Fun> int downhillSimplex(
+	int K, Fun fun, double* const P[], double val[], bool initialized,
+	double epsilon = 1e-8, bool least_square = false, int terminate_count_break = 1, int min_iter = 10, int max_iter = 2000,
+	double refl_c = NAN, double expd_c = NAN, double ctrct_c = NAN, double shrnk_c = NAN) {
+
+	// suggested parameters
+	// https://www.webpages.uidaho.edu/~fuchang/res/ANMS.pdf
+	if (!(refl_c > 0.)) refl_c = 1.;
+	if (!(expd_c > 0.)) expd_c = 1. + 2. / K;
+	if (!(ctrct_c > 0.)) ctrct_c = .75 - .5 / K;
+	if (!(shrnk_c > 0.)) shrnk_c = 1. - 1. / K;
+
+	// initialize val[]
+	if (!initialized) {
+		for (int i = 0; i <= K; i++) {
+			val[i] = fun(P[i]);
+		}
+	}
+	double old_minval = INFINITY;
+	int terminate_count = 0;
+
+	// temp variables - I may not need this many
+	double *ctr = new double[K],
+		*refl = new double[K],
+		*expd = new double[K],
+		*ctrct = new double[K];
+
+	// iteration
+	for (int iter = 0; ; iter++) {
+
+		// find the lowest, highest, and second highest points
+		// (there is no need for sorting/re-ordering)
+		int low_id, high_id, high2_id;
+		high_id = val[0] > val[1] ? (low_id = high2_id = 1, 0) : (low_id = high2_id = 0, 1);
+		for (int i = 2; i <= K; i++) {
+			if (val[i] <= val[low_id]) low_id = i;
+			if (val[i] > val[high_id]) high2_id = high_id, high_id = i;
+			else if (val[i] > val[high2_id]) high2_id = i;
+		}
+		// no NAN please!
+		if (low_id == high_id || low_id == high2_id || high_id == high2_id) throw("bug!");
+
+#if 0
+		// debug output
+		printf("%d %lf\n", iter, val[low_id]);
+		if (K == 2) STL.push_back(stl_triangle(
+			vec3(P[0][0], P[0][1], val[0]),
+			vec3(P[1][0], P[1][1], val[1]),
+			vec3(P[2][0], P[2][1], val[2]),
+			ColorFunctions::DarkBands(0.5*(cos(0.5*iter) + 1.))));
+		auto addTriangle = [&](double* A, double* B, double* C) {
+			STL.push_back(stl_triangle(*(vec3*)A, *(vec3*)B, *(vec3*)C,
+				ColorFunctions::Rainbow(0.5*(sin(0.4*iter) + 1.))));
+		};
+		if (K == 3)
+			addTriangle(P[0], P[1], P[2]),
+			addTriangle(P[0], P[1], P[3]),
+			addTriangle(P[0], P[2], P[3]),
+			addTriangle(P[1], P[2], P[3]);
+#endif
+
+		// termination condition
+		if (iter > min_iter &&
+			(((least_square ?
+				2.*(val[high_id] - val[low_id]) < epsilon * (val[high_id] + val[low_id] + 1e-4*epsilon)  // from Numerical Recipes
+				: abs(val[high_id] - val[low_id]) < epsilon
+				) ? true : terminate_count = 0) && ++terminate_count >= terminate_count_break)
+			|| iter > max_iter) {
+			delete ctr; delete refl; delete expd; delete ctrct;
+			return low_id;
+		}
+
+		// centroid
+		for (int i = 0; i < K; i++) ctr[i] = 0;
+		for (int i = 0; i <= K; i++) if (i != high_id) {
+			for (int _ = 0; _ < K; _++) ctr[_] += P[i][_];
+		}
+		for (int i = 0; i < K; i++) ctr[i] *= (1. / K);
+
+		// reflection
+		for (int i = 0; i < K; i++)
+			refl[i] = ctr[i] + refl_c * (ctr[i] - P[high_id][i]);
+		double refl_val = fun(refl);
+		if (val[low_id] <= refl_val && refl_val < val[high2_id]) {
+			for (int i = 0; i < K; i++) P[high_id][i] = refl[i];
+			val[high_id] = refl_val;
+			continue;
+		}
+
+		// expansion
+		if (refl_val < val[low_id]) {
+			for (int i = 0; i < K; i++)
+				expd[i] = ctr[i] + expd_c * (ctr[i] - P[high_id][i]);
+			double expd_val = fun(expd);
+			double *new_vec = expd_val < refl_val ? expd : refl;
+			double new_val = min(expd_val, refl_val);
+			for (int i = 0; i < K; i++) P[high_id][i] = new_vec[i];
+			val[high_id] = new_val;
+			continue;
+		}
+
+		// contraction
+		for (int i = 0; i < K; i++)
+			ctrct[i] = ctr[i] - ctrct_c * (ctr[i] - P[high_id][i]);
+		double ctrct_val = fun(ctrct);
+		if (ctrct_val < val[high_id]) {
+			for (int i = 0; i < K; i++) P[high_id][i] = ctrct[i];
+			val[high_id] = ctrct_val;
+			continue;
+		}
+
+		// compression/shrinking
+		for (int i = 0; i <= K; i++) if (i != low_id) {
+			for (int _ = 0; _ < K; _++)
+				P[i][_] = P[low_id][_] + shrnk_c * (P[i][_] - P[low_id][_]);
+			val[i] = fun(P[i]);
+		}
+
+	}
+
+}
+
+
+// setup initial simplex for Nelder-Mead
+// @K: dimension
+// @P0[K]: initial guess, it is ok that S[0]==P0
+// @S[K+1][K]: initial simplex
+// @r: radius of expansion
+void setupInitialSimplex_axesAligned(int K, const double P0[], double* S[], double r) {
+	for (int i = 0; i < K; i++) {
+		for (int j = 0; j <= K; j++) S[j][i] = P0[i];
+	}
+	for (int j = 1; j <= K; j++) S[j][j - 1] += r;
+}
+void setupInitialSimplex_regular(int K, const double P0[], double* S[], double r) {
+	// https://en.wikipedia.org/wiki/Simplex#Cartesian_coordinates_for_a_regular_n-dimensional_simplex_in_Rn
+	double k1 = -(sqrt(K + 1) + 1) / pow(K, 1.5);
+	double k0 = k1 + sqrt(1 + 1. / K);
+	double k2 = -1. / sqrt(K);
+	for (int i = 0; i < K; i++) {
+		for (int j = 0; j < K; j++)
+			S[i + 1][j] = (i == j ? k1 : k0) * r + P0[j];
+	}
+	for (int i = 0; i < K; i++)  // just make sure it works when S[0]==P0
+		S[0][i] = k2 * r + P0[i];
 }
 
 

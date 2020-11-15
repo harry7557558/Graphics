@@ -18,6 +18,7 @@
 #include "numerical/geometry.h"
 #endif
 
+#include "ui/colors/ColorFunctions.h"
 
 #pragma pack(push, 1)
 
@@ -120,6 +121,15 @@ bool writeSTL(FILE* fp, triangle data[], unsigned N,
 	return writeSTL(fp, T, N, header, correct_normal);
 }
 
+bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
+	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	FILE* fp = fopen(filename, "wb");
+	if (!fp) return false;
+	bool ok = writeSTL(fp, data, N, header, correct_normal);
+	fclose(fp);
+	return ok;
+}
+
 
 // write colored STL
 // vec3 ColorF(vec3)
@@ -200,7 +210,6 @@ int stl_fun2trigs(Fun F, stl_triangle* trigs, double x0, double x1, double y0, d
 
 
 	// set color
-#include "ui/colors/ColorFunctions.h"
 	double invdz = 1.0 / (maxz - minz);
 	if (!(invdz > 0. && invdz < 1e100)) invdz = 0.;
 	for (int i = 0; i < CNT; i++) {
