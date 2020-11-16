@@ -116,12 +116,13 @@ public:
 		v[0][0] = col1.x, v[1][0] = col1.y;
 		v[0][1] = col2.x, v[1][1] = col2.y;
 	}
-	explicit mat2(double _00, double _01, double _10, double _11) {
+	explicit mat2(double _00, double _10, double _01, double _11) {  // by columns
 		v[0][0] = _00, v[0][1] = _01, v[1][0] = _10, v[1][1] = _11;
 	}
 	vec2 row(int i) const { return vec2(v[i][0], v[i][1]); }
 	vec2 column(int i) const { return vec2(v[0][i], v[1][i]); }
 	vec2 diag() const { return vec2(v[0][0], v[1][1]); }
+	mat2 operator - () const { return mat2(-v[0][0], -v[1][0], -v[0][1], -v[1][1]); }
 	void operator += (const mat2 &m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; }
 	void operator -= (const mat2 &m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; }
 	void operator *= (double m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] *= m; }
@@ -129,9 +130,10 @@ public:
 	mat2 operator - (const mat2 &m) const { mat2 r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = (&v[0][0])[i] - (&m.v[0][0])[i]; return r; }
 	mat2 operator * (double m) const { mat2 r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = (&v[0][0])[i] * m; return r; }
 	friend mat2 operator * (double a, const mat2 &m) { mat2 r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = a * (&m.v[0][0])[i]; return r; }
+	mat2 operator * (const mat2 &m) const { return mat2(v[0][0] * m.v[0][0] + v[0][1] * m.v[1][0], v[1][0] * m.v[0][0] + v[1][1] * m.v[1][0], v[0][0] * m.v[0][1] + v[0][1] * m.v[1][1], v[1][0] * m.v[0][1] + v[1][1] * m.v[1][1]); }
 	friend double determinant(const mat2 &m) { return m.v[0][0] * m.v[1][1] - m.v[0][1] * m.v[1][0]; }
 	mat2 transpose() const { mat2 r; for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) r.v[i][j] = v[j][i]; return r; }
-	mat2 inverse() const { double d = 1.0 / (v[0][0] * v[1][1] - v[0][1] * v[1][0]); return mat2(d*v[1][1], -d * v[0][1], -d * v[1][0], d*v[0][0]); }
+	mat2 inverse() const { double d = 1.0 / (v[0][0] * v[1][1] - v[0][1] * v[1][0]); return mat2(d*v[1][1], -d * v[1][0], -d * v[0][1], d*v[0][0]); }
 	friend double trace(const mat2 &m) { return m.v[0][0] + m.v[1][1]; }
 	vec2 operator * (const vec2 &a) const { return vec2(v[0][0] * a.x + v[0][1] * a.y, v[1][0] * a.x + v[1][1] * a.y); }
 };

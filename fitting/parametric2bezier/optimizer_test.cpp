@@ -109,8 +109,8 @@ std::vector<curveInterval> fitCurve_intError(std::vector<curveInterval> Pieces) 
 		vec2 uv(1., 1.);
 		vec2 UV0[3] = {
 			uv,
-			uv * vec2(1.1, 1.),
-			uv * vec2(1., 1.1)
+			uv * vec2(1.5, 1.),
+			uv * vec2(1., 1.5)
 		};
 		int sampleCount = 0;  // counter
 		uv = downhillSimplex_2d([&](vec2 uv) {
@@ -164,8 +164,8 @@ std::vector<curveInterval> fitCurve_maxError(std::vector<curveInterval> Pieces) 
 		vec2 uv(1., 1.);
 		vec2 UV0[3] = {
 			uv,
-			uv * vec2(1.1, 1.),
-			uv * vec2(1., 1.1)
+			uv * vec2(1.5, 1.),
+			uv * vec2(1., 1.5)
 		};
 		int sampleCount = 0;  // counter
 		uv = downhillSimplex_2d([&](vec2 uv) {
@@ -300,10 +300,16 @@ std::vector<curveInterval> fitCurve_reParameterize(std::vector<curveInterval> Pi
 			// termination condition
 			double de = abs(err_old - err);
 			if (de < 1e-6) {
-				if (++noimprove_count > 3) break;
+				if (++noimprove_count > 3) {
+					//printf("%d\n", iter);
+					break;
+				}
 			}
 			else noimprove_count = 0;
-			//if (iter) printf("(%d,%lf),", iter, log10(de));  // linear convergence
+
+			// linear convergence, slower when the parameters are "going down a valley"
+			//if (iter) printf("(%d,%lf),", iter, log10(de));
+			//if (iter) printf("(%lf,%lf),", uv.x, uv.y);  // travels on a straight line; accelerate using a line search maybe?
 
 			uv_old = uv, err_old = err;
 		}
@@ -319,7 +325,8 @@ std::vector<curveInterval> fitCurve_reParameterize(std::vector<curveInterval> Pi
 
 // minimize the integral of error without tangent constraints
 // 3x+ more samples but the result is much better visually
-std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces) {
+// @useTangentRepresentation: set to true to represent control points using parallel and orthogonal components of tangent vector in downhill simplex optimization
+std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces, bool useTangentRepresentation) {
 	distCubic2_callCount = 0;
 
 	int PN = Pieces.size();
@@ -327,9 +334,10 @@ std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces
 		double t0 = Pieces[i].t0, t1 = Pieces[i].t1, dt = t1 - t0;
 		cubicBezier c = Pieces[i].fit;
 		vec2 P0 = c.A, T0 = c.B - c.A, T1 = c.D - c.C, P1 = c.D;
+		vec2 N0 = T0.rot(), N1 = T1.rot();
 
 		// pre-computing for numerical integral
-		double eps = 1e-5*dt;
+		double eps = 1e-4*dt;
 		vec2 P[32]; double dL[32];
 		for (int i = 0; i < 32; i++) {
 			double t = t0 + NIntegrate_GL32_S[i] * dt;
@@ -344,18 +352,21 @@ std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces
 
 		// downhill simplex optimization
 		// loss function is similar to that used in parametric2bezier.cpp
-		double Ts[5][4] = {
-			{ T0.x, T0.y, T1.x, T1.y }
-		};
+		double Ts[5][4] = { { 1, 0, 1, 0 } };
 		double *Tp[5] = { Ts[0], Ts[1], Ts[2], Ts[3], Ts[4] };
-		setupInitialSimplex_regular(4, Tp[0], Tp, 0.1*pow(T0.sqr()*T1.sqr(), .25));
+		if (!useTangentRepresentation)
+			*(vec2*)Tp[0] = T0, *(vec2*)&Tp[0][2] = T1;
+		setupInitialSimplex_regular(4, Tp[0], Tp,
+			useTangentRepresentation ? 0.2 : 0.25*pow(T0.sqr()*T1.sqr(), .25));
 		double val[5];
 		int sampleCount = 0;  // counter
 		int id = downhillSimplex(4, [&](double T[4]) {
 			sampleCount++;
-			vec2 T0(T[0], T[1]), T1(T[2], T[3]);
+			// curve
+			vec2 R0 = useTangentRepresentation ? T[0] * T0 + T[1] * N0 : vec2(T[0], T[1]);
+			vec2 R1 = useTangentRepresentation ? T[2] * T1 + T[3] * N1 : vec2(T[2], T[3]);
+			cubicCurve C = bezierAlg(P0, P0 + R0, P1 - R1, P1);
 			double penalty = 0.;  // negative penalty; use dot product between tangents instead maybe?
-			cubicCurve C = bezierAlg(P0, P0 + T0, P1 - T1, P1);
 			double blength = NIntegrate_GL24<double>([&](double t) { return length(C.c1 + t * (2.*C.c2 + t * 3.*C.c3)); }, 0., 1.);
 			double penaltyl = (blength - clength)*(blength - clength);  // difference in curve lengths penalty
 			double s(0.);
@@ -363,10 +374,107 @@ std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces
 				s += distCubic2(C, P[i]) * dL[i];  // average error
 			return s + 1.0 * penalty + penaltyl;
 		}, Tp, val, false, 1e-8, false, 10);
-		//printf("s=%d\n", sampleCount);  // 80-120, larger with large step size
+		//printf("s=%d\n", sampleCount);  // 200-300, larger with large step size
 
 		// output
-		Pieces[i].fit = cubicBezier{ P0, P0 + vec2(Tp[id][0], Tp[id][1]), P1 - vec2(Tp[id][2], Tp[id][3]), P1 };
+		Pieces[i].fit = cubicBezier{ P0,
+			P0 + (useTangentRepresentation ? Tp[id][0] * T0 + Tp[id][1] * N0 : vec2(Tp[id][0], Tp[id][1])),
+			P1 - (useTangentRepresentation ? Tp[id][2] * T1 + Tp[id][3] * N1 : vec2(Tp[id][2], Tp[id][3])),
+			P1 };
+	}
+
+	printf("%d\n", distCubic2_callCount);
+	return Pieces;
+}
+
+
+
+// similar to fitCurve_minimizeParameterSumSqr(), without tangent constraints
+// 0.25x number of samples compare to fitCurve_intError_4() but the G0 at segment breaks are more obvious
+void fitCurve_minimizeParameterSumSqr_4(vec2 P0, vec2 P1, vec2 &C0, vec2 &C1, int N, vec2 P[], double t[], double w[]) {
+	// analytically find control points C0 and C1 to minimize Σ[w·(Bezier(t)-P)²]
+
+#if 0
+	// reference solution to make sure my formula is correct
+	vec2 PX[2] = { C0, C1 };
+	Newton_Iteration_Minimize(4, [&](double *X) {
+		double err = 0.;
+		vec2 A = P0, B = *(vec2*)X, C = ((vec2*)X)[1], D = P1;
+		for (int i = 0; i < N; i++) {
+			double ti = t[i];
+			vec2 Ci = A + ti * (-3.*A + 3.*B + ti * (3.*A - 6.*B + 3.*C + ti * (-A + 3.*B - 3.*C + D)));
+			err += w[i] * (Ci - P[i]).sqr();
+		}
+		return err;
+	}, (double*)&PX[0], (double*)&PX[0]);
+	C0 = PX[0], C1 = PX[1];
+	return;
+#endif
+
+	mat2 M(0.), b(0.);
+	for (int i = 0; i < N; i++) {
+		double ti = t[i];
+		double m0 = (1 - ti)*(1 - ti)*(1 - ti);
+		double n0 = 3.*ti*(1 - ti)*(1 - ti);
+		double n1 = 3.*ti*ti*(1 - ti);
+		double m1 = ti * ti*ti;
+		vec2 Pm = m0 * P0 + m1 * P1 - P[i];
+		double u0 = n0 * n0, u1 = n0 * n1;
+		double v0 = n0 * n1, v1 = n1 * n1;
+		M += w[i] * mat2(u0, u1, v0, v1);
+		b += w[i] * mat2(n0*Pm, n1*Pm);
+	}
+	b = -b * M.inverse();
+	C0 = b.column(0);
+	C1 = b.column(1);
+}
+std::vector<curveInterval> fitCurve_reParameterize_4(std::vector<curveInterval> Pieces) {
+	distCubic2_callCount = 0;
+	int PN = Pieces.size();
+	for (int i = 0; i < PN; i++) {
+		double t0 = Pieces[i].t0, t1 = Pieces[i].t1, dt = t1 - t0;
+		cubicBezier c = Pieces[i].fit;
+		vec2 P0 = c.A, T0 = c.B - c.A, T1 = c.D - c.C, P1 = c.D;
+
+		// initial parameterization
+		const int N = 32;
+		vec2 Ps[N]; double ts[N], ws[N];
+		for (int i = 0; i < N; i++) {
+			double a = (i + 1.) / (N + 1.);  // ignore endpoints
+			Ps[i] = fun(t0 + a * dt);
+			ts[i] = a;
+			ws[i] = 1.;
+		}
+
+		// fitting and re-parametrization
+		vec2 C0_old(P0 + T0), C1_old(P1 - T1), C0(C0_old), C1(C1_old);
+		double err_old(NAN), err;
+		int noimprove_count = 0;
+		for (int iter = 0; iter < 64; iter++) {
+			// optimize with current parametrization
+			fitCurve_minimizeParameterSumSqr_4(P0, P1, C0, C1, N, Ps, ts, ws);
+
+			// re-parametrize
+			err = 0.;  // in practice: abort if still too big after some number of iterations
+			cubicCurve C = bezierAlg(P0, C0, C1, P1);
+			for (int i = 0; i < N; i++) {
+				ts[i] = shortestPointOnCurve(C, Ps[i]);
+				err = max(err, (C.eval(ts[i]) - Ps[i]).sqr());
+			}
+
+			// termination condition
+			double de = abs(err_old - err);
+			if (de < 1e-7) {
+				if (++noimprove_count > 3) break;
+			}
+			else noimprove_count = 0;
+			//if (iter) printf("(%d,%lf),", iter, log10(de));  // linear convergence
+
+			C0_old = C0, C1_old = C1, err_old = err;
+		}
+
+		// output
+		Pieces[i].fit = cubicBezier{ P0, C0, C1, P1 };
 	}
 
 	printf("%d\n", distCubic2_callCount);
@@ -376,25 +484,25 @@ std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces
 
 
 
-
-
-
-
 int main(int argc, char* argv[]) {
 	initSVG(argv[1]);
 
-	std::vector<curveInterval> pieces = initialGuess(10);
+	std::vector<curveInterval> pieces = initialGuess(8);
 	writeBlock(pieces, "Initial guess");
 
 	writeBlock(fitCurve_intError(pieces), "Quadrature of square error");
 	writeBlock(fitCurve_maxError(pieces), "Max of square error");
 
-	writeBlock(fitCurve_reParameterize(pieces, false, false), "Re-parameterization");
-	writeBlock(fitCurve_reParameterize(pieces, true, false), "Weighted re-parameterization");
+	writeBlock(fitCurve_reParameterize(pieces, false, false), "Reparameterization");
 	writeBlock(fitCurve_reParameterize(pieces, false, true), "Chord-length parameterization");
+	writeBlock(fitCurve_reParameterize(pieces, true, false), "Weighted reparameterization");
 	writeBlock(fitCurve_reParameterize(pieces, true, true), "Weighted chord-length parameterization");
 
-	writeBlock(fitCurve_intError_4(pieces), "Quadrature without tangent constraint");
+	writeBlock(fitCurve_intError_4(pieces, false), "Quadrature without tangent constraint");
+	writeBlock(fitCurve_intError_4(pieces, true), "Quadrature without tangent constraint (components)");
+
+	writeBlock(fitCurve_reParameterize_4(pieces), "Reparameterization without tangent constraint");
+
 
 	endSVG();
 
@@ -411,8 +519,10 @@ int blockCount = 0;  // number of blocks writed
 void initSVG(const char* filename) {
 	fp = fopen(filename, "wb");
 	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='%d' height='%d'>\n", width*colspan, 100 * width);
-	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d' /></clipPath></defs>\n", 0, 0, width, width);
-	fprintf(fp, "<defs><marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'><rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect></marker><marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'><ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse></marker></defs>\n");
+	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d' /></clipPath>\n", 0, 0, width, width);
+	fprintf(fp, "<marker id='anchor-start' viewBox='0 0 10 10' refX='5' refY='5' orient='' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'><rect x='3.8' y='3.8' width='2.4' height='2.4' style='stroke:black;stroke-width:1px;fill:black'></rect></marker><marker id='anchor-end' viewBox='0 0 10 10' refX='5' refY='5' markerUnits='strokeWidth' markerWidth='10' markerHeight='10'><ellipse cx='5' cy='5' rx='1.2' ry='1.2' style='stroke:black;stroke-width:1px;fill:black'></ellipse></marker></defs>\n");
+	fprintf(fp, "<style>.anchors{opacity:0;}.points{opacity:0;}</style>\n");  // for testing
+	fprintf(fp, "<style>.anchors{stroke:black;stroke-width:%lg;fill:none;opacity:0.4;}.points{stroke:none;fill:blue;opacity:0.5;}</style>\n", 1. / scale);
 
 	vec2 p = fun(0.);
 	fprintf(fp, "<defs><path id='refgraph' d='M%lg,%lg", p.x, p.y);
@@ -426,7 +536,8 @@ void writeBlock(const std::vector<curveInterval> &val, const char message[]) {
 	fprintf(fp, "<g transform='translate(%d,%d)' clip-path='url(#viewbox)'>\n",
 		width*(blockCount%colspan), width*(blockCount / colspan));
 	fprintf(fp, "<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", width, width);
-	fprintf(fp, "<text x='10' y='20'>#%d %s</text>\n", blockCount, message);
+	fprintf(fp, "<text x='10' y='20'>%s</text>\n", message);
+	fprintf(fp, "<text x='10' y='40'>%d</text>\n", distCubic2_callCount);  // should work
 	fprintf(fp, "<g transform='matrix(%lg,0,0,%lg,%lg,%lg)'>\n", scale, -scale, .5*width, .5*width);
 	fprintf(fp, "<use x='0' y='0' xlink:href='#refgraph'/>\n");
 
@@ -440,7 +551,7 @@ void writeBlock(const std::vector<curveInterval> &val, const char message[]) {
 		}
 		fprintf(fp, "' style='stroke:black;stroke-width:1px;fill:none;' vector-effect='non-scaling-stroke'/>\n");
 		// anchor points
-		fprintf(fp, "<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)' style='stroke:black;stroke-width:%lg;fill:none;opacity:0.4;'>", 1. / scale);
+		fprintf(fp, "<g class='anchors' marker-start='url(#anchor-start)' marker-end='url(#anchor-end)'>");
 		for (int i = 0; i < vn; i++) {
 			vec2 P0 = val[i].fit.A, Q0 = val[i].fit.B, Q1 = val[i].fit.C, P1 = val[i].fit.D;
 			fprintf(fp, "<line x1='%lf' y1='%lf' x2='%lf' y2='%lf'/>", P0.x, P0.y, Q0.x, Q0.y);
@@ -450,7 +561,7 @@ void writeBlock(const std::vector<curveInterval> &val, const char message[]) {
 		// endpoints
 		fprintf(fp, "<g class='points'>");
 		for (int i = 0; i < vn; i++) {
-			fprintf(fp, "<circle cx='%lf' cy='%lf' r='%lg' style='stroke:none;fill:blue;opacity:0.5;'/>", val[i].fit.A.x, val[i].fit.A.y, (i == 0 ? 5. : 3.) / scale);
+			fprintf(fp, "<circle cx='%lf' cy='%lf' r='%lg'/>", val[i].fit.A.x, val[i].fit.A.y, (i == 0 ? 5. : 3.) / scale);
 		}
 		fprintf(fp, "</g>\n");
 	}
@@ -463,4 +574,102 @@ void endSVG() {
 	fprintf(fp, "</svg>");
 	fclose(fp);
 }
+
+
+
+
+
+
+
+
+
+// impractical methods go here
+
+#if 0
+std::vector<curveInterval> fitCurve_global(std::vector<curveInterval> Pieces) {
+	distCubic2_callCount = 0;
+
+	int PN = Pieces.size();
+
+	// cheap way to improve the initial guess slightly
+	for (int i = 0; i < PN; i++) {
+		double t0 = Pieces[i].t0, t1 = Pieces[i].t1, dt = t1 - t0;
+		cubicBezier c = Pieces[i].fit;
+		vec2 P0 = c.A, T0 = c.B - c.A, T1 = c.D - c.C, P1 = c.D;
+		const int N = 3;
+		vec2 Ps[N]; double ts[N], ws[N];
+		for (int i = 0; i < N; i++) {
+			double a = (i + 1.) / (N + 1.);
+			Ps[i] = fun(t0 + a * dt);
+			ts[i] = a, ws[i] = 1.;
+		}
+		vec2 uv = fitCurve_minimizeParameterSumSqr(P0, P1, T0, T1, N, Ps, ts, ws);
+		Pieces[i].fit = cubicBezier{ P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1 };
+	}
+
+	// pre-computing for numerical integral
+	double eps = 1e-4;
+	const int SAMPLE_N = 640;
+	vec2 P[SAMPLE_N]; double dL[SAMPLE_N];
+	for (int i = 0; i < SAMPLE_N; i++) {
+		/*double t = NIntegrate_GL96_S[i];
+		P[i] = fun(t);
+		dL[i] = length(fun(t + eps) - fun(t - eps)) / (2.*eps);
+		dL[i] *= NIntegrate_GL96_W[i];*/
+		double t = 1.0 * (i + 1.) / (SAMPLE_N + 1.);
+		P[i] = fun(t);
+		dL[i] = length(fun(t + eps) - fun(t - eps)) / (2.*eps);
+		dL[i] *= 1.0 / SAMPLE_N;
+	}
+	double clength = 0.;
+	for (int i = 0; i < SAMPLE_N; i++) clength += dL[i];
+
+	struct vec23 { vec2 A, B, C; };
+	vec23 *Pk = new vec23[PN];
+	for (int i = 0; i < PN; i++) {
+		Pk[i] = vec23{ Pieces[i].fit.A, Pieces[i].fit.B, Pieces[i].fit.C };
+	}
+	vec23 **PkN = new vec23*[6 * PN + 1];
+	for (int i = 0; i <= 6 * PN; i++) PkN[i] = new vec23[PN];
+	double *val = new double[6 * PN + 1];
+	setupInitialSimplex_regular(6 * PN, (double*)Pk, (double**)PkN, 0.05);
+
+	auto loss = [&](double* vec) {
+		// get all curve pieces
+		vec23 *Pk = (vec23*)vec;
+		std::vector<cubicCurve> algs;
+		for (int i = 0; i < PN; i++) {
+			algs.push_back(bezierAlg(Pk[i].A, Pk[i].B, Pk[i].C, Pk[(i + 1) % PN].A));
+		}
+		// quadrature of square distance
+		double S = 0.;
+		for (int i = 0; i < SAMPLE_N; i++) {
+			double md2 = INFINITY;
+			vec2 p = P[i];
+			for (int j = 0; j < PN; j++) {
+				double d2 = distCubic2(algs[j], p);
+				md2 = min(md2, d2);
+			}
+			S += md2 * dL[i];
+		}
+		// length penalty
+		double L = 0.;
+		for (int i = 0; i < PN; i++) {
+			cubicCurve C = algs[i];
+			L += NIntegrate_GL24<double>([&](double t) { return length(C.c1 + t * (2.*C.c2 + t * 3.*C.c3)); }, 0., 1.);
+		}
+		return S + 0.5*(L - clength)*(L - clength);
+	};
+
+	int id = downhillSimplex(6 * PN, loss, (double**)PkN, val, false, 1e-8, true, 10, 100, 100000);
+	vec23 *sol = PkN[id];
+	for (int i = 0; i < PN; i++) {
+		Pieces[i].fit = cubicBezier{ sol[i].A, sol[i].B, sol[i].C, sol[(i + 1) % PN].A };
+	}
+
+	printf("%d\n", distCubic2_callCount);
+	writeBlock(Pieces, "Optimal solution");
+	return Pieces;
+}
+#endif
 
