@@ -248,13 +248,9 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 
 	/*[19]*/ ParametricSurfaceL([](double u, double v) {
 		vec2 cr = vec2(0.510504, -1.134042)
-			+ mat2(0.598892, -0.609437, 0.541083, -3.788403) * cossin(u)
-			+ mat2(-0.120320, -0.350955, 0.732847, 0.994199) * cossin(2.*u)
-			+ mat2(-0.078252, -0.022159, -0.453444, 0.324241) * cossin(3.*u);
-		/*vec2 cr = vec2(0.511682, -0.980377)
-			+ mat2(0.598368, -0.607140, 0.472696, -3.488780) * cossin(u)
-			+ mat2(-0.122442, -0.351977, 0.455953, 0.860854) * cossin(2.*u)
-			+ mat2(-0.076784, -0.024001, -0.261828, 0.083962) * cossin(3.*u);*/
+			+ mat2(0.598892, 0.541083, -0.609437, -3.788403) * cossin(u)
+			+ mat2(-0.120320, 0.732847, -0.350955, 0.994199) * cossin(2.*u)
+			+ mat2(-0.078252, -0.453444, -0.022159, 0.324241) * cossin(3.*u);
 		cr.y = 5.*tanh(.2*cr.y);  // too sharp
 		cr.y = .2*log(exp(5.*cr.y) + exp(5.*-3.6));  // clamp at y=-3.6 like that of natural snail
 		return exp(.3*v)*vec3(cr.x*sincos(PI*v),
