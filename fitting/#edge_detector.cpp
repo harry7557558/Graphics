@@ -1,17 +1,15 @@
 #include <iostream>
 #include <chrono>
-#include <thread>
-using namespace std;
 
 #define PI 3.1415926535897932
 
 // image format library, https://github.com/nothings/stb
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include ".libraries/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+#include ".libraries/stb_image_write.h"
 
-typedef unsigned char byte;
+#define byte unsigned char
 typedef struct {
 	byte r, g, b;
 } rgb;
@@ -93,10 +91,10 @@ public:
 	image(int w, int h) :w(w), h(h) {
 		data = new T[w*h];
 	}
-	image(string path) {
+	image(std::string path) {
 		int bpp;
 		byte* img = stbi_load(&path[0], &w, &h, &bpp, 3);
-		if (img == 0 || bpp != 3) {
+		if (img == 0) {
 			w = h = 0; data = 0; return;
 		}
 		data = (rgb*)img;
@@ -133,12 +131,12 @@ public:
 		this->w = w, this->h = h;
 		data = new T[w*h];
 	}
-	friend bool save(const image<rgb> &img, string path);
+	friend bool save(const image<rgb> &img, std::string path);
 	friend bool to_rgb(image<rgb> &img, const image<frgb> &fimg);
 	friend bool to_frgb(image<frgb> &fimg, const image<rgb> &img);
 };
 
-bool save(const image<rgb> &img, string path) {
+bool save(const image<rgb> &img, std::string path) {
 	if (img.fail()) return false;
 	return stbi_write_png(&path[0], img.w, img.h, 3, (char*)img.data, img.w * 3);
 }
@@ -264,7 +262,7 @@ bool stroke(const image<frgb> &src, image<frgb> &tgt) {
 			frgb dx = (src[j + 2][i + 2] + src[j + 1][i + 2] * 2.0 + src[j][i + 2]) - (src[j + 2][i] + src[j + 1][i] * 2.0 + src[j][i]);
 			frgb dy = (src[j + 2][i + 2] + src[j + 2][i + 1] * 2.0 + src[j + 2][i]) - (src[j][i + 2] + src[j][i + 1] * 2.0 + src[j][i]);
 			tgt[j][i] = cmax(abs(dx), abs(dy));
-			tgt[j][i] = fcol(0.5 * max(max(tgt[j][i].r, tgt[j][i].b), tgt[j][i].b));
+			tgt[j][i] = fcol(max(max(tgt[j][i].r, tgt[j][i].b), tgt[j][i].b));
 		}
 	}
 	return true;
@@ -289,7 +287,7 @@ bool imgGrad(const image<frgb> &src, image<frgb> &tgt) {
 		}
 	}
 	w -= 2, h -= 2;
-	double T = 16 / 256.0, t = 8 / 256.0;
+	double T = 8 / 256.0, t = 4 / 256.0;  // these may be chosen adaptively
 	image<byte> dth(w - 2, h - 2);
 	for (int j = 1; j < h - 1; j++) {
 		for (int i = 1; i < w - 1; i++) {
@@ -308,7 +306,7 @@ bool imgGrad(const image<frgb> &src, image<frgb> &tgt) {
 	tgt.resize(w, h);
 	for (int j = 0; j < h; j++) {
 		for (int i = 0; i < w; i++) {
-			tgt[j][i] = fcol(dth[j][i] / 2.0);
+			tgt[j][i] = fcol(1.0 - dth[j][i] / 2.0);
 			//double m = grd[j + 1][i + 1].m*3.0; byte k = grd[j + 1][i + 1].d;
 			//tgt[j][i] = fcol(m);
 			//tgt[j][i] = (k == 0 ? fcol(1, 0, 0) : k == 1 ? fcol(1, 1, 0) : k == 2 ? fcol(0, 1, 0) : fcol(0, 0, 1))*m;
@@ -321,28 +319,30 @@ bool imgGrad(const image<frgb> &src, image<frgb> &tgt) {
 
 
 
-// pictures/illustrations/photos/sketches, found on the internet
-string testCase(unsigned n) {
-	string s = "00";
-	s[0] += n / 10, s[1] += n % 10;
-	return "D:\\Coding\\Graphics\\Test Cases\\T" + s + ".jpg";
-}
-string savePath(unsigned n) {
-	string s = "00";
-	s[0] += n / 10, s[1] += n % 10;
-	return "D:\\Coding\\Graphics\\Test Cases\\T" + s + "+.png";
-}
+#include <filesystem>
+
+
+
 
 #define Try(act) \
 	if (!act) { \
-		cout << "Error " << __LINE__ << endl; \
-		return 0; \
+		printf("Error %d\n", __LINE__); \
+		continue; \
 	}
 
-int main() {
-	//for (int T = 0; T < 22; T++) system(&("del /f /s /q \"" + savePath(T) + "\"")[0]); return 0;
-	for (int T = 0; T < 22; T++) {
-		image<rgb> img(testCase(T));
+int main(int argc, char* argv[]) {
+	// load images
+	std::vector<std::string> in_paths, out_paths;
+	for (const auto &entry : std::filesystem::directory_iterator(argv[1])) {
+		std::string path(&entry.path().string()[0]);
+		if (path.find("_edge.png") == -1)
+			in_paths.push_back(path),
+			out_paths.push_back(path + "_edge.png");
+	}
+	for (auto i : out_paths)
+		printf("%s\n", &i[0]);
+	for (int T = 0, TL = out_paths.size(); T < TL; T++) {
+		image<rgb> img(in_paths[T]);
 		image<frgb> src, tgt;
 		Try(to_frgb(src, img));
 #if 0
@@ -357,7 +357,7 @@ int main() {
 		Try(imgGrad(src, tgt));
 #endif
 		Try(to_rgb(img, tgt));
-		string s = savePath(T);
+		std::string s = out_paths[T];
 		Try(save(img, s));
 		printf("%s\n", &s[0]);
 	}
