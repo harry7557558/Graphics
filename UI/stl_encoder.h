@@ -129,6 +129,15 @@ bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
 	fclose(fp);
 	return ok;
 }
+bool writeSTL(const char filename[], triangle data[], unsigned N,
+	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	stl_triangle* T = new stl_triangle[N];
+	if (!T) return false;
+	for (unsigned i = 0; i < N; i++)
+		T[i] = stl_triangle(data[i]);
+	return writeSTL(filename, T, N, header, correct_normal);
+}
+
 
 
 // write colored STL

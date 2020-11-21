@@ -44,11 +44,19 @@ double invsqrt(double x) {
 
 // a sketchy planar vector template
 
+struct ivec2 {
+	int x, y;
+	ivec2() {}
+	ivec2(int a) :x(a), y(a) {}
+	ivec2(int x, int y) :x(x), y(y) {}
+};
+
 struct vec2 {
 	double x, y;
 	explicit vec2() {}
 	explicit vec2(const double &a) :x(a), y(a) {}
 	explicit vec2(const double &x, const double &y) :x(x), y(y) {}
+	explicit vec2(const ivec2 &p) :x(p.x), y(p.y) {}
 	vec2 operator - () const { return vec2(-x, -y); }
 	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
 	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
@@ -147,12 +155,23 @@ mat2 rotationMatrix2d(double a) {
 
 // a more sketchy 3d vector template
 
+struct vec3;
+
+struct ivec3 {
+	int x, y, z;
+	ivec3() {}
+	explicit ivec3(int a) :x(a), y(a), z(a) {}
+	explicit ivec3(int x, int y, int z) : x(x), y(y), z(z) {}
+	explicit ivec3(vec3 p);
+};
+
 struct vec3 {
 	double x, y, z;
 	vec3() {}
 	explicit vec3(double a) :x(a), y(a), z(a) {}
 	explicit vec3(double x, double y, double z) :x(x), y(y), z(z) {}
 	explicit vec3(vec2 p, double z = 0) :x(p.x), y(p.y), z(z) {}
+	explicit vec3(ivec3 p) :x(p.x), y(p.y), z(p.z) {}
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
@@ -170,6 +189,8 @@ struct vec3 {
 	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
 	void operator *= (const vec3 &v) { x *= v.x, y *= v.y, z *= v.z; }
+	vec3 operator / (const vec3 &v) const { return vec3(x / v.x, y / v.y, z / v.z); }
+	void operator /= (const vec3 &v) { x /= v.x, y /= v.y, z /= v.z; }
 	friend vec3 operator * (const double &a, const vec3 &v) { return vec3(a*v.x, a*v.y, a*v.z); }
 	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
 	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
@@ -183,6 +204,9 @@ struct vec3 {
 	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 };
+
+ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
+
 
 class mat3 {
 public:
