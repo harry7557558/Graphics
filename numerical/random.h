@@ -9,6 +9,9 @@
 #ifndef __INC_GEOMETRY_H
 #include "geometry.h"
 #endif
+#ifndef _STDINT
+#include <stdint.h>
+#endif
 
 
 

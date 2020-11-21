@@ -163,8 +163,9 @@ struct vec3 {
 	friend vec3 normalize(vec3 v) { double m = invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); return vec3(v.x*m, v.y*m, v.z*m); }
 	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
-	friend vec3 ncross(vec3 u, vec3 v) { return normalize(cross(u, v)); }
 	friend double det(vec3 a, vec3 b, vec3 c) { return dot(a, cross(b, c)); }
+	friend double ndot(const vec3 &u, const vec3 &v) { return dot(u, v) * invsqrt(u.sqr()*v.sqr()); }
+	friend vec3 ncross(vec3 u, vec3 v) { return normalize(cross(u, v)); }
 
 	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
@@ -175,6 +176,8 @@ struct vec3 {
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
 
 	vec2 xy() { return vec2(x, y); }
+	vec2 xz() { return vec2(x, z); }
+	vec2 yz() { return vec2(y, z); }
 	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
 	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
 	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
