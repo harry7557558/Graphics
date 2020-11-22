@@ -16,7 +16,7 @@
 
 
 // hash function
-unsigned hashu(unsigned x) {
+uint32_t hashu(uint32_t x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3bu;
 	x = ((x >> 16) ^ x) * 0x45d9f3bu;
 	return x = (x >> 16) ^ x;
@@ -86,18 +86,24 @@ mat3 randRotation() { return axis_angle(rand3(), randf(0, 2 * PI)); }  // not ve
 inline uint32_t lcg_next(uint32_t &seed) {
 	return seed = seed * 1664525u + 1013904223u;
 }
-vec2 rand2(uint32_t seed) {
-	double a = seed * (2.*PI / 4294967296.);
+double rand01(uint32_t &seed) {
+	return lcg_next(seed) * (1. / 4294967296.);  // [0,1)
+}
+double rand_11(uint32_t &seed) {
+	return (.5 + (int32_t)lcg_next(seed))*(1. / 2147483648.);  // (-1,1)
+}
+vec2 rand2(uint32_t &seed) {
+	double a = lcg_next(seed) * (2.*PI / 4294967296.);
 	return vec2(cos(a), sin(a));
 }
-vec3 rand3(uint32_t seed1, uint32_t seed2) {
-	double u = seed1 * (2.*PI / 4294967296.);  // 0-2π
-	double v = (.5 + (int32_t)seed2) * (1. / 2147483648.);  // -1-1
+vec3 rand3(uint32_t &seed) {
+	double u = lcg_next(seed) * (2.*PI / 4294967296.);  // 0-2π
+	double v = (.5 + (int32_t)lcg_next(seed)) * (1. / 2147483648.);  // -1-1
 	return vec3(vec2(cos(u), sin(u))*sqrt(1 - v * v), v);
 }
-vec3 rand3_c(uint32_t seed1, uint32_t seed2) {
-	double u = seed1 * (2.*PI / 4294967296.);  // 0-2π
-	double v = seed2 * (1. / 4294967296.);  // 0-1
+vec3 rand3_c(uint32_t &seed) {
+	double u = lcg_next(seed) * (2.*PI / 4294967296.);  // 0-2π
+	double v = lcg_next(seed) * (1. / 4294967296.);  // 0-1
 	return vec3(sqrt(v)*vec2(cos(u), sin(u)), sqrt(1 - v));
 }
 

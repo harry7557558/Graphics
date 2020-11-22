@@ -203,6 +203,8 @@ struct vec3 {
 	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
 	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
+	friend vec3 exp(const vec3 &a) { return vec3(exp(a.x), exp(a.y), exp(a.z)); }
 };
 
 ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
