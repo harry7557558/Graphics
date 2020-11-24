@@ -26,7 +26,7 @@ vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed) {
 		if (min_t > 0.) {
 			vec2 p = ro.xy() + min_t * rd.xy();
 			col = max(abs(p.x) - 0.618, abs(p.y) - 1.) < 0. ? vec3(0.8) : vec3(0.6);
-			//col *= exp(-0.01*p.sqr());
+			col *= exp(-0.01*p.sqr());
 			min_n = vec3(0, 0, 1);
 			intersect_id = 0;
 		}
@@ -77,6 +77,26 @@ vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed) {
 }
 
 
+
+#include <thread>
+void Render_Exec(void(*task)(int, int, int, bool*), int Max) {
+	const int MAX_THREADS = std::thread::hardware_concurrency();
+	bool* fn = new bool[MAX_THREADS];
+	std::thread** T = new std::thread*[MAX_THREADS];
+	for (int i = 0; i < MAX_THREADS; i++) {
+		fn[i] = false;
+		T[i] = new std::thread(task, i, Max, MAX_THREADS, &fn[i]);
+	}
+	int count; do {
+		using namespace std::chrono_literals;
+		std::this_thread::sleep_for(100ms);
+		count = 0;
+		for (int i = 0; i < MAX_THREADS; i++) count += fn[i];
+	} while (count < MAX_THREADS);
+	delete fn; delete T;
+}
+
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include ".libraries/stb_image_write.h"
 
@@ -86,7 +106,7 @@ const vec3 CamP = vec3(10.204190, 5.840131, 3.498755), ScrO = vec3(1.768514, -2.
 #else
 // un-comment line 29
 const int W = 624 * 3, H = 361 * 3;
-const vec3 CamP = vec3(11.145052, 3.204808, 4.084967), ScrO = vec3(1.308189, -2.870256, -0.744334), ScrA = vec3(-1.724459, 5.996986, 0.000000), ScrB = vec3(-0.891918, -0.256475, 3.488668);
+const vec3 CamP = vec3(11.145052, 3.384808, 4.084967), ScrO = vec3(1.308189, -2.690256, -0.744334), ScrA = vec3(-1.724459, 5.996986, 0.000000), ScrB = vec3(-0.891918, -0.256475, 3.488668);
 #endif
 typedef unsigned char byte;
 struct rgba {
@@ -115,8 +135,10 @@ int main(int argc, char* argv[]) {
 	loadObject(argv[3], Iris);  // eye_iris.stl
 
 	// rendering
-	for (int j = 0; j < H; j++) {
-		for (int i = 0; i < W; i++) {
+	Render_Exec([](int beg, int end, int step, bool* sig) {
+		const int WIN_SIZE = W * H;
+		for (int k = beg; k < end; k += step) {
+			int i = k % W, j = k / W;
 			const int N = 256;
 			vec3 col(0.);
 			for (int u = 0; u < N; u++) {
@@ -125,15 +147,15 @@ int main(int argc, char* argv[]) {
 				col += calcCol(CamP, normalize(CamD - CamP), seed);
 			}
 			col /= N;
-			rgba c;
-			c.r = byte(255.99*clamp(col.x, 0., 1.));
-			c.g = byte(255.99*clamp(col.y, 0., 1.));
-			c.b = byte(255.99*clamp(col.z, 0., 1.));
-			c.a = 255;
-			IMG[H - 1 - j][i] = c;
+			IMG[H - 1 - j][i] = rgba{
+				byte(255.99*clamp(col.x, 0., 1.)),
+				byte(255.99*clamp(col.y, 0., 1.)),
+				byte(255.99*clamp(col.z, 0., 1.)),
+				255 };
+			if (beg == 0 && i == 0) printf("%.1lf%%\n", k * 100. / end);  // progress line
 		}
-		printf("%d/%d\n", j + 1, H);  // progress line
-	}
+		if (sig) *sig = true;
+	}, W*H);
 
 	// output
 	stbi_write_png(argv[4], W, H, 4, &IMG[0][0], 4 * W);
