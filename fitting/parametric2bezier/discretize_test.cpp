@@ -120,7 +120,30 @@ vec2 cubicInterpolation_max(double x[4], double y[4]) {
 	}
 	return vec2(NAN);
 }
-
+vec2 cubicInterpolation_max(double p0, double p1, double d0, double d1) {
+	double a = 6.*p0 + 3.*d0 - 6.*p1 + 3.*d1;
+	double b = -6.*p0 - 4.*d0 + 6.*p1 - 2.*d1;
+	double c = d0;
+	double mt = abs(p0) > abs(p1) ? 0. : 1.;
+	double mv = max(abs(p0), abs(p1));
+	if (a*a < 1e-16) {
+		if (b*b < 1e-16) {
+			return vec2(NAN);
+		}
+		double t = -c / b;
+		if (t<1e-6 || t>.999999) return vec2(NAN);
+		return vec2(t, NAN);
+	}
+	double d = b * b - 4.*a*c;
+	if (d < 0.) return vec2(NAN);
+	d = sqrt(d);
+	double t0 = (d - b) / (2.*a), t1 = (-d - b) / (2.*a);
+	if (t0<.000001 || t0>.999999) t0 = NAN;
+	if (t1<.000001 || t1>.999999) t1 = NAN;
+	if (isnan(t0)) std::swap(t0, t1);
+	if (t0 > t1) std::swap(t0, t1);
+	return vec2(t0, t1);
+}
 
 // attempts to make segments with even chord lengths
 // attempts to fit in the error with as few samples as possible (but not wasting any sample)
@@ -294,10 +317,290 @@ std::vector<segment> discretizeParametricCurve(Fun F,
 }
 
 
+
+// use a binary search tree for interpolating parameter samples
+// To-do: avoid worst case runtime (happens with certain functions)
+struct BST_node {
+	double t0, t1;  // starting and ending parameters
+	double t; vec2 p;  // parameter and value
+	BST_node *parent = 0, *c1 = 0, *c2 = 0;  // parent and children
+	int size = 0;  // not actually used
+	double t_min, t_max;  // minimum and maximum t in the tree
+
+	static void initNode(BST_node* &T, double t, vec2 p, double t0, double t1, BST_node* parent = nullptr) {
+		if (!T) T = new BST_node;
+		T->t = t, T->p = p;
+		T->c1 = T->c2 = nullptr;
+		T->t0 = t0, T->t1 = t1;
+		T->parent = parent;
+		T->size = 1;
+		T->t_min = T->t_max = t;
+	}
+	void addNode(double t, vec2 p) {
+		if (this->t == t) return;  // no duplicates!!!
+		size++;
+		double tc = .5*(t0 + t1);  // where to split
+		if (c1 == 0 && c2 == 0) {  // move the value at the current node
+			if (this->t < tc && t < tc)  // all in c1
+				initNode(c1, this->t, this->p, t0, tc, this),
+				c1->addNode(t, p);
+			else if (this->t >= tc && t >= tc)  // all in c2
+				initNode(c2, this->t, this->p, tc, t1, this),
+				c2->addNode(t, p);
+			else if (this->t < tc)  // this in c1 and t in c2
+				initNode(c1, this->t, this->p, t0, tc, this),
+				initNode(c2, t, p, tc, t1, this);
+			else if (t < tc)  // t in c1 and this in c2
+				initNode(c1, t, p, t0, tc, this),
+				initNode(c2, this->t, this->p, tc, t1, this);
+			else throw("bug");
+			this->t = NAN, this->p = vec2(NAN);
+		}
+		if (t < tc) {  // add to c1
+			if (c1) c1->addNode(t, p);
+			else initNode(c1, t, p, t0, tc, this);
+		}
+		else {  // add to c2
+			if (c2) c2->addNode(t, p);
+			else initNode(c2, t, p, tc, t1, this);
+		}
+		t_min = min(t_min, t);
+		t_max = max(t_max, t);
+	}
+
+	const BST_node* getBefore(double t) const {
+		if (t <= t_min) return nullptr;
+		if (!c1 && !c2) return t <= this->t ? nullptr : this;
+		if (!c2 || t <= c2->t_min) return c1->getBefore(t);
+		return c2->getBefore(t);
+	}
+	const BST_node* getAfter(double t) const {
+		if (t >= t_max) return nullptr;
+		if (!c1 && !c2) return t >= this->t ? nullptr : this;
+		if (!c1 || t >= c1->t_max) return c2->getAfter(t);
+		return c1->getAfter(t);
+	}
+
+	static vec2 getInterpolateLinear(const BST_node *N, double t) {
+		const BST_node* n0 = N->getBefore(t);
+		const BST_node* n1 = N->getAfter(t);
+		double t0 = n0 ? n0->t : n1->t;
+		double t1 = n1 ? n1->t : n0->t;
+		vec2 p0 = n0 ? n0->p : n1->p;
+		vec2 p1 = n1 ? n1->p : n0->p;
+		return mix(p0, p1, (t - t0) / (t1 - t0));
+	}
+	static vec2 getInterpolate(const BST_node *N, double t, vec2 *grad = nullptr) {
+		const BST_node* n0 = N->getBefore(t);
+		const BST_node* n1 = N->getAfter(t);
+		double t0 = n0 ? n0->t : n1->t;
+		double t1 = n1 ? n1->t : n0->t;
+		const BST_node* n00 = N->getBefore(t0);
+		const BST_node* n11 = N->getAfter(t1);
+		double t00 = n00 ? n00->t : t0;
+		double t11 = n11 ? n11->t : t1;
+		vec2 p0 = n0 ? n0->p : n1->p;
+		vec2 p1 = n1 ? n1->p : n0->p;
+		vec2 p00 = n00 ? n00->p : p0;
+		vec2 p11 = n11 ? n11->p : p1;
+		if (t0 == t1) {
+			if (t1 != t11) t1 = t11, p1 = p11;
+			if (t0 != t00) t0 = t00, p0 = p00;
+		}
+		vec2 d0 = (p1 - p00) / (t1 - t00) * (t1 - t0);
+		vec2 d1 = (p11 - p0) / (t11 - t0) * (t1 - t0);
+		t = (t - t0) / (t1 - t0);
+		double t2 = t * t, t3 = t2 * t;
+		if (grad) *grad = (6.*t2 - 6.*t)*p0 + (3.*t2 - 4.*t + 1.)*d0 + (-6.*t2 + 6.*t)*p1 + (3.*t2 - 2.*t)*d1;
+		return (2.*t3 - 3.*t2 + 1.)*p0 + (t3 - 2.*t2 + t)*d0 + (-2.*t3 + 3.*t2)*p1 + (t3 - t2)*d1;
+	}
+
+};
+
+
+template<typename Fun>
+std::vector<segment> discretizeParametricCurve_BST(Fun F,
+	double t0, double t1, vec2 P0, vec2 P1,
+	int min_dif, double reqLength, double reqError, int recurse_remain,
+	BST_node *BST = nullptr) {
+
+	std::vector<segment> res;
+	if (recurse_remain < 0) return res;
+
+
+	// user call
+	if (!BST) {
+		// map parameter to [0,1]
+		std::function<vec2(double)> _F = [&](double t) { return F(t); };
+		if (!(t0 == 0 && t1 == 1)) {
+			if (abs(t1 - t0) > 1e4) {  // INF case
+				_F = [&](double t) { return F(tan(t)); };
+				t0 = atan(t0), t1 = atan(t1);
+			}
+			double _t0 = t0, _dt = t1 - t0;
+			_F = [&](double t) { return F(_t0 + _dt * t); };
+			t0 = 0., t1 = 1.;
+		}
+
+		reqLength *= 2.0 * 1.3;  // hmmm...
+		if (!(reqLength > 0. && reqError > 0.)) return res;  // ...
+
+		// take samples
+		double dt = (t1 - t0) / min_dif;
+		param_sample *samples = new param_sample[min_dif + 1];
+		for (int i = 1; i < min_dif; i++) {
+			double t = t0 + (i + 0.01*sin(123.456*i)) * dt;
+			samples[i] = param_sample(t, _F(t));
+		}
+		samples[0] = param_sample(t0, P0);
+		samples[min_dif] = param_sample(t1, P1);
+
+		BST_node::initNode(BST, t0, P0, 0., 1.);
+		for (int i = 1; i <= min_dif; i++)
+			BST->addNode(samples[i].t, samples[i].p);
+
+		//BST_node *BST_REF = new BST_node;
+		//BST_node::initNode(BST_REF, t0, P0, 0., 1.);
+		//for (int i = 1; i <= min_dif; i++)
+		//	BST_REF->addNode(samples[i].t, samples[i].p);
+		//_F = [&](double t) { return BST_REF->getInterpolate(BST_REF, t); };
+
+		// recursive calls
+		for (int i = 0; i < min_dif; i++) {
+			std::vector<segment> app = discretizeParametricCurve_BST(_F,
+				samples[i].t, samples[i + 1].t, samples[i].p, samples[i + 1].p,
+				0, reqLength, reqError, recurse_remain - 1, BST);
+			res.insert(res.end(), app.begin(), app.end());
+		}
+
+		/*
+		After call, check:
+		 * too large turning angles;
+		 * rapid change in chord lengths;
+		 * discontinuities in segments;
+		Perform bisection / golden section search on the dot product of the curve with a chosen vector
+			to minimize the number of incorrect samples.
+		*/
+
+		delete samples;
+		return res;
+	}
+
+	// handle NAN
+	if (isNAV(P0) && isNAV(P1))
+		return res;
+	if (isNAV(P0)) {
+		if (!bisectNAV(F, t0, t1, P0, P1, t0, P0)) return res;
+	}
+	else if (isNAV(P1)) {
+		if (!bisectNAV(F, t1, t0, P1, P0, t1, P1)) return res;
+	}
+
+	// continue subdivision until error is small enough
+	vec2 dP = P1 - P0;
+	double dPL = length(dP);
+	if (dPL == 0.0) return res;
+	if (dPL < reqLength || min_dif == -1) {
+
+		// split at the point(s) that produce the maximum value
+		vec2 n = (P1 - P0).rot();
+		vec2 p0, p1, d0, d1;
+		p0 = BST->getInterpolate(BST, t0, &d0); p0 = P0;
+		p1 = BST->getInterpolate(BST, t1, &d1); p1 = P1;
+		vec2 tcp = cubicInterpolation_max(dot(p0, n), dot(p1, n), dot(d0, n), dot(d1, n));
+		tcp = vec2(t0) + (t1 - t0)*tcp;
+		//tcp = vec2(NAN);
+		if (isnan(tcp.x)) tcp.x = 0.5*(t0 + t1);
+
+		// split into 2
+		if (isnan(tcp.y)) {
+			double tc = tcp.x; vec2 pc = F(tc);
+			BST->addNode(tc, pc);
+			if (distSegment(P0, P1, pc) < reqError) {
+				res.push_back(segment{ P0, pc });
+				res.push_back(segment{ pc, P1 });
+			}
+			else {
+				std::vector<segment> app0 = discretizeParametricCurve_BST(F,
+					t0, tc, P0, pc, 0, reqLength, reqError, recurse_remain - 1, BST);
+				std::vector<segment> app1 = discretizeParametricCurve_BST(F,
+					tc, t1, pc, P1, 0, reqLength, reqError, recurse_remain - 1, BST);
+				res.insert(res.end(), app0.begin(), app0.end());
+				res.insert(res.end(), app1.begin(), app1.end());
+			}
+			return res;
+		}
+
+		// divide into 3
+		else {
+			double tc0 = tcp.x, tc1 = tcp.y;
+			vec2 pc0 = F(tc0), pc1 = F(tc1);
+			BST->addNode(tc0, pc0); BST->addNode(tc1, pc1);
+			if (distSegment(P0, P1, pc0) < reqError && distSegment(P0, P1, pc1) < reqError) {
+				res.push_back(segment{ P0, pc0 });
+				res.push_back(segment{ pc0, pc1 });
+				res.push_back(segment{ pc1, P1 });
+			}
+			else {
+				// P_0, P_1: may have better guesses
+				std::vector<segment> app0 = discretizeParametricCurve_BST(F,
+					t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1, BST);
+				std::vector<segment> appc = discretizeParametricCurve_BST(F,
+					tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1, BST);
+				std::vector<segment> app1 = discretizeParametricCurve_BST(F,
+					tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1, BST);
+				res.insert(res.end(), app0.begin(), app0.end());
+				res.insert(res.end(), appc.begin(), appc.end());
+				res.insert(res.end(), app1.begin(), app1.end());
+			}
+			return res;
+		}
+
+	}
+
+	// divide into 3
+	double Th_low = 1.9, Th_high = 2.9;  // experimental values
+	if (dPL > Th_low*reqLength && dPL < Th_high*reqLength) {
+		double tc0 = t0 + (t1 - t0) / 3.;  // experimental value
+		double tc1 = t1 - (t1 - t0) / 3.;  // experimental value
+
+		vec2 pc0 = F(tc0), pc1 = F(tc1);
+		BST->addNode(tc0, pc0), BST->addNode(tc1, pc1);
+		std::vector<segment> app0 = discretizeParametricCurve_BST(F,
+			t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1, BST);
+		std::vector<segment> appc = discretizeParametricCurve_BST(F,
+			tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1, BST);
+		std::vector<segment> app1 = discretizeParametricCurve_BST(F,
+			tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1, BST);
+		res.insert(res.end(), app0.begin(), app0.end());
+		res.insert(res.end(), appc.begin(), appc.end());
+		res.insert(res.end(), app1.begin(), app1.end());
+	}
+
+	// divide into 2
+	else {
+		double tc = 0.5*(t0 + t1);  // experimental value
+		vec2 pc = F(tc);
+		BST->addNode(tc, pc);
+		double t0c = tc, t1c = tc;
+		vec2 p0c = pc, p1c = pc;
+		std::vector<segment> app0 = discretizeParametricCurve_BST(F,
+			t0, t0c, P0, p0c, 0, reqLength, reqError, recurse_remain - 1, BST);
+		std::vector<segment> app1 = discretizeParametricCurve_BST(F,
+			t1c, t1, p1c, P1, 0, reqLength, reqError, recurse_remain - 1, BST);
+		res.insert(res.end(), app0.begin(), app0.end());
+		res.insert(res.end(), app1.begin(), app1.end());
+	}
+
+	return res;
+}
+
+
+
 int main(int argc, char* argv[]) {
 	initSVG(argv[1]);
 
-	for (int i = 140; i < 141; i++) {
+	for (int i = 0; i < 10; i++) {
 		Parametric_callCount = 0;
 		ParametricCurveL Curve = Cs[i];
 		std::vector<segment> points = discretizeParametricCurve(
@@ -306,7 +609,7 @@ int main(int argc, char* argv[]) {
 			return abs(p.x) < 2.5 && abs(p.y) < 2.5 ? p : vec2(NAN);
 		},
 			Curve.t0, Curve.t1, Curve.p(Curve.t0), Curve.p(Curve.t1),
-			12, 0.1, 0.001, 54);
+			12, 0.05, 0.001, 12);
 
 		writeBlock(points);
 		printf("%d\n", i);
@@ -326,7 +629,7 @@ const int colspan = 1;  // number of blocks in a row
 int blockCount = 0;  // number of blocks writed
 void initSVG(const char* filename) {
 	fp = fopen(filename, "wb");
-	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='%d' height='%d'>\n", width*colspan, 100 * width);
+	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='%d' height='%d'>\n", width*colspan, 180 * width);
 	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d'/></clipPath></defs>\n", 0, 0, width, width);
 	fprintf(fp, "<style>text{font-family:Consolas;font-size:14px;}</style>\n");
 }
