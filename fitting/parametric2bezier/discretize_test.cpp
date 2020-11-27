@@ -12,12 +12,24 @@
 
 struct segment {
 	vec2 p, q;
+	vec2 pq() { return q - p; }
 };
 
+// used by discretizeParametricCurve()
+struct param_sample {
+	double t;
+	vec2 p;
+	param_sample(double t = NAN, vec2 p = vec2(NAN))
+		:t(t), p(p) {}
+};
+struct segment_sample {
+	param_sample p, q;
+	vec2 pq() { return q.p - p.p; }
+};
 
 // visualization functions
 void initSVG(const char* filename);
-void writeBlock(const std::vector<segment> &points);
+void writeBlock(const std::vector<segment_sample> &points);
 void endSVG();
 
 
@@ -54,16 +66,6 @@ double distSegment(vec2 a, vec2 b, vec2 p) {
 	return length(ap - ab * clamp(t, 0., 1.));
 }
 
-// used by discretizeParametricCurve()
-struct param_sample {
-	double t;
-	vec2 p;
-	param_sample(double t = NAN, vec2 p = vec2(NAN))
-		:t(t), p(p) {}
-};
-struct segment_sample {
-	param_sample p, q;
-};
 
 
 
@@ -153,15 +155,23 @@ vec2 cubicInterpolation_max(double p0, double p1, double d0, double d1) {
 // @recurse_remain: pass the maximum number of allowed recursions in user call
 // @P_0, @P_1: neighbourhood samples for better interpolation
 template<typename Fun>
-std::vector<segment> discretizeParametricCurve(Fun F,
+std::vector<segment_sample> discretizeParametricCurve(Fun F,
 	double t0, double t1, vec2 P0, vec2 P1,
 	int min_dif, double reqLength, double reqError, int recurse_remain,
 	param_sample P_0 = param_sample(), param_sample P_1 = param_sample()) {
 
-	std::vector<segment> res;
+	std::vector<segment_sample> res;
 	if (recurse_remain < 0) return res;
 
-	if (min_dif > 0) {  // user call
+	// user call
+	if (min_dif > 0) {
+		// handle the case when t0 or t1 is INF
+		std::function<vec2(double)> _F = [&](double t) { return F(t); };
+		if (abs(t1 - t0) > 1e4) {  // INF case
+			_F = [&](double t) { return F(tan(t)); };
+			t0 = atan(t0), t1 = atan(t1);
+		}
+
 		reqLength *= 2.0 * 1.3;  // hmmm...
 		if (!(reqLength > 0. && reqError > 0.)) return res;  // no messing around
 
@@ -170,14 +180,15 @@ std::vector<segment> discretizeParametricCurve(Fun F,
 		param_sample *samples = new param_sample[min_dif + 1];
 		for (int i = 1; i < min_dif; i++) {
 			double t = t0 + (i + 0.01*sin(123.456*i)) * dt;
-			samples[i] = param_sample(t, F(t));
+			samples[i] = param_sample(t, _F(t));
+			//res.push_back(segment_sample{ param_sample(t, samples[i].p - vec2(0,.1)), param_sample(t, samples[i].p + vec2(0,.1)) });
 		}
 		samples[0] = param_sample(t0, P0);
 		samples[min_dif] = param_sample(t1, P1);
 
 		// recursive calls
 		for (int i = 0; i < min_dif; i++) {
-			std::vector<segment> app = discretizeParametricCurve(F,
+			std::vector<segment_sample> app = discretizeParametricCurve(_F,
 				samples[i].t, samples[i + 1].t, samples[i].p, samples[i + 1].p,
 				0, reqLength, reqError, recurse_remain - 1,
 				i == 0 ? param_sample() : samples[i - 1],
@@ -211,6 +222,11 @@ std::vector<segment> discretizeParametricCurve(Fun F,
 		P_1.t = NAN;
 	}
 
+	// subdivition global variables
+	double tc, tc0, tc1;
+	vec2 pc, pc0, pc1;
+	param_sample s0{ t0, P0 }, s1{ t1, P1 };
+
 	// continue subdivision until error is small enough
 	vec2 dP = P1 - P0;
 	double dPL = length(dP);
@@ -222,101 +238,218 @@ std::vector<segment> discretizeParametricCurve(Fun F,
 		double x[4] = { P_0.t, t0, t1, P_1.t };
 		double y[4] = { dot(n, P_0.p), dot(n, P0), dot(n, P1), dot(n, P_1.p) };
 		vec2 tcp = cubicInterpolation_max(x, y);
-		if (isnan(tcp.x)) tcp.x = 0.5*(t0 + t1);
-
-		// split into 2
-		if (isnan(tcp.y)) {
-			double tc = tcp.x;
-			vec2 pc = F(tc);
-			if (distSegment(P0, P1, pc) < reqError) {
-				res.push_back(segment{ P0, pc });
-				res.push_back(segment{ pc, P1 });
-			}
-			else {
-				// P_0, P_1: may have closer guesses if neighbors are accessible
-				// one idea is to construct a binary indexed tree and keep all existing samples to be accessed, but probably there are better ways?
-				std::vector<segment> app0 = discretizeParametricCurve(F,
-					t0, tc, P0, pc, 0, reqLength, reqError, recurse_remain - 1,
-					P_0, param_sample(t1, P1));
-				std::vector<segment> app1 = discretizeParametricCurve(F,
-					tc, t1, pc, P1, 0, reqLength, reqError, recurse_remain - 1,
-					param_sample(t0, P0), P_1);
-				res.insert(res.end(), app0.begin(), app0.end());
-				res.insert(res.end(), app1.begin(), app1.end());
-			}
-			return res;
+		if (isnan(tcp.x)) {
+			tcp = vec2(0.5*(t0 + t1), NAN);
+			//tcp = (1. / 3.)*(vec2(2., 1.)*t0 + vec2(1., 2.)*t1);
 		}
+		//tcp.y = NAN;
 
-		// divide into 3
-		else {
-			double tc0 = tcp.x, tc1 = tcp.y;
-			vec2 pc0 = F(tc0), pc1 = F(tc1);
+		if (isnan(tcp.y)) {  // divide into 2
+			tc = tcp.x; pc = F(tc);
+			param_sample sc{ tc, pc };
+			if (distSegment(P0, P1, pc) < reqError) {
+				res.push_back(segment_sample{ s0, sc });
+				res.push_back(segment_sample{ sc, s1 });
+				return res;
+			}
+			goto divide2;
+		}
+		else {  // divide into 3
+			tc0 = tcp.x, tc1 = tcp.y;
+			pc0 = F(tc0), pc1 = F(tc1);
+			param_sample sc0{ tc0, pc0 }, sc1{ tc1, pc1 };
 			if (distSegment(P0, P1, pc0) < reqError && distSegment(P0, P1, pc1) < reqError) {
-				res.push_back(segment{ P0, pc0 });
-				res.push_back(segment{ pc0, pc1 });
-				res.push_back(segment{ pc1, P1 });
+				res.push_back(segment_sample{ s0, sc0 });
+				res.push_back(segment_sample{ sc0, sc1 });
+				res.push_back(segment_sample{ sc1, s1 });
+				return res;
 			}
-			else {
-				// P_0, P_1: may have better guesses
-				std::vector<segment> app0 = discretizeParametricCurve(F,
-					t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1,
-					P_0, param_sample(tc1, pc1));
-				std::vector<segment> appc = discretizeParametricCurve(F,
-					tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1,
-					param_sample(t0, P0), param_sample(t1, P1));
-				std::vector<segment> app1 = discretizeParametricCurve(F,
-					tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1,
-					param_sample(tc0, pc0), P_1);
-				res.insert(res.end(), app0.begin(), app0.end());
-				res.insert(res.end(), appc.begin(), appc.end());
-				res.insert(res.end(), app1.begin(), app1.end());
-			}
-			return res;
+			goto divide3;
 		}
 
 	}
 
-	// divide into 3
-	double Th_low = 1.9, Th_high = 2.9;  // experimental values
-	if (dPL > Th_low*reqLength && dPL < Th_high*reqLength) {
-		double tc0 = t0 + (t1 - t0) / 3.;  // experimental value
-		double tc1 = t1 - (t1 - t0) / 3.;  // experimental value
+	// normal split
+	else {
+		double Th_low = 1.9, Th_high = 2.9;  // experimental values
+		if (dPL > Th_low*reqLength && dPL < Th_high*reqLength) {  // divide into 3
+			tc0 = t0 + (t1 - t0) / 3.;  // experimental value
+			tc1 = t1 - (t1 - t0) / 3.;  // experimental value
+			pc0 = F(tc0), pc1 = F(tc1);
+			goto divide3;
+		}
+		else {  // divide into 2
+			tc = 0.5*(t0 + t1);  // experimental value
+			pc = F(tc);
+			goto divide2;
+		}
+	}
 
-		vec2 pc0 = F(tc0), pc1 = F(tc1);
-		std::vector<segment> app0 = discretizeParametricCurve(F,
+	// should never get here
+	throw("bug");
+	return res;
+
+
+divide2:
+	{
+		// split into 2
+		std::vector<segment_sample> app0 = discretizeParametricCurve(F,
+			t0, tc, P0, pc, 0, reqLength, reqError, recurse_remain - 1,
+			P_0, param_sample(t1, P1));
+		std::vector<segment_sample> app1 = discretizeParametricCurve(F,
+			tc, t1, pc, P1, 0, reqLength, reqError, recurse_remain - 1,
+			param_sample(t0, P0), P_1);
+		// try to fix missed samples
+		double l0 = length(pc - P0), l1 = length(P1 - pc);
+		int n0 = app0.size(), n1 = app1.size();
+		if (n0 && n1 && app0.back().q.t == app1.front().p.t) {
+			double m0 = l0 / n0, m1 = l1 / n1;
+			if ((max(n0 / n1, n1 / n0) > 4 && (
+				abs(ndet(app0.back().pq(), -app1.front().pq())) > .2  // apparently doesn't always work
+				|| (n1 == 2 && length(app1[0].pq()) > 4.*length(app0.back().pq()))
+				|| (n0 == 2 && length(app0.back().pq()) > 4.*length(app0[0].pq())))
+				)) {
+				//printf("(%lf,%lf) %d %d\n", pc.x, pc.y, n0, n1);
+				if (n0 <= 2 || n1 <= 2) {
+					std::vector<segment_sample> *app_s = n1 < n0 ? &app1 : &app0;
+					std::vector<segment_sample> app;
+					int nm = min(n0, n1);
+					for (int i = 0; i < nm; i++) {
+						segment_sample ps = (*app_s)[i];
+						std::vector<segment_sample> tmp = discretizeParametricCurve(F,
+							ps.p.t, ps.q.t, ps.p.p, ps.q.p, 0, reqLength, reqError, recurse_remain - 2,
+							(*app_s)[max(i - 1, 0)].q, (*app_s)[min(i + 1, nm - 1)].p
+						);
+						app.insert(app.end(), tmp.begin(), tmp.end());
+					}
+					*app_s = app;
+				}
+			}
+		}
+		// add
+		res.insert(res.end(), app0.begin(), app0.end());
+		res.insert(res.end(), app1.begin(), app1.end());
+		return res;
+	}
+
+divide3:
+	{
+		// split into 3
+		std::vector<segment_sample> app0 = discretizeParametricCurve(F,
 			t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1,
 			P_0, param_sample(tc1, pc1));
-		std::vector<segment> appc = discretizeParametricCurve(F,
+		std::vector<segment_sample> appc = discretizeParametricCurve(F,
 			tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1,
 			param_sample(t0, P0), param_sample(t1, P1));
-		std::vector<segment> app1 = discretizeParametricCurve(F,
+		std::vector<segment_sample> app1 = discretizeParametricCurve(F,
 			tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1,
 			param_sample(tc0, pc0), P_1);
 		res.insert(res.end(), app0.begin(), app0.end());
 		res.insert(res.end(), appc.begin(), appc.end());
 		res.insert(res.end(), app1.begin(), app1.end());
+		return res;
 	}
 
-	// divide into 2
-	else {
-		double tc = 0.5*(t0 + t1);  // experimental value
-		vec2 pc = F(tc);
-		double t0c = tc, t1c = tc;
-		vec2 p0c = pc, p1c = pc;
-		std::vector<segment> app0 = discretizeParametricCurve(F,
-			t0, t0c, P0, p0c, 0, reqLength, reqError, recurse_remain - 1,
-			P_0, param_sample(t1, P1));
-		std::vector<segment> app1 = discretizeParametricCurve(F,
-			t1c, t1, p1c, P1, 0, reqLength, reqError, recurse_remain - 1,
-			param_sample(t0, P0), P_1);
-		res.insert(res.end(), app0.begin(), app0.end());
-		res.insert(res.end(), app1.begin(), app1.end());
-	}
-
-	return res;
 }
 
 
+
+
+
+int main(int argc, char* argv[]) {
+	initSVG(argv[1]);
+
+	for (int i = 0; i < 182; i++) {
+		Parametric_callCount = 0;
+		ParametricCurveL Curve = Cs[i];
+		std::vector<segment_sample> points = discretizeParametricCurve(
+			[&](double t) {
+			vec2 p = Curve.p(t);
+			return abs(p.x) < 2.5 && abs(p.y) < 2.5 ? p : vec2(NAN);
+		},
+			Curve.t0, Curve.t1, Curve.p(Curve.t0), Curve.p(Curve.t1),
+			12, 0.1, 0.001, 12);
+
+		writeBlock(points);
+		printf("%d\n", i);
+	}
+
+	endSVG();
+	return 0;
+}
+
+
+
+// SVG writer
+FILE* fp = 0;
+const double scale = 128.;  // scaling from graph to svg
+const int width = 640;  // width and height of each block
+const int colspan = 2;  // number of blocks in a row
+int blockCount = 0;  // number of blocks writed
+void initSVG(const char* filename) {
+	fp = fopen(filename, "wb");
+	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='%d' height='%d'>\n", width*colspan, 180 * width);
+	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d'/></clipPath></defs>\n", 0, 0, width, width);
+	fprintf(fp, "<style>text{font-family:Consolas;font-size:14px;}</style>\n");
+}
+void writeBlock(const std::vector<segment_sample> &points) {
+	int vn = points.size();
+
+	fprintf(fp, "<g transform='translate(%d,%d)' clip-path='url(#viewbox)'>\n",
+		width*(blockCount%colspan), width*(blockCount / colspan));
+	fprintf(fp, "<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", width, width);
+	fprintf(fp, "<text x='10' y='20'>%d segments, %d samples</text>\n", vn, Parametric_callCount);  // should work
+
+	// calculate arc length average and standard deviation
+	double avrL = 0.;
+	for (int i = 0; i < vn; i++)
+		avrL += length(points[i].q.p - points[i].p.p) / vn;
+	double stdL = 0.;
+	for (int i = 0; i < vn; i++)
+		stdL += pow(length(points[i].q.p - points[i].p.p) - avrL, 2.);
+	stdL = sqrt(stdL / (vn - 1));
+	fprintf(fp, "<text x='10' y='40'>avrL=%lf, stdL=%lf</text>\n", avrL, stdL);
+
+	fprintf(fp, "<g transform='matrix(%lg,0,0,%lg,%lg,%lg)'>\n", scale, -scale, .5*width, .5*width);
+
+
+	// segments (colored)
+	fprintf(fp, "<g style='stroke-width:%lg'>", 1. / scale);
+	for (int i = 0; i < vn; i++) {
+		fprintf(fp, "<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' stroke='%s'/>",
+			points[i].p.p.x, points[i].p.p.y, points[i].q.p.x, points[i].q.p.y, i == 0 ? "green" : i & 1 ? "red" : "blue");
+	}
+	fprintf(fp, "</g>\n");
+
+	// starting points
+	vec2 p0(NAN);
+	for (int i = 0; i < vn; i++) {
+		if (points[i].p.p != p0)
+			fprintf(fp, "<circle cx='%lf' cy='%lf' r='%lf' style='stroke:none;fill:black;opacity:0.3;'/>\n",
+				points[i].p.p.x, points[i].p.p.y, 3.0 / scale);
+		p0 = points[i].q.p;
+	}
+
+	fprintf(fp, "</g></g>");
+	fflush(fp);
+	blockCount++;
+}
+void endSVG() {
+	fprintf(fp, "</svg>");
+	fclose(fp);
+}
+
+
+
+
+
+
+
+
+
+// not-working code
+
+#if 0
 
 // use a binary search tree for interpolating parameter samples
 // To-do: avoid worst case runtime (happens with certain functions)
@@ -595,87 +728,4 @@ std::vector<segment> discretizeParametricCurve_BST(Fun F,
 	return res;
 }
 
-
-
-int main(int argc, char* argv[]) {
-	initSVG(argv[1]);
-
-	for (int i = 0; i < 10; i++) {
-		Parametric_callCount = 0;
-		ParametricCurveL Curve = Cs[i];
-		std::vector<segment> points = discretizeParametricCurve(
-			[&](double t) {
-			vec2 p = Curve.p(t);
-			return abs(p.x) < 2.5 && abs(p.y) < 2.5 ? p : vec2(NAN);
-		},
-			Curve.t0, Curve.t1, Curve.p(Curve.t0), Curve.p(Curve.t1),
-			12, 0.05, 0.001, 12);
-
-		writeBlock(points);
-		printf("%d\n", i);
-	}
-
-	endSVG();
-	return 0;
-}
-
-
-
-// SVG writer
-FILE* fp = 0;
-const double scale = 128.;  // scaling from graph to svg
-const int width = 640;  // width and height of each block
-const int colspan = 1;  // number of blocks in a row
-int blockCount = 0;  // number of blocks writed
-void initSVG(const char* filename) {
-	fp = fopen(filename, "wb");
-	fprintf(fp, "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='%d' height='%d'>\n", width*colspan, 180 * width);
-	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d'/></clipPath></defs>\n", 0, 0, width, width);
-	fprintf(fp, "<style>text{font-family:Consolas;font-size:14px;}</style>\n");
-}
-void writeBlock(const std::vector<segment> &points) {
-	int vn = points.size();
-
-	fprintf(fp, "<g transform='translate(%d,%d)' clip-path='url(#viewbox)'>\n",
-		width*(blockCount%colspan), width*(blockCount / colspan));
-	fprintf(fp, "<rect x='0' y='0' width='%d' height='%d' style='stroke-width:1px;stroke:black;fill:white;'/>\n", width, width);
-	fprintf(fp, "<text x='10' y='20'>%d segments, %d samples</text>\n", vn, Parametric_callCount);  // should work
-
-	// calculate arc length average and standard deviation
-	double avrL = 0.;
-	for (int i = 0; i < vn; i++)
-		avrL += length(points[i].q - points[i].p) / vn;
-	double stdL = 0.;
-	for (int i = 0; i < vn; i++)
-		stdL += pow(length(points[i].q - points[i].p) - avrL, 2.);
-	stdL = sqrt(stdL / (vn - 1));
-	fprintf(fp, "<text x='10' y='40'>avrL=%lf, stdL=%lf</text>\n", avrL, stdL);
-
-	fprintf(fp, "<g transform='matrix(%lg,0,0,%lg,%lg,%lg)'>\n", scale, -scale, .5*width, .5*width);
-
-
-	// segments (colored)
-	fprintf(fp, "<g style='stroke-width:%lg'>", 1. / scale);
-	for (int i = 0; i < vn; i++) {
-		fprintf(fp, "<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' stroke='%s'/>",
-			points[i].p.x, points[i].p.y, points[i].q.x, points[i].q.y, i == 0 ? "green" : i & 1 ? "red" : "blue");
-	}
-	fprintf(fp, "</g>\n");
-
-	// starting points
-	vec2 p0(NAN);
-	for (int i = 0; i < vn; i++) {
-		if (points[i].p != p0)
-			fprintf(fp, "<circle cx='%lf' cy='%lf' r='%lf' style='stroke:none;fill:black;opacity:0.3;'/>\n",
-				points[i].p.x, points[i].p.y, 3.0 / scale);
-		p0 = points[i].q;
-	}
-
-	fprintf(fp, "</g></g>");
-	fflush(fp);
-	blockCount++;
-}
-void endSVG() {
-	fprintf(fp, "</svg>");
-	fclose(fp);
-}
+#endif
