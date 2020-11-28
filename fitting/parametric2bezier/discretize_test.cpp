@@ -40,7 +40,7 @@ inline bool isNAV(vec2 p) {
 }
 
 // P(t0) is NAV and P(t1) is not, find the t closest to t0 such that P(t) is not NAV
-template<typename Fun>
+template<typename Fun/*vec2(double)*/>
 bool bisectNAV(const Fun &P, double t0, double t1, vec2 p0, vec2 p1, double &t, vec2 &p, double eps = 1e-12) {
 	if (!isNAV(p0)) return false;
 	if (isNAV(p1)) return false;
@@ -57,6 +57,37 @@ bool bisectNAV(const Fun &P, double t0, double t1, vec2 p0, vec2 p1, double &t, 
 	}
 	return false;
 }
+
+// bound jump discontinuity, return true if there is a jump and false if the function seems continuous
+// throw exception if it encounters NAN
+template<typename Fun/*vec2(double)*/>
+bool boundJump(const Fun &P, double &t0, double &t1, vec2 &p0, vec2 &p1, double eps = 1e-12, int max_iter = 64) {
+	double dt = t1 - t0;
+	double dif0 = length(p1 - p0) / dt;
+	double dist = dif0 * dt;
+	for (int i = 0; i < max_iter; i++) {
+		double tc = 0.5*(t0 + t1);
+		vec2 pc = P(tc);
+		if (isNAV(pc)) throw(tc);
+		dt *= .5;
+		double dif1 = length(pc - p0) / dt;
+		double dif2 = length(p1 - pc) / dt;
+		if (i > 2 && !(max(dif1, dif2) > 1.2*dif0)) return false;
+		if (dif1 > dif2) t1 = tc, p1 = pc, dif0 = dif1;
+		else t0 = tc, p0 = pc, dif0 = dif2;
+		double new_dist = dif0 * dt;
+		// consider changing the termination condition (p-based) to save samples
+		if (t1 - t0 < eps) {
+			if (new_dist / dist < 0.99) {  // make sure it is not continuous
+				if (!(t1 == t0 || i == max_iter - 1)) continue;
+			}
+			return true;
+		}
+		dist = new_dist;
+	}
+	// this case: continuous with divergent tangent
+	return false;
+};
 
 
 // distance to a line segment
@@ -147,6 +178,8 @@ vec2 cubicInterpolation_max(double p0, double p1, double d0, double d1) {
 	return vec2(t0, t1);
 }
 
+
+
 // attempts to make segments with even chord lengths
 // attempts to fit in the error with as few samples as possible (but not wasting any sample)
 // @min_dif: minimum number of initial subdivisions, must be positive for user call (doesn't needs to be too large)
@@ -154,14 +187,18 @@ vec2 cubicInterpolation_max(double p0, double p1, double d0, double d1) {
 // @reqError: required error, the distance from one point on the curve to the closest line segment will *usually* be less than this number
 // @recurse_remain: pass the maximum number of allowed recursions in user call
 // @P_0, @P_1: neighbourhood samples for better interpolation
-template<typename Fun>
-std::vector<segment_sample> discretizeParametricCurve(Fun F,
+// @sin_left, @sin_right: indicate if there is a previously confirmed jump discontinuity (possible singularity) in the left/right of the interval
+std::vector<segment_sample> discretizeParametricCurve(std::function<vec2(double)> F,
 	double t0, double t1, vec2 P0, vec2 P1,
 	int min_dif, double reqLength, double reqError, int recurse_remain,
-	param_sample P_0 = param_sample(), param_sample P_1 = param_sample()) {
+	param_sample P_0 = param_sample(), param_sample P_1 = param_sample(),
+	bool sin_left = false, bool sin_right = false) {
 
 	std::vector<segment_sample> res;
-	if (recurse_remain < 0) return res;
+	if (recurse_remain < 0) {  // recursion limit exceeded
+		res.push_back(segment_sample{ param_sample(t0,P0), param_sample(t1,P1) });
+		return res;
+	}
 
 	// user call
 	if (min_dif > 0) {
@@ -181,7 +218,7 @@ std::vector<segment_sample> discretizeParametricCurve(Fun F,
 		for (int i = 1; i < min_dif; i++) {
 			double t = t0 + (i + 0.01*sin(123.456*i)) * dt;
 			samples[i] = param_sample(t, _F(t));
-			//res.push_back(segment_sample{ param_sample(t, samples[i].p - vec2(0,.1)), param_sample(t, samples[i].p + vec2(0,.1)) });
+			//res.push_back(segment_sample{ param_sample(t, samples[i].p - vec2(.1,0)), param_sample(t, samples[i].p + vec2(.1,0)) });
 		}
 		samples[0] = param_sample(t0, P0);
 		samples[min_dif] = param_sample(t1, P1);
@@ -225,6 +262,7 @@ std::vector<segment_sample> discretizeParametricCurve(Fun F,
 	// subdivition global variables
 	double tc, tc0, tc1;
 	vec2 pc, pc0, pc1;
+	bool hasJump = false;
 	param_sample s0{ t0, P0 }, s1{ t1, P1 };
 
 	// continue subdivision until error is small enough
@@ -242,15 +280,34 @@ std::vector<segment_sample> discretizeParametricCurve(Fun F,
 			tcp = vec2(0.5*(t0 + t1), NAN);
 			//tcp = (1. / 3.)*(vec2(2., 1.)*t0 + vec2(1., 2.)*t1);
 		}
-		//tcp.y = NAN;
+		// better honestly split in half :(
+		tcp.y = NAN;
+		tcp = vec2(.5*(t0 + t1), NAN);
 
 		if (isnan(tcp.y)) {  // divide into 2
 			tc = tcp.x; pc = F(tc);
-			param_sample sc{ tc, pc };
 			if (distSegment(P0, P1, pc) < reqError) {
+				param_sample sc{ tc, pc };
 				res.push_back(segment_sample{ s0, sc });
 				res.push_back(segment_sample{ sc, s1 });
 				return res;
+			}
+			// check jump discontinuity
+			if (!(sin_left || sin_right)) {
+				double l0 = length(pc - P0) / (tc - t0), l1 = length(pc - P1) / (t1 - tc);
+				if (l0 > 2.*l1 || l1 > 2.*l0) {
+					double u0 = t0, u1 = t1; vec2 v0 = F(u0), v1 = F(u1);
+					try {
+						bool succeed = boundJump(F, u0, u1, v0, v1);
+						tc0 = u0, tc1 = u1, pc0 = v0, pc1 = v1;
+						hasJump = succeed;
+						goto divideJump;
+					}
+					catch (double t) {
+						tc = t, pc = vec2(NAN);
+						goto divide2;
+					}
+				}
 			}
 			goto divide2;
 		}
@@ -271,6 +328,7 @@ std::vector<segment_sample> discretizeParametricCurve(Fun F,
 
 	// normal split
 	else {
+#if 0
 		double Th_low = 1.9, Th_high = 2.9;  // experimental values
 		if (dPL > Th_low*reqLength && dPL < Th_high*reqLength) {  // divide into 3
 			tc0 = t0 + (t1 - t0) / 3.;  // experimental value
@@ -278,9 +336,28 @@ std::vector<segment_sample> discretizeParametricCurve(Fun F,
 			pc0 = F(tc0), pc1 = F(tc1);
 			goto divide3;
 		}
-		else {  // divide into 2
+		else
+#endif
+		{  // divide into 2
 			tc = 0.5*(t0 + t1);  // experimental value
 			pc = F(tc);
+			// check jump discontinuity
+			double l0 = length(pc - P0), l1 = length(pc - P1);
+			if (!(sin_left || sin_right) && min(l0, l1) < reqLength) {
+				if (l0 > 2.*l1 || l1 > 2.*l0) {
+					double u0 = t0, u1 = t1; vec2 v0 = F(u0), v1 = F(u1);
+					try {
+						bool succeed = boundJump(F, u0, u1, v0, v1);
+						tc0 = u0, tc1 = u1, pc0 = v0, pc1 = v1;
+						hasJump = succeed;
+						goto divideJump;
+					}
+					catch (double t) {
+						tc = t, pc = vec2(NAN);
+						goto divide2;
+					}
+				}
+			}
 			goto divide2;
 		}
 	}
@@ -295,10 +372,10 @@ divide2:
 		// split into 2
 		std::vector<segment_sample> app0 = discretizeParametricCurve(F,
 			t0, tc, P0, pc, 0, reqLength, reqError, recurse_remain - 1,
-			P_0, param_sample(t1, P1));
+			P_0, param_sample(t1, P1), sin_left, false);
 		std::vector<segment_sample> app1 = discretizeParametricCurve(F,
 			tc, t1, pc, P1, 0, reqLength, reqError, recurse_remain - 1,
-			param_sample(t0, P0), P_1);
+			param_sample(t0, P0), P_1, false, sin_right);
 		// try to fix missed samples
 		double l0 = length(pc - P0), l1 = length(P1 - pc);
 		int n0 = app0.size(), n1 = app1.size();
@@ -335,17 +412,38 @@ divide2:
 divide3:
 	{
 		// split into 3
-		std::vector<segment_sample> app0 = discretizeParametricCurve(F,
+		std::vector<segment_sample> app0, appc, app1;
+		app0 = discretizeParametricCurve(F,
 			t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1,
-			P_0, param_sample(tc1, pc1));
-		std::vector<segment_sample> appc = discretizeParametricCurve(F,
+			P_0, param_sample(tc1, pc1), sin_left, false);
+		appc = discretizeParametricCurve(F,
 			tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1,
 			param_sample(t0, P0), param_sample(t1, P1));
-		std::vector<segment_sample> app1 = discretizeParametricCurve(F,
+		app1 = discretizeParametricCurve(F,
 			tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1,
-			param_sample(tc0, pc0), P_1);
+			param_sample(tc0, pc0), P_1, false, sin_right);
 		res.insert(res.end(), app0.begin(), app0.end());
 		res.insert(res.end(), appc.begin(), appc.end());
+		res.insert(res.end(), app1.begin(), app1.end());
+		return res;
+	}
+
+divideJump:
+	{
+		// split by at discontinuity
+		std::vector<segment_sample> app0, appc, app1;
+		param_sample sc0{ tc0, pc0 }, sc1{ tc1, pc1 };
+		app0 = discretizeParametricCurve(F,
+			t0, tc0, P0, pc0, 0, reqLength, reqError, recurse_remain - 1,
+			param_sample(), param_sample(), false, true);
+		if (!hasJump && tc1 - tc0 > 1e-6) appc = discretizeParametricCurve(F,
+			tc0, tc1, pc0, pc1, 0, reqLength, reqError, recurse_remain - 1);
+		app1 = discretizeParametricCurve(F,
+			tc1, t1, pc1, P1, 0, reqLength, reqError, recurse_remain - 1,
+			param_sample(), param_sample(), true, false);
+		res.insert(res.end(), app0.begin(), app0.end());
+		if (!appc.empty()) res.insert(res.end(), appc.begin(), appc.end());
+		else if (!hasJump) res.push_back(segment_sample{ sc0, sc1 });
 		res.insert(res.end(), app1.begin(), app1.end());
 		return res;
 	}
@@ -362,13 +460,16 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < 182; i++) {
 		Parametric_callCount = 0;
 		ParametricCurveL Curve = Cs[i];
+		//ParametricCurveL Curve([](double x) { \
+			return vec2(pow(x, .5), pow(x, .5)); \
+		}, 0., 2.);
 		std::vector<segment_sample> points = discretizeParametricCurve(
 			[&](double t) {
 			vec2 p = Curve.p(t);
 			return abs(p.x) < 2.5 && abs(p.y) < 2.5 ? p : vec2(NAN);
 		},
 			Curve.t0, Curve.t1, Curve.p(Curve.t0), Curve.p(Curve.t1),
-			12, 0.1, 0.001, 12);
+			12, 0.05, 0.001, 18);
 
 		writeBlock(points);
 		printf("%d\n", i);
