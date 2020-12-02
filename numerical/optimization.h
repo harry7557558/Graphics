@@ -50,6 +50,74 @@ template<typename Fun> double GoldenSectionSearch_1d(Fun F, double &x0, double &
 	return y0 < t1 ? t0 : t1;
 }
 
+// Brent's method for minimizing functions in 1-dimension
+template<typename Fun> double Brent_minimize_1d(Fun F, double x0, double x1, double epsilon, double *minval = nullptr, int max_iter = 100) {
+	// try to understand the code copied from Numerical Recipes
+	// @x0,@x1: minimum is bracketed between x0 and x1
+	// @x: point with least value so far
+	// @w: point with second least value
+	// @v: previous w
+	// @u: evaluated most recently
+	double x = 0.5*(x0 + x1), fx = F(x);
+	double w = x, v = x, fw = fx, fv = fx, u, fu;
+	double e = 0.;  // distance moved on the step before last
+	double dx;
+	for (int iter = 1; iter <= max_iter; iter++) {
+		double xm = 0.5*(x0 + x1);
+		double tol1 = epsilon * abs(x) + 1e-10;
+		double tol2 = 2.*tol1;
+		if (abs(x - xm) + .5*(x1 - x0) <= tol2) {
+			if (minval) *minval = fx;
+			return x;
+		}
+		if (abs(e) > tol1) {  // try parabolic fit
+			double r = (x - w)*(fx - fv), q = (x - v)*(fx - fw);
+			double p = (x - v)*q - (x - w)*r;
+			q = 2.*(q - r);
+			if (q > 0.) p = -p;
+			q = abs(q);
+			double etemp = e;
+			e = dx;
+			// determine if accept the parabolic fit
+			if (abs(p) >= abs(.5*q*etemp) || p <= q * (x0 - x) || p >= q * (x1 - x)) {
+				dx = 0.3819660112501 * (e = (x > xm ? x0 - x : x1 - x));  // golden section
+			}
+			else {  // accept parabolic fit
+				dx = p / q;
+				u = x + dx;
+				if (u - x0 < tol2 || x1 - u < tol2)
+					dx = xm > x ? tol1 : -tol1;
+			}
+		}
+		else {
+			// golden section
+			dx = 0.3819660112501 * (e = (x >= xm ? x0 - x : x1 - x));
+		}
+		// newly evaluated
+		u = abs(dx) > tol1 ? x + dx : x + (dx > 0. ? tol1 : -tol1);
+		fu = F(u);
+		// update samples
+		if (fu < fx) {
+			if (u >= x) x0 = x; else x1 = x;
+			v = w, w = x, x = u;
+			fv = fw, fw = fx, fx = fu;
+		}
+		else {
+			if (u < x) x0 = u; else x1 = u;
+			if (fu < fw || w == x) {
+				v = w, fv = fw;
+				w = u, fw = fu;
+			}
+			else if (fu <= fv || v == x || v == w) {
+				v = u, fv = fu;
+			}
+		}
+	}
+	// iteration limit exceeded
+	if (minval) *minval = fx;
+	return x;
+}
+
 
 
 
