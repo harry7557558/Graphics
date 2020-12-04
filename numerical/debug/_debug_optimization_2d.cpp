@@ -4,7 +4,7 @@
 
 
 // vec2
-#include "geometry.h"
+#include "numerical/geometry.h"
 
 
 
@@ -55,7 +55,7 @@ bool save(const char* path) { return stbi_write_png(path, W, H, 3, canvas, 3 * W
 
 // optimization header
 #define _DEBUG_OPTIMIZATION
-#include "optimization.h"
+#include "numerical/optimization.h"
 
 
 // test functions for optimization
@@ -194,7 +194,7 @@ void test_image() {
 		// iteration starting points
 		vec2 P0[4] = { vec2(4,3), vec2(3,-5), vec2(-8,0), vec2(-0.5,1) };
 
-		for (int T = 0; T <= 4; T++) {
+		for (int T = 1; T <= 4; T++) {
 			// initialize canvas
 			init();
 			drawContour(F, 1, .5, true);
@@ -203,34 +203,58 @@ void test_image() {
 			drawDot(P0[T - 1], 8, COLOR({ 232,0,0 }));
 			char s[256];
 
+			int text_pos = -24;
+
 			// Newton_Gradient_2d
-			{
+			if (1) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Gradient_2d(F, p);
 				drawDot(p, 8, COLOR({ 64,0,232 }));
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 4), 28, COLOR{ 128,0,128 });
+				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 128,0,128 });
 			}
 
 			// Newton_Iteration_2d
-			{
+			if (0) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Iteration_2d(F, p);
 				drawDot(p, 8, COLOR({ 160,64,0 }));
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 32), 28, COLOR{ 128,128,0 });
+				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 128,128,0 });
 			}
 
 			// Newton_Iteration_2d_
-			{
+			if (1) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Iteration_2d_(F, p);
 				drawDot(p, 8, COLOR({ 160,40,40 }));
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
-				drawString(s, vec2(0, 60), 28, COLOR{ 160,40,40 });
+				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 160,40,40 });
+			}
+
+			// powellConjugateDirection_2d
+			if (1) {
+				vec2 p = P0[T - 1];
+				F_count = 0;
+				p = powellConjugateDirection_2d(F, p);
+				drawDot(p, 8, COLOR({ 200,80,0 }));
+				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
+				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 200,80,0 });
+			}
+
+			// downhillSimplex_2d
+			if (1) {
+				vec2 p = P0[T - 1];
+				vec2 p0[3], *p0s[3] = { &p0[0], &p0[1], &p0[2] };
+				setupInitialSimplex_regular(2, (double*)&p, (double**)&p0s, 1.);
+				F_count = 0;
+				p = downhillSimplex_2d(F, p0);
+				for (int i = 0; i < 3; i++) drawDot(p0[i], 4, COLOR({ 0,120,0 }));
+				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
+				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 0,120,0 });
 			}
 
 			// save the rendered image
@@ -240,6 +264,7 @@ void test_image() {
 			char file[] = "tests\\test00.0.png";
 			file[13] = T + '0', file[10] = Fi / 10 + '0', file[11] = Fi % 10 + '0';
 			save(file);
+			printf("%s\n", file);
 			//exit(0);
 		}
 	}
@@ -247,7 +272,7 @@ void test_image() {
 
 
 // test optimization algorithms with analytical derivative
-#include "random.h"
+#include "numerical/random.h"
 void test_ad() {
 	Fi = 5;
 	freopen("tests\\test.txt", "w", stdout);
@@ -267,7 +292,8 @@ void test_ad() {
 
 
 int main() {
-	test_ad();
+	//test_ad();
+	test_image();
 	return 0;
 }
 
@@ -373,7 +399,7 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 		double d = abs(buffer[j*W + i] / m) - r;  // divide by gradient to estimate the distance to the isoline
 		if ((d = 1. - d) > 0.) {
 			COLOR heatmap[5] = { COLOR{0,0,255},COLOR{75,215,180},COLOR{75,215,0},COLOR{255,215,0},COLOR{255,0,0} };  // colors
-			double z = 10. / (exp(-.5*buffer0[j*W + i]) + 1.) - 5.; z = clamp(z, 0, 3.9999);  // interval mapping
+			double z = 10. / (exp(-.5*buffer0[j*W + i]) + 1.) - 5.; z = clamp(z, 0., 3.9999);  // interval mapping
 			COLOR col = mix(heatmap[int(z)], heatmap[int(z) + 1], z - int(z));  // linear interpolation
 			canvas[j*W + i] = mix(canvas[j*W + i], col, 0.5 * clamp(d, 0., 1.));
 		}
@@ -382,7 +408,7 @@ void drawContour(double F(vec2), double width, double contour = 0, bool log_scal
 	// discontinuities may be stroked
 	// zero-isoline stroke will be double-width when using a logarithmic scale
 }
-#include "_debug_font_rendering.h"
+#include "ui/debug_font_rendering.h"
 void drawCharacter(char c, vec2 p, double sz, COLOR col) {
 	int x0 = max((int)p.x, 0), y0 = max((int)p.y, 0);
 	int x1 = min((int)(p.x + sz), W - 1), y1 = min((int)(p.y + sz), H - 1);

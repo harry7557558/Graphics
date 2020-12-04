@@ -26,8 +26,34 @@
 // These functions receive parameters as references instead of returning a number
 // because they are often used in multivariable optimizations and the function may be expensive to evaluate.
 
-// before calling this function: evaluate y0=F(x0) and y1=F(x1) and make sure y1<y0
-template<typename Fun> void bracketMinimum_1d(Fun F, double &x0, double &x1, double &y0, double &y1) { /* Not Implemented */ }
+// a,b are initial guesses, c is a point between a and b, evaled indicates whether Fa,Fb are already evaluated
+// warn that if the minimum is already between a and b, this routine will increase the interval size
+// not well-tested, possible have bug or infinite loop
+template<typename Fun> void bracketMinimum_golden(Fun f, double &a, double &b, double *c_ = nullptr, double *Fa = nullptr, double *Fb = nullptr, double *Fc = nullptr, bool evaled = false) {
+	const double gold = 1.6180339887498949;
+	double fa = evaled && Fa ? *Fa : f(a);
+	double fb = evaled && Fb ? *Fb : f(b);
+	double c = NAN, fc = NAN;
+	if (fa < fb) {
+		while (1) {
+			c = a, fc = fa;
+			a = b - gold * (b - a), fa = f(a);
+			if (fc <= fa && fc <= fb) break;
+			//if (fa < fc && fc < fb) b = c, fb = fc;
+		}
+	}
+	else {
+		while (1) {
+			c = b, fc = fb;
+			b = a + gold * (b - a), fb = f(b);
+			if (fc <= fa && fc <= fb) break;
+			//if (fa > fc && fc > fb) a = c, fa = fc;
+		}
+	}
+	if (Fa) *Fa = a; if (Fb) *Fb = b;
+	if (c_) *c_ = c; if (Fc) *Fc = fc;
+}
+
 // minimize a 1d function where a minimum is bracketed x0 and x1
 template<typename Fun> double GoldenSectionSearch_1d(Fun F, double &x0, double &x1, double &y0, double &y1, double eps = 1e-12) {
 	const double g1 = 0.6180339887498949, g0 = 1.0 - g1;
@@ -51,14 +77,14 @@ template<typename Fun> double GoldenSectionSearch_1d(Fun F, double &x0, double &
 }
 
 // Brent's method for minimizing functions in 1-dimension
-template<typename Fun> double Brent_minimize_1d(Fun F, double x0, double x1, double epsilon, double *minval = nullptr, int max_iter = 100) {
+template<typename Fun> double Brent_minimize_1d(Fun F, double x0, double xc, double x1, double epsilon, double *minval = nullptr, int max_iter = 100) {
 	// try to understand the code copied from Numerical Recipes
 	// @x0,@x1: minimum is bracketed between x0 and x1
 	// @x: point with least value so far
 	// @w: point with second least value
 	// @v: previous w
 	// @u: evaluated most recently
-	double x = 0.5*(x0 + x1), fx = F(x);
+	double x = xc > x0 && xc < x1 ? xc : 0.5*(x0 + x1), fx = F(x);
 	double w = x, v = x, fw = fx, fv = fx, u, fu;
 	double e = 0.;  // distance moved on the step before last
 	double dx;
@@ -407,6 +433,13 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		if (S[1].val > S[2].val) temp = S[1], S[1] = S[2], S[2] = temp;
 		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
 
+#ifdef _DEBUG_OPTIMIZATION
+		// debug output
+		drawLine(S[0].p, S[1].p, COLOR{ 0,120,0 });
+		drawLine(S[1].p, S[2].p, COLOR{ 0,120,0 });
+		drawLine(S[2].p, S[0].p, COLOR{ 0,120,0 });
+#endif
+
 		// termination condition
 		if (S[0].val < old_minval - accur_eps) {
 			noimporv_count = 0;
@@ -421,6 +454,9 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		vec2 center = (S[0].p + S[1].p) * .5;
 		refl.p = center * 2. - S[2].p;
 		refl.val = fun(refl.p);
+#ifdef _DEBUG_OPTIMIZATION
+		drawDot(refl.p, 2, COLOR{ 0,120,0 });
+#endif
 		if (refl.val >= S[0].val && refl.val < S[1].val) {
 			S[2] = refl;
 			continue;
@@ -431,6 +467,9 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 			sample expd;
 			expd.p = center + (center - S[2].p)*2.;
 			expd.val = fun(expd.p);
+#ifdef _DEBUG_OPTIMIZATION
+			drawDot(expd.p, 2, COLOR{ 0,120,0 });
+#endif
 			if (expd.val < refl.val)
 				S[2] = expd;
 			else
@@ -442,6 +481,9 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		sample ctrct;
 		ctrct.p = center + .5*(S[2].p - center);
 		ctrct.val = fun(ctrct.p);
+#ifdef _DEBUG_OPTIMIZATION
+		drawDot(ctrct.p, 2, COLOR{ 0,120,0 });
+#endif
 		if (ctrct.val < S[2].val) {
 			S[2] = ctrct;
 			continue;
@@ -451,6 +493,10 @@ template<typename Fun> vec2 downhillSimplex_2d(Fun fun, vec2 P0[3],
 		S[1].p = S[0].p + (S[1].p - S[0].p)*.5;
 		S[2].p = S[0].p + (S[2].p - S[0].p)*.5;
 		S[1].val = fun(S[1].p), S[2].val = fun(S[2].p); // may only need 1 evals?
+#ifdef _DEBUG_OPTIMIZATION
+		drawDot(S[1].p, 2, COLOR{ 0,120,0 });
+		drawDot(S[2].p, 2, COLOR{ 0,120,0 });
+#endif
 	}
 
 	return S[0].val < S[1].val && S[0].val < S[2].val ? S[0].p
@@ -605,7 +651,7 @@ void setupInitialSimplex_regular(int K, const double P0[], double* S[], double r
 	// https://en.wikipedia.org/wiki/Simplex#Cartesian_coordinates_for_a_regular_n-dimensional_simplex_in_Rn
 	double k1 = -(sqrt(K + 1) + 1) / pow(K, 1.5);
 	double k0 = k1 + sqrt(1 + 1. / K);
-	double k2 = -1. / sqrt(K);
+	double k2 = 1. / sqrt(K);
 	for (int i = 0; i < K; i++) {
 		for (int j = 0; j < K; j++)
 			S[i + 1][j] = (i == j ? k1 : k0) * r + P0[j];
@@ -613,6 +659,56 @@ void setupInitialSimplex_regular(int K, const double P0[], double* S[], double r
 	for (int i = 0; i < K; i++)  // just make sure it works when S[0]==P0
 		S[0][i] = k2 * r + P0[i];
 }
+
+
+
+
+
+
+/* Powell Conjugate Direction */
+
+template<typename Fun> vec2 powellConjugateDirection_2d(Fun F, vec2 p0, double epsilon = 1e-6, double *val = nullptr, vec2 e0 = vec2(NAN), vec2 e1 = vec2(NAN)) {
+	if (isnan(e0.sqr()) || isnan(e1.sqr())) {
+		e0 = vec2(1, 0), e1 = vec2(0, 1);
+		vec2 eps = pMax(vec2(epsilon), abs(p0));
+		double fp = F(p0), fp10 = F(p0 + vec2(eps.x, 0)), fp01 = F(p0 + vec2(0, eps.y));
+		vec2 grad = vec2(fp10 - fp, fp01 - fp) / (fp * eps);
+		e0 = grad, e1 = e0.rot();
+	}
+	auto line_min = [&](vec2 p, vec2 d) {
+		double t0 = 0., t1 = length(d), tc;
+		d = normalize(d);
+		auto fun = [&](double t) {
+			return F(p + d * t);
+		};
+		bracketMinimum_golden(fun, t0, t1, &tc);
+		//t0 = -10, t1 = 10, tc = 0.;
+		double mv, mt = Brent_minimize_1d(fun, t0, tc, t1, epsilon, &mv);
+		return vec3(p + d * mt, mv);
+	};
+	for (int i = 0; i < 100; i++) {
+		vec3 s1 = line_min(p0, e0); vec2 p1 = s1.xy();
+		vec3 s2 = line_min(p1, e1);	vec2 p2 = s2.xy();
+		vec3 s3 = line_min(p2, e0);	vec2 p3 = s3.xy();
+#ifdef _DEBUG_OPTIMIZATION
+		drawLine(p0, p1, COLOR{ 200,80,0 });
+		drawLine(p1, p2, COLOR{ 200,80,0 });
+		drawLine(p2, p3, COLOR{ 200,80,0 });
+		drawDot(p0, 5, COLOR({ 200,80,0 }));
+#endif
+		if (length(p3 - p0) < epsilon) {
+			if (val) *val = s3.z;
+			return p3;
+		}
+		p0 = p3;
+		if (p0 != p1) e1 = e0, e0 = p0 - p1;
+		else { vec2 e = e0; e0 = e1, e1 = e; }
+		if (i == 0) e1 = e0.rot();
+	}
+	return p0;
+}
+
+
 
 
 
