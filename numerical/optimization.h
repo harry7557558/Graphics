@@ -667,18 +667,21 @@ void setupInitialSimplex_regular(int K, const double P0[], double* S[], double r
 
 /* Powell Conjugate Direction */
 
-template<typename Fun> vec2 powellConjugateDirection_2d(Fun F, vec2 p0, double epsilon = 1e-6, double *val = nullptr, vec2 e0 = vec2(NAN), vec2 e1 = vec2(NAN)) {
+template<typename Fun> vec2 PowellConjugateDirection_2d(Fun F, vec2 p0, double epsilon = 1e-6, double *val = nullptr, vec2 e0 = vec2(NAN), vec2 e1 = vec2(NAN)) {
 	if (isnan(e0.sqr()) || isnan(e1.sqr())) {
 		e0 = vec2(1, 0), e1 = vec2(0, 1);
-		vec2 eps = pMax(vec2(epsilon), abs(p0));
+		vec2 eps = pMax(vec2(epsilon), 1e-4*abs(p0));
 		double fp = F(p0), fp10 = F(p0 + vec2(eps.x, 0)), fp01 = F(p0 + vec2(0, eps.y));
-		vec2 grad = vec2(fp10 - fp, fp01 - fp) / (fp * eps);
-		e0 = grad, e1 = e0.rot();
+		vec2 grad = vec2(fp10 - fp, fp01 - fp) / eps;
+		e0 = grad * (-fp / grad.sqr()), e1 = e0.rot();
 	}
 	auto line_min = [&](vec2 p, vec2 d) {
 		double t0 = 0., t1 = length(d), tc;
 		d = normalize(d);
 		auto fun = [&](double t) {
+#ifdef _DEBUG_OPTIMIZATION
+			drawDot(p + d * t, 2, COLOR{ 200,80,0 });
+#endif
 			return F(p + d * t);
 		};
 		bracketMinimum_golden(fun, t0, t1, &tc);
@@ -695,15 +698,15 @@ template<typename Fun> vec2 powellConjugateDirection_2d(Fun F, vec2 p0, double e
 		drawLine(p1, p2, COLOR{ 200,80,0 });
 		drawLine(p2, p3, COLOR{ 200,80,0 });
 		drawDot(p0, 5, COLOR({ 200,80,0 }));
+		printf("%lf\n", length(p3 - p0));  // quadratic convergence but each step is too expensive compare to MNS
 #endif
 		if (length(p3 - p0) < epsilon) {
 			if (val) *val = s3.z;
 			return p3;
 		}
-		p0 = p3;
-		if (p0 != p1) e1 = e0, e0 = p0 - p1;
+		if (p3 != p1) e1 = e0, e0 = p3 - p1, e1 = i == 0 ? e0.rot() : p2 - p0;
 		else { vec2 e = e0; e0 = e1, e1 = e; }
-		if (i == 0) e1 = e0.rot();
+		p0 = p3;
 	}
 	return p0;
 }

@@ -243,8 +243,9 @@ Generate_NIntegrate_GL(48) Generate_NIntegrate_GL(64) Generate_NIntegrate_GL(80)
 
 
 
-// Adaptive Simpson method, expected to work for continuous functions
-double _NIntegrate_Simpson_adaptive_recurse(double a, double b, double c, double fa, double fb, double fc, double eps, double s) {
+// Adaptive Simpson method, expected to work for continuous scalar-valued functions
+template<typename Fun>
+double _NIntegrate_Simpson_adaptive_recurse(const Fun &f, double a, double b, double c, double fa, double fb, double fc, double eps, double s) {
 	double ac = (a + c)*.5, fac = f(ac);
 	double cb = (b + c)*.5, fcb = f(cb);
 	double S1 = (fa + fc + 4.*fac)*(c - a)*(1. / 6.);
@@ -252,13 +253,14 @@ double _NIntegrate_Simpson_adaptive_recurse(double a, double b, double c, double
 	double SS = S1 + S2;
 	if (abs(SS - s) <= 15. * eps || b - a < 1e-12)  // may be inaccurate due to coincidence
 		return SS + (SS - s) * (1. / 15.);
-	return _NIntegrate_Simpson_adaptive_recurse(a, c, ac, fa, fc, fac, .5*eps, S1)
-		+ _NIntegrate_Simpson_adaptive_recurse(c, b, cb, fc, fb, fcb, .5*eps, S2);
+	return _NIntegrate_Simpson_adaptive_recurse(f, a, c, ac, fa, fc, fac, .5*eps, S1)
+		+ _NIntegrate_Simpson_adaptive_recurse(f, c, b, cb, fc, fb, fcb, .5*eps, S2);
 }
-double NIntegrate_Simpson_adaptive(double a, double b, double epsilon) {
+template<typename Fun>
+double NIntegrate_Simpson_adaptive(const Fun &f, double a, double b, double epsilon) {
 	double c = (a + b) *.5;
 	double fa = f(a), fb = f(b), fc = f(c);
-	return _NIntegrate_Simpson_adaptive_recurse(a, b, c, fa, fb, fc, epsilon,
+	return _NIntegrate_Simpson_adaptive_recurse(f, a, b, c, fa, fb, fc, epsilon,
 		(fa + fb + 4.*fc)*(b - a)*(1. / 6.));
 }
 

@@ -206,7 +206,7 @@ void test_image() {
 			int text_pos = -24;
 
 			// Newton_Gradient_2d
-			if (1) {
+			if (0) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Gradient_2d(F, p);
@@ -226,7 +226,7 @@ void test_image() {
 			}
 
 			// Newton_Iteration_2d_
-			if (1) {
+			if (0) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
 				p = Newton_Iteration_2d_(F, p);
@@ -235,11 +235,11 @@ void test_image() {
 				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 160,40,40 });
 			}
 
-			// powellConjugateDirection_2d
+			// PowellConjugateDirection_2d
 			if (1) {
 				vec2 p = P0[T - 1];
 				F_count = 0;
-				p = powellConjugateDirection_2d(F, p);
+				p = PowellConjugateDirection_2d(F, p);
 				drawDot(p, 8, COLOR({ 200,80,0 }));
 				sprintf(s, "%d: (%.4lf,%.4lf,%.4lf)", F_count - 1, p.x, p.y, F(p));
 				drawString(s, vec2(0, text_pos += 28), 28, COLOR{ 200,80,0 });
