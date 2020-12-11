@@ -109,11 +109,12 @@ void drawDot(vec2 c, double r, COLORREF col);
 
 struct obj_mass {
 	double inv_m;  // reciprocal of mass, can be 0
+	double vd;  // air resistance coefficient, f=-vd*v
 	vec2 p;  // position
 	vec2 v;  // velocity
 	vec2 F;  // net force acting on it
 	obj_mass() {}
-	obj_mass(vec2 p, double m = 1., vec2 v = vec2(0.)) :p(p), inv_m(1. / m), v(v) {}
+	obj_mass(vec2 p, double m = 1., double vd = 0., vec2 v = vec2(0.)) :p(p), inv_m(1. / m), vd(vd), v(v) {}
 };
 struct obj_spring {
 	double l0;  // rest length
@@ -127,6 +128,7 @@ struct object {
 	std::vector<obj_mass> masses;
 	std::vector<obj_spring> springs;
 	double time = 0.;
+	int drag_id = -1;  // the index of the mass that is being dragged by the user
 
 	// conversion between state and float vector for communicating with the solver
 	int vector_N() const {
@@ -145,6 +147,10 @@ struct object {
 			s[0] = masses[i].v;
 			s[1] = masses[i].F * masses[i].inv_m;
 		}
+		if (drag_id != -1) {
+			vec2* s = (vec2*)&v[4 * drag_id];
+			s[0] = s[1] = vec2(0);
+		}
 	}
 	void fromVector(const double v[]) {
 		for (int i = 0, mn = masses.size(); i < mn; i++) {
@@ -157,6 +163,22 @@ struct object {
 
 	// force calculation
 	void calcForce();
+
+	// recalculate drag_id
+	bool update_drag_id(vec2 p, double epsilon) {
+		if (!(epsilon >= 0.)) {
+			drag_id = -1;
+			return false;
+		}
+		drag_id = -1;
+		double md2 = epsilon * epsilon;
+		for (int i = 0, mn = masses.size(); i < mn; i++) {
+			if (masses[i].inv_m == 0) continue;
+			double d2 = (p - masses[i].p).sqr();
+			if (d2 < md2) md2 = d2, drag_id = i;
+		}
+		return drag_id != -1;
+	}
 };
 
 
@@ -174,7 +196,7 @@ void object::calcForce() {
 	}
 	// viscous drag
 	for (int i = 0; i < mn; i++) {
-		masses[i].F += -0.1 * masses[i].v;
+		masses[i].F += -masses[i].vd * masses[i].v;
 	}
 	// ground contact
 	for (int i = 0; i < mn; i++) {
@@ -192,14 +214,16 @@ void object::calcForce() {
 		vec2 f = fm * edp;
 		m1->F += f, m2->F -= f;
 	}
+	// dragging
+	if (drag_id != -1) masses[drag_id].F = vec2(0.);
 }
 
 
-void updateScene(double dt) {
+void updateScene(double dt, vec2 cursor) {
 	// split large steps
 	if (dt > 0.001) {
 		int N = (int)(dt / 0.001 + 1);
-		for (int i = 0; i < N; i++) updateScene(dt / N);
+		for (int i = 0; i < N; i++) updateScene(dt / N, cursor);
 		return;
 	}
 	// Runge Kutta ODE solver
@@ -220,7 +244,9 @@ void updateScene(double dt) {
 	delete x; delete temp0; delete temp1; delete temp2;
 
 	// dragging + collision detection (to be implemented)
-	;
+	if (Scene.drag_id != -1) {
+		Scene.masses[Scene.drag_id].p = cursor;
+	}
 }
 
 
@@ -323,8 +349,7 @@ class presetScenes {
 public:
 	static void box_X() {
 		object s;
-		s.masses.assign({ om(vec2(0,1)), om(vec2(1,1)), om(vec2(1,2)), om(vec2(0,2)) });
-		s.masses[0].inv_m = 0.8;
+		s.masses.assign({ om(vec2(0,1),.8,.1), om(vec2(1,1),1.,.1), om(vec2(1,2),1.,.1), om(vec2(0,2),1.,.1) });
 		const double rt2 = sqrt(2.) - 0.1;
 		s.springs.assign({ os(0,1,1.0), os(1,2,1.0), os(2,3,1.0), os(3,0,1.0), os(0,2,rt2), os(1,3,rt2) });
 		for (int i = 0, sn = s.springs.size(); i < sn; i++) {
@@ -339,7 +364,7 @@ public:
 		for (int y = 0; y <= yD; y++) for (int x = 0; x <= xD; x++) {
 			//double m = 1.0 / ((xD + 1)*(yD + 1));
 			double m = 1.0;
-			s.masses.push_back(om(vec2(x, y), m));
+			s.masses.push_back(om(vec2(x, y), m, .1));
 		}
 		// positions
 		for (int i = 0, mn = s.masses.size(); i < mn; i++) {
@@ -366,9 +391,9 @@ public:
 		object s;
 		// masses
 		for (int i = 0; i < N; i++)
-			s.masses.push_back(om(r1*cossin(i*2.*PI / N), 1. + 0.1*sin(1234.56*i + 78.9)));
+			s.masses.push_back(om(r1*cossin(i*2.*PI / N), 1. + 0.1*sin(1234.56*i + 78.9), .1));
 		for (int i = 0; i < N; i++)
-			s.masses.push_back(om(r2*cossin(i*2.*PI / N), 1. + 0.1*sin(3456.78*i + 90.1)));
+			s.masses.push_back(om(r2*cossin(i*2.*PI / N), 1. + 0.1*sin(3456.78*i + 90.1), .1));
 		for (int i = 0, mn = s.masses.size(); i < mn; i++)
 			s.masses[i].p += vec2(0, 2);
 		// springs
@@ -394,7 +419,7 @@ public:
 		// masses
 		for (int y = 0; y <= yD; y++) for (int x = 0; x <= xD; x++) {
 			double m = 10.0 / ((xD + 1)*(yD + 1));
-			s.masses.push_back(om(vec2(x, y)*vec2(lx / xD, ly / yD) - vec2(0.5*lx, ly) + vec2(0, 2.5), m));
+			s.masses.push_back(om(vec2(x, y)*vec2(lx / xD, ly / yD) - vec2(0.5*lx, ly) + vec2(0, 2.5), m, .1));
 		}
 		// hang
 		s.masses[yD*(xD + 1)].inv_m = 0;
@@ -452,9 +477,10 @@ void WindowCreate(int _W, int _H) {
 			double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			double time_next = ceil(time / frame_delay)*frame_delay;
 			double dt = time_next - Scene.time;
-			updateScene(dt);
+			updateScene(dt, fromInt(Cursor));
 			double t_remain = time_next - std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
-			if (t_remain > 0.) std::this_thread::sleep_for(std::chrono::milliseconds(int(1000.*t_remain)));
+			//if (t_remain > 0.) std::this_thread::sleep_for(std::chrono::milliseconds(int(1000.*t_remain)));
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
 	});
 
@@ -510,6 +536,7 @@ void MouseDownL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	mouse_down = true;
 	vec2 p = fromInt(Cursor);
+	Scene.update_drag_id(p, 10. / Unit);
 	Render_Needed = true;
 }
 
@@ -517,6 +544,7 @@ void MouseUpL(int _X, int _Y) {
 	Cursor = vec2(_X, _Y);
 	mouse_down = false;
 	vec2 p = fromInt(Cursor);
+	Scene.update_drag_id(vec2(NAN), -1);
 }
 
 void MouseDownR(int _X, int _Y) {
