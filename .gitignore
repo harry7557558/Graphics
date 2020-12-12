@@ -1,7 +1,6 @@
 *.exe
 *.pyc
 *.pyw
-*.zip
 
 *.stl
 *.ply

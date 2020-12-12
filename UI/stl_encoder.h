@@ -113,7 +113,7 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 }
 
 bool writeSTL(FILE* fp, triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	const char header[80] = nullptr, const char* correct_normal = "bac") {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
@@ -130,7 +130,7 @@ bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
 	return ok;
 }
 bool writeSTL(const char filename[], triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	const char header[80] = nullptr, const char* correct_normal = "bac") {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
