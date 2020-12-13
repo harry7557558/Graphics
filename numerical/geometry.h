@@ -259,6 +259,30 @@ mat3 axis_angle(vec3 n, double a) {
 		n.z*n.x*(1 - ct) - n.y*st, n.z*n.y*(1 - ct) + n.x*st, ct + n.z*n.z*(1 - ct)
 	);
 }
+mat3 rotationMatrix_x(double a) {
+	double ca = cos(a), sa = sin(a);
+	return mat3(
+		1, 0, 0,
+		0, ca, -sa,
+		0, sa, ca
+	);
+}
+mat3 rotationMatrix_y(double a) {
+	double ca = cos(a), sa = sin(a);
+	return mat3(
+		ca, 0, sa,
+		0, 1, 0,
+		-sa, 0, ca
+	);
+}
+mat3 rotationMatrix_z(double a) {
+	double ca = cos(a), sa = sin(a);
+	return mat3(
+		ca, -sa, 0,
+		sa, ca, 0,
+		0, 0, 1
+	);
+}
 
 
 
