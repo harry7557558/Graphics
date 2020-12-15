@@ -143,6 +143,10 @@ namespace ParametricSurfaceTemplates {
 	};
 
 
+	template<typename vec> vec cubicBezierCurve(vec A, vec B, vec C, vec D, double t) {
+		return (((-A + 3.*B - 3.*C + D)*t + (3.*A - 6.*B + 3.*C))*t + (3.*B - 3.*A))*t + A;
+	}
+
 }
 
 
@@ -274,12 +278,38 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 	/*[22]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 1.0 + 0.8*sin(5.*v)*sin(u);
 		return vec3(cossin(v)*(R + r * cos(u)), sin(u));
-	}, 0., 2.*PI, 0, 2.*PI, 40, 80, true, "deformed torus 1"),
+	}, 0., 2.*PI, 0, 2.*PI, 60, 120, true, "deformed torus 1"),
 
 	/*[23]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8*exp(sin(5.*v)) - 0.2;
 		return vec3(cossin(v)*(R + r * cos(u)), .5*r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 60, 200, true, "deformed torus 2"),
+
+	/*[28]*/ ParametricSurfaceL([](double u, double v) {
+		double R = 2.0, r = 0.8 - .1*pow(.5 - .5*min(sin(12.*v), sin(10.*u)), 10.);
+		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
+	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (tire)"),
+
+	/*[29]*/ ParametricSurfaceL([](double u, double v) {
+		double R = 2.0, r = 0.8 + .1*pow(abs(min(sin(10.*u), sin(10.*v))), 10.);
+		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
+	}, 0., 2.*PI, 0, 2.*PI, 300, 480, true, "textured torus (cells)"),
+
+	/*[30]*/ ParametricSurfaceL([](double u, double v) {
+		double texture = 0.1*pow(1.0 - pow((sin(5.*u) - .5*sin(16.*v)) / 1.5, 2.), 20.);
+		double R = 2.0, r = 0.8 + texture;
+		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
+	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (wavy)"),
+
+	/*[31]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 p = vec2(20.*u, 66.*v / sqrt(3.)) / (2.*PI);
+		p = vec2(fmod(p.x, 3.), fmod(.5*p.x + sqrt(3)*.5*p.y, 3.));
+		if (p.y > p.x) p = p.yx();
+		if (p.x + p.y > 3.) p = vec2(3.) - p.yx();
+		double texture = p.y > 1. ? p.x - p.y : p.x > 2. ? abs(p.x - p.y - 2.) : p.y > p.x - 1. ? abs(p.x - 1.) : p.y;
+		double R = 2.0, r = 0.8 + 0.1*pow(1.0 - texture * texture, 20.);
+		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
+	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (hexa)"),
 
 	/*[24]*/ ParametricSurfaceL([](double u, double v) {
 		double R = hypot(2.5*cos(v) - 0.1*cos(3.*v), 2.5*sin(v) + 0.1*sin(3.*v));
@@ -308,31 +338,28 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		return p * vec3(1, 1, 0.04*(p.x*p.x + p.y*p.y) + 0.8);
 	}, 0., 2.*PI, 0, 2.*PI, 40, 400, true, "toric cercis"),
 
-	/*[28]*/ ParametricSurfaceL([](double u, double v) {
-		double R = 2.0, r = 0.8 - .1*pow(.5 - .5*min(sin(12.*v), sin(10.*u)), 10.);
-		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
-	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (tire)"),
+	/*[32]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = ParametricSurfaceTemplates::cubicBezierCurve(vec2(0, -1), vec2(1.2, -1), vec2(0.6, 1), vec2(0, 1), u);
+		return vec3(cossin(v)*c.x, c.y);
+	}, 0., 1., 0, 2.*PI, 40, 80, true, "egg"),
 
-	/*[29]*/ ParametricSurfaceL([](double u, double v) {
-		double R = 2.0, r = 0.8 + .1*pow(abs(min(sin(10.*u), sin(10.*v))), 10.);
-		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
-	}, 0., 2.*PI, 0, 2.*PI, 300, 480, true, "textured torus (cells)"),
+	/*[33]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = ParametricSurfaceTemplates::cubicBezierCurve(vec2(0, -1), vec2(1, -1), vec2(0.6, 0.3), vec2(0, 1), u);
+		vec3 p = vec3(cossin(v)*c.x, c.y);
+		return p - vec3(0, 0.1*p.z*p.z, 0);
+	}, 0., 1., 0, 2.*PI, 40, 80, true, "droplet"),
 
-	/*[30]*/ ParametricSurfaceL([](double u, double v) {
-		double texture = 0.1*pow(1.0 - pow((sin(5.*u) - .5*sin(16.*v)) / 1.5, 2.), 20.);
-		double R = 2.0, r = 0.8 + texture;
-		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
-	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (wavy)"),
+	/*[34]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = vec2(0.7*sin(u) + 0.25*sin(2.*u) + 0.3*sin(3.*u), -2.*cos(u) - 0.3*cos(2.*u) - 0.3*cos(3.*u));
+		return vec3(cossin(v)*c.x, c.y);
+	}, 0., PI, 0, 2.*PI, 60, 60, true, "bowling"),
 
-	/*[31]*/ ParametricSurfaceL([](double u, double v) {
-		vec2 p = vec2(20.*u, 66.*v / sqrt(3.)) / (2.*PI);
-		p = vec2(fmod(p.x, 3.), fmod(.5*p.x + sqrt(3)*.5*p.y, 3.));
-		if (p.y > p.x) p = p.yx();
-		if (p.x + p.y > 3.) p = vec2(3.) - p.yx();
-		double texture = p.y > 1. ? p.x - p.y : p.x > 2. ? abs(p.x - p.y - 2.) : p.y > p.x - 1. ? abs(p.x - 1.) : p.y;
-		double R = 2.0, r = 0.8 + 0.1*pow(1.0 - texture * texture, 20.);
-		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
-	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (hexa)"),
+	/*[35]*/ ParametricSurfaceL([](double u, double v) {
+		u *= 1.45; vec3 s1 = vec3(cossin(v)*(0.7*sin(u) + 0.25*sin(2.*u) + 0.3*sin(3.*u)), (-1.*cos(u) - 0.2*cos(2.*u) - 0.2*cos(3.*u)));
+		u /= 1.45; vec3 s2 = vec3(cossin(v)*(0.075*sin(u) + 0.015*sin(3.*u)), (-1.6*cos(u) + 0.2*cos(3.*u))) + vec3(0, .04*cos(2.*u), 0);
+		return mix(s1, s2, .5 - .5*tanh(40.*(.5 + cos(u))));
+	}, 0., PI, 0, 2.*PI, 200, 60, true, "gourd"),
+
 });
 
 

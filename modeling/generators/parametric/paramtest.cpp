@@ -24,14 +24,15 @@ int main(int argc, char* argv[]) {
 		int TN = temp.size();
 		translateToCOM_shell(&temp[0], TN);
 		scaleGyrationRadiusTo_shell(&temp[0], TN, 0.2);
-		translateShape(&temp[0], TN, vec3(i / 4, i % 4, 0.));
+		translateShape(&temp[0], TN, vec3(i / 8, i % 8, 0.));
 		comps.insert(comps.end(), temp.begin(), temp.end());
 	}
 #else
-	ParamSurfaces[30].param2trigs(comps);
+	ParamSurfaces[35].param2trigs(comps);
 #endif
 
-	writeSTL(fp, &comps[0], comps.size(), nullptr, "bac");
+	//writeSTL(fp, &comps[0], comps.size(), nullptr, "bac");
+	writeSTL_recolor_normal(fp, &comps[0], comps.size(), nullptr, [](vec3 n) { return 0.5*n + vec3(.5); });
 	fclose(fp);
 	return 0;
 }

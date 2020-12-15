@@ -118,7 +118,8 @@ bool writeSTL(FILE* fp, triangle data[], unsigned N,
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
 		T[i] = stl_triangle(data[i]);
-	return writeSTL(fp, T, N, header, correct_normal);
+	bool res = writeSTL(fp, T, N, header, correct_normal);
+	delete T; return res;
 }
 
 bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
@@ -135,7 +136,8 @@ bool writeSTL(const char filename[], triangle data[], unsigned N,
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
 		T[i] = stl_triangle(data[i]);
-	return writeSTL(filename, T, N, header, correct_normal);
+	bool res = writeSTL(filename, T, N, header, correct_normal);
+	delete T; return res;
 }
 
 
@@ -150,7 +152,8 @@ bool writeSTL_recolor(FILE* fp, trig data[], unsigned N,
 	for (unsigned i = 0; i < N; i++) {
 		T[i] = stl_triangle(data[i], ColorF((1. / 3.)*(data[i].A + data[i].B + data[i].C)));
 	}
-	return writeSTL(fp, T, N, header, correct_normal);
+	bool res = writeSTL(fp, T, N, header, correct_normal);
+	delete T; return res;
 }
 // convert triangle arrays
 template<typename ColorFunction>  // vec3 ColorFunction(vec3 position)
@@ -167,6 +170,17 @@ void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangl
 	for (unsigned i = 0; i < N; i++) {
 		res.push_back(stl_triangle(src[i], ColorF(ncross(src[i].B - src[i].A, src[i].C - src[i].A))));
 	}
+}
+template<typename ColorFunction>
+bool writeSTL_recolor_normal(FILE* fp, const triangle data[], unsigned N,
+	const char header[80], ColorFunction ColorF = [](vec3 n) { return 0.5*n + vec3(.5); }) {
+	stl_triangle* T = new stl_triangle[N];
+	if (!T) return false;
+	for (unsigned i = 0; i < N; i++) {
+		T[i] = stl_triangle(data[i], ColorF(ncross(data[i].B - data[i].A, data[i].C - data[i].A)));
+	}
+	bool res = writeSTL(fp, T, N, header, "bac");
+	delete T; return res;
 }
 
 
