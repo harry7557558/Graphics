@@ -18,10 +18,10 @@ double fun(vec3 p) {
 	//return exp(10 * (4 * p.xy().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.xz().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.yz().sqr() - pow(p.sqr() + 0.96, 2))) - 1.;
 	//return pow(pow(p.x, 6) + pow(p.y, 6) + pow(p.z, 6) + 3.5, 2) - 16 * (pow(p.x, 6) + pow(p.y, 6));
 	//return exp(1 - (p.x - 1)*(p.x - 1) - p.y*p.y - p.z*p.z) + exp(1 - (p.x + 1)*(p.x + 1) - p.y*p.y - p.z*p.z) - 1;
-	//return exp(4 * (1.2 - (p.x - 1)*(p.x - 1) - (p.y - 1)*(p.y - 1) - (p.z - 1)*(p.z - 1))) + exp(4 * (1.2 - (p.x + 1)*(p.x + 1) - (p.y - 1)*(p.y - 1) - (p.z - 1)*(p.z - 1))) \
-		+ exp(4 * (1.2 - (p.x - 1)*(p.x - 1) - (p.y + 1)*(p.y + 1) - (p.z - 1)*(p.z - 1))) + exp(4 * (1.2 - (p.x + 1)*(p.x + 1) - (p.y + 1)*(p.y + 1) - (p.z - 1)*(p.z - 1))) \
-		+ exp(4 * (1.2 - (p.x - 1)*(p.x - 1) - (p.y - 1)*(p.y - 1) - (p.z + 1)*(p.z + 1))) + exp(4 * (1.2 - (p.x + 1)*(p.x + 1) - (p.y - 1)*(p.y - 1) - (p.z + 1)*(p.z + 1))) \
-		+ exp(4 * (1.2 - (p.x - 1)*(p.x - 1) - (p.y + 1)*(p.y + 1) - (p.z + 1)*(p.z + 1))) + exp(4 * (1.2 - (p.x + 1)*(p.x + 1) - (p.y + 1)*(p.y + 1) - (p.z + 1)*(p.z + 1))) - 1;
+	//return exp(4 * (1. - (p.x - 1)*(p.x - 1) - (p.y - 1)*(p.y - 1) - (p.z - 1)*(p.z - 1))) + exp(4 * (1. - (p.x + 1)*(p.x + 1) - (p.y - 1)*(p.y - 1) - (p.z - 1)*(p.z - 1))) \
+		+ exp(4 * (1. - (p.x - 1)*(p.x - 1) - (p.y + 1)*(p.y + 1) - (p.z - 1)*(p.z - 1))) + exp(4 * (1. - (p.x + 1)*(p.x + 1) - (p.y + 1)*(p.y + 1) - (p.z - 1)*(p.z - 1))) \
+		+ exp(4 * (1. - (p.x - 1)*(p.x - 1) - (p.y - 1)*(p.y - 1) - (p.z + 1)*(p.z + 1))) + exp(4 * (1. - (p.x + 1)*(p.x + 1) - (p.y - 1)*(p.y - 1) - (p.z + 1)*(p.z + 1))) \
+		+ exp(4 * (1. - (p.x - 1)*(p.x - 1) - (p.y + 1)*(p.y + 1) - (p.z + 1)*(p.z + 1))) + exp(4 * (1. - (p.x + 1)*(p.x + 1) - (p.y + 1)*(p.y + 1) - (p.z + 1)*(p.z + 1))) - 1;
 	//return exp(2 * (0.5 - p.x*p.x - p.y*p.y - 1.5*(p.z - 0.8)*(p.z - 0.8))) + exp(2 * (1.5 - p.x*p.x - p.y*p.y - 1.5*(p.z + 0.8)*(p.z + 0.8))) + 0.1*sin(20 * p.x)*sin(20 * p.x)*sin(20 * p.z) - 1;
 	//return sin(3.*p.x)*sin(3.*p.y)*sin(3.*p.z) - 0.1;
 	//return sin(3.*p.x)*cos(3.*p.y)*tan(3.*p.z) - 0.1;
@@ -38,47 +38,9 @@ double fun(vec3 p) {
 	//return pow(p.x*p.x + 2.25*p.y*p.y + p.z*p.z - 1, 3.) - (p.x*p.x + 0.1125*p.y*p.y)*p.z*p.z*p.z;
 	//return 4.0*pow(p.x*p.x + 2.*p.y*p.y + p.z*p.z - 1., 2.) - p.z*(5.*p.x*p.x*p.x*p.x - 10.*p.x*p.x*p.z*p.z + p.z*p.z*p.z*p.z) - 1.;
 	return pow(p.x*p.x + 2.*p.y*p.y + p.z*p.z, 3.) - (9.*p.x*p.x + p.y*p.y)*p.z*p.z*p.z - 0.5;
+	//return (p.x*p.x*p.y*p.y / p.z) / abs(abs((p.x*p.x / p.y) / abs(p.x*p.x / (p.y*p.y)))*p.x*p.x*p.y / (p.z*p.z)) - p.z;  // what a mess
 }
 
-double fun1(vec3 p) {
-	// a pair of eyes created for fun
-	auto smin = [](double a, double b, double k) {
-		double h = 0.5 + 0.5*(b - a) / k;
-		if (h < 0) return b; if (h > 1) return a;
-		return (1 - h)*b + h * a - k * h * (1 - h);
-	};
-	auto eyeball = [](vec3 p) {
-		vec2 r = vec2(length(p.xz()), p.y);
-		r += vec2(0.5, 0);
-		return length(r) - 1.;
-	};
-	auto eyelash = [&](vec3 p) {  // more like eyebrow
-		p.x *= 1.0;
-		p.z -= .15*cos(2.*p.y);
-		p.y += exp(-.1*p.y) - 0.9;
-		const double L = 1.6;
-		double rl = 0.05*exp(-0.8*p.y);
-		double rd = 0.05*exp(-0.9*p.y);
-		double lid = length(vec3(p.x, max(abs(p.y) - 0.5*L, 0.), p.z - .02*sin(p.y))) - rl;
-		double drop = INFINITY;
-		for (int i = -1; i < 6; i++) {
-			vec3 q = vec3(0, -.5*L + L * (i / 5.) - 0.01*i*i, .45 - .1*p.y);
-			drop = min(drop, length(q - p * vec3(1, 1, 1.02)) - rd);
-		}
-		return smin(lid, drop, .7 - 0.02*p.y);
-	};
-	auto iris = [](vec3 p) {
-		double c = length(vec3(10.*p.x + 2.*p.yz().sqr(), p.y, p.z)) - 1.;
-		return c;
-	};
-	auto one_eye = [&](vec3 p) {
-		double k = eyeball(p);
-		double kl = eyelash(axis_angle(vec3(0.6, 1, 0), -.1)*(p*vec3(1, -1, 1) - vec3(0, 0, 0.75)));
-		return max(min(k, kl), -iris(3. * (p - vec3(0.35, 0, 0))));
-	};
-	vec3 q = vec3(p.x, abs(p.y) - 1.3, p.z);
-	return one_eye(q);
-}
 
 
 
@@ -227,8 +189,8 @@ int main(int argc, char* argv[]) {
 
 	auto time_start = std::chrono::high_resolution_clock::now();
 
-	vec3 bound(1., 3., 2.);
-	marching_cube(fun1, T, -bound, bound, ivec3(120.*bound));
+	vec3 bound(2., 2., 2.);
+	marching_cube(fun, T, -bound, bound, ivec3(40.*bound));
 
 	auto time_end = std::chrono::high_resolution_clock::now();
 	double time_elapsed = std::chrono::duration<double>(time_end - time_start).count();

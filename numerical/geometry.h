@@ -49,6 +49,9 @@ struct ivec2 {
 	ivec2() {}
 	ivec2(int a) :x(a), y(a) {}
 	ivec2(int x, int y) :x(x), y(y) {}
+	ivec2 operator - () const { return ivec2(-x, -y); }
+	ivec2 operator + (const ivec2 &v) const { return ivec2(x + v.x, y + v.y); }
+	ivec2 operator - (const ivec2 &v) const { return ivec2(x - v.x, y - v.y); }
 };
 
 struct vec2 {
