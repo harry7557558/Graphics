@@ -357,9 +357,34 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 	/*[35]*/ ParametricSurfaceL([](double u, double v) {
 		u *= 1.45; vec3 s1 = vec3(cossin(v)*(0.7*sin(u) + 0.25*sin(2.*u) + 0.3*sin(3.*u)), (-1.*cos(u) - 0.2*cos(2.*u) - 0.2*cos(3.*u)));
 		u /= 1.45; vec3 s2 = vec3(cossin(v)*(0.075*sin(u) + 0.015*sin(3.*u)), (-1.6*cos(u) + 0.2*cos(3.*u))) + vec3(0, .04*cos(2.*u), 0);
-		return mix(s1, s2, .5 - .5*tanh(40.*(.5 + cos(u))));
+		return s1 + (s2 - s1)*(.5 - .5*tanh(40.*(.5 + cos(u))));
 	}, 0., PI, 0, 2.*PI, 200, 60, true, "gourd"),
 
+	/*[36]*/ ParametricSurfaceL([](double u, double v) {
+		u *= 1.34; vec2 c = vec2(sin(u) + 0.1*pow(sin(u), 5), -cos(u) + 0.3*pow(cos(u), 5));
+		c *= vec2(1.0) + vec2(0.08, 0.08*c.x*c.x)*sin(cos(8.*v));
+		vec3 s1 = vec3(cossin(v)*c.x, c.y);
+		u /= 1.34; vec3 s2 = vec3(cossin(v)*(0.2*sin(u) + 0.04*sin(3.*u)), (-1.25*cos(u) + 0.16*cos(3.*u))) + vec3(0, .06*cos(2.3*u), 0);
+		return s1 + (s2 - s1)*(.5 - .5*tanh(40.*(.6 + cos(u))));
+	}, 0., PI, 0, 2.*PI, 200, 120, true, "pumpkin"),
+
+	/*[37]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = vec2(sin(u) - 0.04*sin(2.*u), -cos(u) - exp(1.3*cos(u)) + 0.6*sin(u)*sin(u) + 1.3);
+		vec3 s = vec3(cossin(v)*c.x, c.y);
+		s.x -= 0.08*s.z*s.z; return s;
+	}, 0., PI, 0, 2.*PI, 60, 60, true, "pepper (without stem)"),
+
+	/*[38]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = vec2(sin(u), -1.2*cos(u) - 0.2*cos(2.*u));
+		c *= vec2(1.0) + vec2(0.05, 0.05*c.x*c.x)*asin(0.95*cos(12.*v)) + vec2(0.02, 0.)*cos(12.*(u + v));
+		return vec3(cossin(v)*c.x, c.y);
+	}, 0., PI, 0, 2.*PI, 90, 200, true, "ball cactus"),
+
+	/*[39]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = ParametricSurfaceTemplates::cubicBezierCurve(vec2(0, -1), vec2(2.2, -1), vec2(0.3, 1), vec2(0, 2), u);
+		c *= vec2(1.0) + vec2(0.1, 0.1*c.x*c.x)*asin(0.98*cos(5.*v));
+		return rotationMatrix_z(c.y)*(vec3(cossin(v)*c.x, c.y) + vec3(0.1*sin(c.y), 0, 0));
+	}, 0., 1., 0, 2.*PI, 60, 120, true, "ice cream"),
 });
 
 
