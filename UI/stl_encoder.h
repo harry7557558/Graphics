@@ -89,7 +89,7 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 		if (!(cnt['a'] == 1 && cnt['b'] == 1 && cnt['c'] == 1))
 			return false;  // invalid string
 		else {
-			int ai = correct_normal[1] - 'a', bi = correct_normal[0] - 'a', ci = correct_normal[2] - 'a';
+			int ai = correct_normal[0] - 'a', bi = correct_normal[1] - 'a', ci = correct_normal[2] - 'a';
 			for (unsigned i = 0; i < N; i++) {
 				stl_vec3* p = &data[i].a;
 				stl_vec3 a = p[ai], b = p[bi], c = p[ci];

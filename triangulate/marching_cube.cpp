@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
 	double time_elapsed = std::chrono::duration<double>(time_end - time_start).count();
 	printf("%lf\n", time_elapsed);
 
-	writeSTL(argv[1], &T[0], T.size(), nullptr, "bac");
+	writeSTL(argv[1], &T[0], T.size(), nullptr, "abc");
 	return 0;
 }
 

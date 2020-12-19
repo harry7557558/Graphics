@@ -53,8 +53,8 @@ public:
 			for (int vi = 0; vi < vD; vi++) {
 				double u = u0 + ui * du, v = v0 + vi * dv;
 				vec3 p00 = F(u, v);
-				vec3 p01 = F(u, v + dv);
-				vec3 p10 = F(u + du, v);
+				vec3 p10 = F(u, v + dv);
+				vec3 p01 = F(u + du, v);
 				vec3 p11 = F(u + du, v + dv);
 #if 1
 				if ((p01 - p10).sqr() < (p00 - p11).sqr()) {
@@ -80,8 +80,8 @@ public:
 		for (int ui = 0; ui < uD; ui++) {
 			for (int vi = 0; vi < vD; vi++) {
 				vec3 p00 = P[ui*(vD + 1) + vi];
-				vec3 p01 = P[ui*(vD + 1) + (vi + 1)];
-				vec3 p10 = P[(ui + 1)*(vD + 1) + vi];
+				vec3 p10 = P[ui*(vD + 1) + (vi + 1)];
+				vec3 p01 = P[(ui + 1)*(vD + 1) + vi];
 				vec3 p11 = P[(ui + 1)*(vD + 1) + (vi + 1)];
 				if ((p01 - p10).sqr() < (p00 - p11).sqr()) {
 					T.push_back(triangle{ p10, p00, p01 });

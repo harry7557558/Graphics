@@ -7,14 +7,13 @@
 #include <stdio.h>
 #include "numerical/geometry.h"
 #include "ui/stl_encoder.h"
-#include "ui/colors/ColorFunctions.h"
 
 #include <vector>
 #include <algorithm>
 
 
 // test object list
-#include "ui/3D Models/parametric/surfaces.h"
+#include "modeling/generators/parametric/surfaces.h"
 const int OBJ_N = ParamSurfaces.size();
 
 
@@ -57,10 +56,10 @@ double maxDot(const vec3* P, int N, vec3 n) {
 
 // the stupid way, 1000 random samples
 vec3 balance_random(const vec3* P, int N) {
-	uint32_t seed1 = 0, seed2 = 1;
+	uint32_t seed1 = 0;
 	double maxd = INFINITY; vec3 maxn;
 	for (int i = 0; i < 1000; i++) {
-		vec3 n = rand3(lcg_next(seed1), lcg_next(seed2));
+		vec3 n = rand3(seed1);
 		double d = maxDot(P, N, n);
 		if (d < maxd) maxd = d, maxn = n;
 	}
@@ -96,7 +95,7 @@ vec3 balance_SA_naive(const vec3* P, int N) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = (int32_t(seed1 = seed1 * 1664525u + 1013904223u) + .5) / 2147483648.;  // -1<rand<1
 			double da = T * erfinv(rand);  // change of configulation
-			vec3 n_new = axis_angle(rand3(lcg_next(seed1), lcg_next(seed1)), da) * n;
+			vec3 n_new = axis_angle(rand3(seed1), da) * n;
 			double E_new = Fun(n_new);
 			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
 			rand = (seed2 = seed2 * 1664525u + 1013904223u) / 4294967296.;  // 0<=rand<1
@@ -145,12 +144,12 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 	};
 
 	// kill some local minimums
-	uint32_t seed1 = 0, seed2 = 1;
+	uint32_t seed1 = 0;
 	double maxd = INFINITY; vec3 maxn(0, 1e-6, -1);
 #if 1
 	// sometimes almost doubled sampleCount?
 	for (int i = 0; i < 10; i++) {
-		vec3 n = -rand3_c(lcg_next(seed1), lcg_next(seed2));  // may not be evenly distrubuted
+		vec3 n = -rand3_c(seed1);  // may not be evenly distrubuted
 		double d = maxDot(P, N, n);
 		if (d < maxd) maxd = d, maxn = n;
 	}
@@ -321,9 +320,9 @@ void visualizeObjectFunction(const vec3* P, int PN, std::vector<stl_triangle> &t
 				vec3 p01 = ns[i][j + 1];
 				vec3 p10 = ns[i + 1][j];
 				vec3 p11 = ns[i + 1][j + 1];
-				T[TN++] = triangle{ p10, p00, p01 };
+				T[TN++] = triangle{ p01, p00, p10 };
 				if (i + j < sd - 1)
-					T[TN++] = triangle{ p01, p11, p10 };
+					T[TN++] = triangle{ p10, p11, p01 };
 			}
 		}
 	}
@@ -383,7 +382,7 @@ int main(int argc, char* argv[]) {
 		std::vector<vec3> points;
 		std::vector<triangle> trigs;
 		generateObject(i, trigs, &points);
-		balanceObject(points, trigs, vec3(i / 4, i % 4, 0));
+		balanceObject(points, trigs, vec3(i / 8, i % 8, 0));
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
 	}
 #endif
