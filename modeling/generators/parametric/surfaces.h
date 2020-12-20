@@ -285,23 +285,23 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		return vec3(cossin(v)*(R + r * cos(u)), .5*r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 60, 200, true, "deformed torus 2"),
 
-	/*[28]*/ ParametricSurfaceL([](double u, double v) {
+	/*[24]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8 - .1*pow(.5 - .5*min(sin(12.*v), sin(10.*u)), 10.);
 		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (tire)"),
 
-	/*[29]*/ ParametricSurfaceL([](double u, double v) {
+	/*[25]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8 + .1*pow(abs(min(sin(10.*u), sin(10.*v))), 10.);
 		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 300, 480, true, "textured torus (cells)"),
 
-	/*[30]*/ ParametricSurfaceL([](double u, double v) {
+	/*[26]*/ ParametricSurfaceL([](double u, double v) {
 		double texture = 0.1*pow(1.0 - pow((sin(5.*u) - .5*sin(16.*v)) / 1.5, 2.), 20.);
 		double R = 2.0, r = 0.8 + texture;
 		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (wavy)"),
 
-	/*[31]*/ ParametricSurfaceL([](double u, double v) {
+	/*[27]*/ ParametricSurfaceL([](double u, double v) {
 		vec2 p = vec2(20.*u, 66.*v / sqrt(3.)) / (2.*PI);
 		p = vec2(fmod(p.x, 3.), fmod(.5*p.x + sqrt(3)*.5*p.y, 3.));
 		if (p.y > p.x) p = p.yx();
@@ -311,27 +311,27 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		return vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 	}, 0., 2.*PI, 0, 2.*PI, 180, 360, true, "textured torus (hexa)"),
 
-	/*[24]*/ ParametricSurfaceL([](double u, double v) {
+	/*[28]*/ ParametricSurfaceL([](double u, double v) {
 		double R = hypot(2.5*cos(v) - 0.1*cos(3.*v), 2.5*sin(v) + 0.1*sin(3.*v));
 		double r = hypot(0.8*cos(u) - 0.05*cos(3.*u), 0.8*sin(u) + 0.05*sin(3.*u));
 		vec3 p = vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 		return p + vec3(0, 0, 0.1*p.x*p.y + 0.1*p.y*p.y);
 	}, 0., 2.*PI, 0, 2.*PI, 60, 100, true, "bended torus"),
 
-	/*[25]*/ ParametricSurfaceL([](double u, double v) {
+	/*[29]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8;
 		vec3 p = vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 		return rotationMatrix_x(.5*PI)*(rotationMatrix_y(1.5*p.y)*p);
 	}, 0., 2.*PI, 0, 2.*PI, 60, 200, true, "twisted torus"),
 
-	/*[26]*/ ParametricSurfaceL([](double u, double v) {
+	/*[30]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0;
 		double r = hypot(0.3*cos(u) - 0.02*cos(3.*u), 0.3*sin(u) + 0.02*sin(3.*u));
 		vec3 p = vec3(cossin(v)*(R + r * cos(u)), 0.4*r*sin(u));
 		return p * vec3(1, 0.8, 1) + vec3(0, 1.1*(pow(p.x*p.x + 1e-4, .25) - 1.), 0);
 	}, 0., 2.*PI, 0, 2.*PI, 40, 400, true, "toric heart"),
 
-	/*[27]*/ ParametricSurfaceL([](double u, double v) {
+	/*[31]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.3;
 		vec3 p = vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
 		p += asin(sin(5.*atan2(p.y, p.x))) * vec3(normalize(p.xy()));
