@@ -91,7 +91,7 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 		else {
 			int ai = correct_normal[0] - 'a', bi = correct_normal[1] - 'a', ci = correct_normal[2] - 'a';
 			for (unsigned i = 0; i < N; i++) {
-				stl_vec3* p = &data[i].a;
+				const stl_vec3* p = &data[i].a;
 				stl_vec3 a = p[ai], b = p[bi], c = p[ci];
 				stl_vec3 u(b.x - a.x, b.y - a.y, b.z - a.z);
 				stl_vec3 v(c.x - a.x, c.y - a.y, c.z - a.z);
@@ -112,7 +112,7 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 	return true;
 }
 
-bool writeSTL(FILE* fp, triangle data[], unsigned N,
+bool writeSTL(FILE* fp, const triangle data[], unsigned N,
 	const char header[80] = nullptr, const char* correct_normal = "bac") {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
@@ -130,7 +130,7 @@ bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
 	fclose(fp);
 	return ok;
 }
-bool writeSTL(const char filename[], triangle data[], unsigned N,
+bool writeSTL(const char filename[], const triangle data[], unsigned N,
 	const char header[80] = nullptr, const char* correct_normal = "bac") {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
@@ -145,7 +145,7 @@ bool writeSTL(const char filename[], triangle data[], unsigned N,
 // write colored STL
 // vec3 ColorF(vec3)
 template<typename trig, typename ColorFunction>
-bool writeSTL_recolor(FILE* fp, trig data[], unsigned N,
+bool writeSTL_recolor(FILE* fp, const trig data[], unsigned N,
 	const char header[80], const char* correct_normal, ColorFunction ColorF) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;

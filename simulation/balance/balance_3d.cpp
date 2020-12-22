@@ -13,7 +13,7 @@
 
 
 // test object list
-#include "modeling/generators/parametric/surfaces.h"
+#include "modeling/parametric/surfaces.h"
 const int OBJ_N = ParamSurfaces.size();
 
 
@@ -52,78 +52,8 @@ double maxDot(const vec3* P, int N, vec3 n) {
 
 
 #include "numerical/random.h"
+#include "balance_3d_nms.h"
 
-
-// the stupid way, 1000 random samples
-vec3 balance_random(const vec3* P, int N) {
-	uint32_t seed1 = 0;
-	double maxd = INFINITY; vec3 maxn;
-	for (int i = 0; i < 1000; i++) {
-		vec3 n = rand3(seed1);
-		double d = maxDot(P, N, n);
-		if (d < maxd) maxd = d, maxn = n;
-	}
-	return maxn;
-}
-
-
-// simulated annealing code copied from "balance_2d_c.cpp"
-// randomly tries neighbourbood samples regardless of the situation
-// 250-300 samples, sometimes converges to non-stationary point (valley-shaped function)
-vec3 balance_SA_naive(const vec3* P, int N) {
-	// estimate the "radius" of the object
-	double R = calcMaxRadius((triangle*)P, N / 3);
-
-	// function to be minimized
-	int sampleCount = 0;
-	auto Fun = [&](vec3 n) {
-		sampleCount++;
-		return maxDot(P, N, n);
-	};
-
-	// simulated annealing
-	uint32_t seed1 = 0, seed2 = 1, seed3 = 2;  // random number seeds
-	double rand;
-	vec3 n = vec3(0, 0, 1);  // configulation
-	double T = 100.0;  // temperature
-	double E = Fun(n);  // energy (gravitational potential)
-	vec3 min_n = n; double min_E = E, min_T = T;  // record minimum value encountered
-	const int max_iter = 360;  // number of iterations
-	const int max_try = 10;  // maximum number of samples per iteration
-	double T_decrease = 0.95;  // multiply temperature by this each time
-	for (int iter = 0; iter < max_iter; iter++) {
-		for (int ty = 0; ty < max_try; ty++) {
-			rand = (int32_t(seed1 = seed1 * 1664525u + 1013904223u) + .5) / 2147483648.;  // -1<rand<1
-			double da = T * erfinv(rand);  // change of configulation
-			vec3 n_new = axis_angle(rand3(seed1), da) * n;
-			double E_new = Fun(n_new);
-			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
-			rand = (seed2 = seed2 * 1664525u + 1013904223u) / 4294967296.;  // 0<=rand<1
-			if (prob > rand) {  // jump
-				n = n_new, E = E_new;
-				if (E < min_E) {
-					min_n = n, min_E = E, min_T = T;
-				}
-				break;
-			}
-		}
-		// jump to the minimum point encountered
-		double prob = tanh((E - min_E) / R);
-		rand = (seed3 = seed3 * 1664525u + 1013904223u) / 4294967296.;
-		if (prob > rand) {
-			//T = min(min_T, max(T, 0.5 * (E - min_E) / R));
-			n = min_n, E = min_E;
-		}
-		// decrease temperature
-		T *= T_decrease;
-		if (T < 0.0001) break;
-	}
-	//if (min_E < E) a = min_a;
-
-	printf("%d samples\n", sampleCount);
-
-	return n;
-}
 
 
 // downhill simplex code copied from "numerical/optimization.h"
@@ -142,23 +72,36 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 		sampleCount++;
 		return maxDot(P, N, n);
 	};
-
-	// kill some local minimums
-	uint32_t seed1 = 0;
 	double maxd = INFINITY; vec3 maxn(0, 1e-6, -1);
+
+
 #if 1
-	// sometimes almost doubled sampleCount?
+	// triangles on a unit isocahedron sorted in the increasing order of z
+	const triangle isoca[20] = {
+		triangle{vec3(0.000000,0.000000,-1.000000),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.000000,0.894427,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.525731,-0.723607,-0.447214)},
+		triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,-0.723607,-0.447214)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,-0.276393,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214),vec3(-0.850651,0.276393,-0.447214)},
+		triangle{vec3(0.000000,-0.894427,0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214),vec3(-0.850651,-0.276393,0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(-0.525731,0.723607,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214)},
+		triangle{vec3(0.000000,-0.000000,1.000000),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(0.000000,-0.894427,0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.894427,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(-0.525731,0.723607,0.447214)}
+	};
+
+	// find a good starting position
 	for (int i = 0; i < 10; i++) {
-		vec3 n = -rand3_c(seed1);  // may not be evenly distrubuted
+		vec3 n = normalize(isoca[i].A + isoca[i].B + isoca[i].C);
+		n = normalize(vec3(0, 0, -0.4) + 0.6*n);  // want it to land closer to the bottom
 		double d = maxDot(P, N, n);
-		if (d < maxd) maxd = d, maxn = n;
+		if (d < maxd) {
+			maxd = d, maxn = n;
+			//S[0].n = isoca[i].A, S[1].n = isoca[i].B, S[2].n = isoca[i].C;
+		}
 	}
 #endif
 
+	// simplex
 	struct sample {
 		vec3 n;  // normalized vector
 		double val;  // value
 	} S[3];
+	maxn = normalize(maxn);
 	for (int i = 0; i < 3; i++) {
 		double t = 2.*PI*i / 3.;
 		S[i].n = axis_angle(cross(maxn, vec3(0, 0, 1)), acos(maxn.z))
@@ -276,7 +219,7 @@ void generateObject(int id, std::vector<triangle> &trigs,
 
 
 // visualization for the function that needs to be minimized
-void visualizeObjectFunction(const vec3* P, int PN, std::vector<stl_triangle> &trigs) {
+void visualizeObjectiveFunction(const vec3* P, int PN, std::vector<stl_triangle> &trigs) {
 
 	const int SUBDIV = 5;  // subdivision level
 	static triangle T[20 << (2 * SUBDIV)]; int TN = 0;  // store triangles
@@ -392,16 +335,16 @@ int main(int argc, char* argv[]) {
 	if (0) do {
 		std::vector<vec3> points;
 		std::vector<triangle> trigs;
-		generateObject(16, trigs, &points, true);
+		generateObject(0, trigs, &points, true);
 		if (SORT_POINTS) std::sort(points.begin(), points.end(),
 			[](vec3 a, vec3 b) {return a.sqr() > b.sqr(); });
 
-		visualizeObjectFunction(&points[0], points.size(), scene_stl);
+		visualizeObjectiveFunction(&points[0], points.size(), scene_stl);
 
-		double rad = 2.*calcMaxRadius(&trigs[0], trigs.size());
+		double rad = 2.2*calcMaxRadius(&trigs[0], trigs.size());
 		vec3 d = vec3(rad, 0, 0);
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
-		for (int i = 0, n = scene.size(); i < n; i++) scene[i].translate(d);
+		translateShape(&scene[0], scene.size(), d);
 
 		balanceObject(points, trigs, vec3(0, rad, 0), 0);
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
@@ -417,7 +360,7 @@ int main(int argc, char* argv[]) {
 	FILE* fp = fopen(argv[1], "wb");
 	convertTriangles_color_normal(scene_stl, &scene[0], scene.size(),
 		[](vec3 n) { return 0.5*n + vec3(.5); });
-	writeSTL(fp, &scene_stl[0], scene_stl.size(), nullptr, "bac");
+	writeSTL(fp, &scene_stl[0], scene_stl.size(), nullptr, "cba");
 	fclose(fp);
 	return 0;
 }
