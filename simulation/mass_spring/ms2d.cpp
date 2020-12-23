@@ -1,5 +1,7 @@
 // mass spring simulation in 2d
 
+// implicit method: my formula is incorrect??
+
 
 // ========================================= Win32 GUI =========================================
 
@@ -9,7 +11,7 @@
 #include <windowsx.h>
 #include <tchar.h>
 
-#define WIN_NAME "2D Template"
+#define WIN_NAME "mass-spring simulation in 2d"
 #define WinW_Default 600
 #define WinH_Default 400
 #define WinW_Min 400
@@ -163,6 +165,9 @@ struct object {
 
 	// force calculation
 	void calcForce();
+	// force derivatives (2Nx2N matrix)
+	void calcForce_dFdx(double A[]);
+	void calcForce_dFdv(double A[]);
 
 	// recalculate drag_id
 	bool update_drag_id(vec2 p, double epsilon) {
@@ -185,14 +190,18 @@ struct object {
 // scene
 object Scene;
 
-#include "numerical/ode.h"
+
+// acceleration due to gravity
+const vec2 g = vec2(0, -1);
+// ground contact spring constant
+const double k_ground = 1000.;
 
 void object::calcForce() {
 	int mn = masses.size(), sn = springs.size();
 	for (int i = 0; i < mn; i++) masses[i].F = vec2(0.);
 	// gravity
 	for (int i = 0; i < mn; i++) {
-		masses[i].F += vec2(0, -1) / max(masses[i].inv_m, 1e-10);
+		masses[i].F += g / max(masses[i].inv_m, 1e-10);
 	}
 	// viscous drag
 	for (int i = 0; i < mn; i++) {
@@ -200,7 +209,7 @@ void object::calcForce() {
 	}
 	// ground contact
 	for (int i = 0; i < mn; i++) {
-		double Fn = 1000.*max(-masses[i].p.y, 0.);
+		double Fn = k_ground * max(-masses[i].p.y, 0.);
 		masses[i].F += vec2(0, Fn);  // no friction, no damping??
 	}
 	// spring force
@@ -218,15 +227,116 @@ void object::calcForce() {
 	if (drag_id != -1) masses[drag_id].F = vec2(0.);
 }
 
-
-void updateScene(double dt, vec2 cursor) {
-	// split large steps
-	if (dt > 0.001) {
-		int N = (int)(dt / 0.001 + 1);
-		for (int i = 0; i < N; i++) updateScene(dt / N, cursor);
-		return;
+void object::calcForce_dFdx(double Mat[]) {
+	int mn = masses.size(), sn = springs.size();
+	auto A = [&](int j, int i)->double& { return Mat[j*(2 * mn) + i]; };
+	for (int j = 0; j < 2 * mn; j++) for (int i = 0; i < 2 * mn; i++) A(j, i) = 0.;
+	// gravity
+	for (int i = 0; i < mn; i++) {
+		// nothing
 	}
-	// Runge Kutta ODE solver
+	// viscous drag
+	for (int i = 0; i < mn; i++) {
+		// not for x
+	}
+	// ground contact
+	for (int i = 0; i < mn; i++) {
+		// vec2(k_ground * max(-masses[i].p.y, 0.))
+		A(2 * i + 1, 2 * i + 1) += masses[i].p.y < 0. ? -k_ground : 0.;
+	}
+	// spring force
+	for (int i = 0; i < sn; i++) {
+		obj_spring s = springs[i];
+		obj_mass *m1 = &masses[s.m1], *m2 = &masses[s.m2];
+		// getting headache in calculating this derivative
+		auto F = [&](vec2 p1, vec2 p2, vec2 v1, vec2 v2) {
+			vec2 dp = p2 - p1, dv = v2 - v1;
+			double dpl = length(dp); vec2 edp = dp * (1. / dpl);
+			double fm = s.ks * (dpl - s.l0) + s.kd * dot(dv, edp);
+			return fm * edp;
+		};
+		double eps = 1e-4;
+		mat2 dFd1 = mat2(
+			(F(m1->p + vec2(eps, 0), m2->p, m1->v, m2->v) - F(m1->p - vec2(eps, 0), m2->p, m1->v, m2->v)) * (.5 / eps),
+			(F(m1->p + vec2(0, eps), m2->p, m1->v, m2->v) - F(m1->p - vec2(0, eps), m2->p, m1->v, m2->v)) * (.5 / eps)
+		);
+		mat2 dFd2 = mat2(
+			(F(m1->p, m2->p + vec2(eps, 0), m1->v, m2->v) - F(m1->p, m2->p - vec2(eps, 0), m1->v, m2->v)) * (.5 / eps),
+			(F(m1->p, m2->p + vec2(0, eps), m1->v, m2->v) - F(m1->p, m2->p - vec2(0, eps), m1->v, m2->v)) * (.5 / eps)
+		);
+		// add force
+		auto addMat = [&](int j, int i, mat2 m) {
+			A(2 * j, 2 * i) += m.v[0][0];
+			A(2 * j, 2 * i + 1) += m.v[0][1];
+			A(2 * j + 1, 2 * i) += m.v[1][0];
+			A(2 * j + 1, 2 * i + 1) += m.v[1][1];
+		};
+		addMat(s.m1, s.m1, dFd1);
+		addMat(s.m1, s.m2, dFd2);
+		addMat(s.m2, s.m1, -dFd1);
+		addMat(s.m2, s.m1, -dFd2);
+	}
+}
+void object::calcForce_dFdv(double Mat[]) {
+	int mn = masses.size(), sn = springs.size();
+	auto A = [&](int j, int i)->double& { return Mat[j*(2 * mn) + i]; };
+	for (int j = 0; j < 2 * mn; j++) for (int i = 0; i < 2 * mn; i++) A(j, i) = 0.;
+	// gravity
+	for (int i = 0; i < mn; i++) {
+		// nothing
+	}
+	// viscous drag
+	for (int i = 0; i < mn; i++) {
+		// -masses[i].vd * masses[i].v;
+		A(2 * i, 2 * i) += -masses[i].vd;
+		A(2 * i + 1, 2 * i + 1) += -masses[i].vd;
+	}
+	// ground contact
+	for (int i = 0; i < mn; i++) {
+		// not for v
+	}
+	// spring force
+	for (int i = 0; i < sn; i++) {
+		obj_spring s = springs[i];
+		obj_mass *m1 = &masses[s.m1], *m2 = &masses[s.m2];
+		// getting headache in calculating this derivative
+		auto F = [&](vec2 p1, vec2 p2, vec2 v1, vec2 v2) {
+			vec2 dp = p2 - p1, dv = v2 - v1;
+			double dpl = length(dp); vec2 edp = dp * (1. / dpl);
+			double fm = s.ks * (dpl - s.l0) + s.kd * dot(dv, edp);
+			return fm * edp;
+		};
+		double eps = 1e-4;
+		mat2 dFd1 = mat2(
+			(F(m1->p, m2->p, m1->v + vec2(eps, 0), m2->v) - F(m1->p, m2->p, m1->v - vec2(eps, 0), m2->v)) * (.5 / eps),
+			(F(m1->p, m2->p, m1->v + vec2(0, eps), m2->v) - F(m1->p, m2->p, m1->v - vec2(0, eps), m2->v)) * (.5 / eps)
+		);
+		mat2 dFd2 = mat2(
+			(F(m1->p, m2->p, m1->v, m2->v + vec2(eps, 0)) - F(m1->p, m2->p, m1->v, m2->v - vec2(eps, 0))) * (.5 / eps),
+			(F(m1->p, m2->p, m1->v, m2->v + vec2(0, eps)) - F(m1->p, m2->p, m1->v, m2->v - vec2(0, eps))) * (.5 / eps)
+		);
+		// add force
+		auto addMat = [&](int j, int i, mat2 m) {
+			A(2 * j, 2 * i) += m.v[0][0];
+			A(2 * j, 2 * i + 1) += m.v[0][1];
+			A(2 * j + 1, 2 * i) += m.v[1][0];
+			A(2 * j + 1, 2 * i + 1) += m.v[1][1];
+		};
+		addMat(s.m1, s.m1, dFd1);
+		addMat(s.m1, s.m2, dFd2);
+		addMat(s.m2, s.m1, -dFd1);
+		addMat(s.m2, s.m1, -dFd2);
+	}
+}
+
+
+
+
+// ODE solvers
+
+// standard Runge Kutta method
+#include "numerical/ode.h"
+void step_RungeKutta(double dt) {
 	int N = Scene.vector_N();
 	double *x = new double[N];
 	Scene.toVector(x);
@@ -242,6 +352,118 @@ void updateScene(double dt, vec2 cursor) {
 	Scene.fromVector(x);
 	Scene.time = t0 + dt;
 	delete x; delete temp0; delete temp1; delete temp2;
+}
+
+// standard Euler method
+void step_Euler(double dt) {
+	Scene.calcForce();
+	for (int i = 0, N = Scene.masses.size(); i < N; i++) {
+		if (i != Scene.drag_id) {
+			Scene.masses[i].p += Scene.masses[i].v * dt;
+			Scene.masses[i].v += Scene.masses[i].inv_m * Scene.masses[i].F * dt;
+		}
+		else {
+			Scene.masses[i].v = vec2(0.);
+		}
+	}
+	Scene.time += dt;
+}
+
+// implicit Euler method (brute force, elimination)
+void step_impEuler_elim(double h) {
+	// Δv = (I - h⋅m⁻¹⋅(∂f/∂v + h⋅∂f/∂x))⁻¹ [h⋅m⁻¹⋅(f(x₀,v₀) + h⋅∂f/∂x⋅v₀)]
+	// Δx = h⋅(v₀ + Δv)
+
+	// setup matrix
+	int mn = Scene.masses.size(), N = 2 * mn;
+	double *dFdx = new double[N*N], *dFdv = new double[N*N];
+	Scene.calcForce_dFdx(dFdx);
+	Scene.calcForce_dFdv(dFdv);
+	double *A = new double[N*N];
+	for (int i = 0; i < N; i++) {
+		double inv_m = Scene.masses[i / 2].inv_m;
+		for (int j = 0; j < N; j++) {
+			A[i*N + j] = (i == j ? 1. : 0.) - h * inv_m * (dFdv[i] + h * dFdx[i]);
+		}
+	}
+	// setup vector
+	Scene.calcForce();
+	double *f0 = new double[N], *v0 = new double[N];
+	for (int i = 0; i < mn; i++) {
+		*(vec2*)&f0[2 * i] = Scene.masses[i].F;
+		*(vec2*)&v0[2 * i] = Scene.masses[i].v;
+	}
+	double *dV = new double[N];
+	for (int i = 0; i < N; i++) {
+		dV[i] = h * f0[i];
+		for (int j = 0; j < N; j++) dV[i] += h * h * dFdx[i*N + j] * v0[j];
+		dV[i] *= Scene.masses[i / 2].inv_m;
+	}
+
+	/*for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++)
+			printf("%lf\t", A[i*N + j]);
+		printf("\t%lf\n", dV[i]);
+	}
+	printf("\n");*/
+
+	// elimination
+	for (int i = 0; i < N; i++) {
+		auto Ai = &A[i*N];
+		if (Ai[i] == 0.) {
+			for (int j = i + 1; j < N; j++) {
+				auto Aj = &A[j*N];
+				if (Aj[i] != 0.) {
+					for (int k = i; k < N; k++) std::swap(Ai[i], Aj[i]);
+					std::swap(dV[i], dV[j]);
+					break;
+				}
+			}
+		}
+		double m = 1.0 / Ai[i];
+		for (int k = i; k < N; k++) Ai[k] *= m;
+		dV[i] *= m;
+		for (int j = 0; j < N; j++) if (j != i) {
+			auto Aj = &A[j*N];
+			double m = -Aj[i] / Ai[i];
+			for (int k = i; k < N; k++) Aj[k] += m * Ai[k];
+			dV[j] += m * dV[i];
+		}
+	}
+
+	/*for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++)
+			printf("%lf\t", A[i*N + j]);
+		printf("\t%lf\n", dV[i]);
+	}
+	printf("\n");*/
+	//exit(0);
+
+	// update
+	for (int i = 0; i < mn; i++) {
+		Scene.masses[i].v += *(vec2*)&dV[2 * i];
+		Scene.masses[i].p += h * Scene.masses[i].v;
+	}
+	Scene.time += h;
+	delete dFdx; delete dFdv; delete A;
+	delete f0; delete v0; delete dV;
+}
+
+
+
+void updateScene(double dt, vec2 cursor) {
+	// split large steps
+	if (dt > 0.001) {
+		int N = (int)(dt / 0.001 + 1);
+		for (int i = 0; i < N; i++) updateScene(dt / N, cursor);
+		return;
+	}
+
+	// solve ODE
+
+	//step_Euler(dt);
+	step_impEuler_elim(dt);
+	//step_RungeKutta(dt);
 
 	// dragging + collision detection (to be implemented)
 	if (Scene.drag_id != -1) {
@@ -446,9 +668,9 @@ public:
 
 void initScene() {
 	//presetScenes::box_X();
-	presetScenes::box_XX(5, 4, 1.0, 0.8, 0.2);
+	//presetScenes::box_XX(5, 4, 1.0, 0.8, 0.2);
 	//presetScenes::box_XX(10, 8, 2.0, 1.6, 1.5);
-	//presetScenes::polygon_S(8, 0.5, 0.8);
+	presetScenes::polygon_S(8, 0.5, 0.8);
 	//presetScenes::polygon_S(16, 0.5, 1.0);
 	//presetScenes::sheet_hang_2(16, 8, 3.0, 1.5, false, false);
 	//presetScenes::sheet_hang_2(16, 8, 3.0, 2.4, false, true);
