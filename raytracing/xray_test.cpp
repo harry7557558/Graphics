@@ -1,4 +1,4 @@
-// pathtracing test
+// test rendering x-ray effect
 
 #include <cmath>
 #include <stdio.h>
@@ -147,9 +147,8 @@ void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
 #include "bvh.h"
 
 
-int Trig_N;
 BVH* BVH_R = 0;
-
+int TN = 0;
 
 
 #include <chrono>
@@ -193,206 +192,53 @@ void Render_Exec(void(*task)(int, int, int, bool*), int Max) {
 
 
 
-// intersection between ray and sphere
-bool intersectSphere(vec3 O, double r, vec3 ro, vec3 rd, double &t, vec3 &n) {
-	ro -= O;
-	double b = -dot(ro, rd), c = dot(ro, ro) - r * r;
-	double delta = b * b - c;
-	if (delta < 0.0) return false;
-	delta = sqrt(delta);
-	double t1 = b - delta, t2 = b + delta;
-	if (t1 > t2) std::swap(t1, t2);
-	if (t1 > t || t2 < 0.) return false;
-	t = t1 > 0. ? t1 : t2;
-	n = normalize(ro + rd * t);
-	return true;
-}
 
-// test scene
-bool intersectScene_test(BVH* R, vec3 ro, vec3 rd, double &t, vec3 &n) {
-	return intersectSphere(vec3(0, 0, 1.1), 1.0, ro, rd, t, n);
-}
-
-
-
-#include "brdf.h"
-
-vec3 colorBuffer[WinW_Max][WinH_Max];
-int colorBuffer_N = 0;
-
-// dome light
-vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed) {
-
-	const vec3 light = normalize(vec3(0, 0, 1));
-	vec3 m_col = vec3(1.5), col;
-
-	bool isInside = false;  // the ray is inside a "glass" or not
-
-	// "recursive" ray-tracing
-	for (int iter = 0; iter < 20; iter++) {
-		vec3 n, min_n;
-		ro += 1e-6*rd;  // alternate of t>1e-6
-
-		int intersect_id = -1;  // which object the ray hits
-
-		// intersect plane
-		double min_t = -ro.z / rd.z;
-		if (min_t > 0.) {
-			vec2 p = ro.xy() + min_t * rd.xy();
-			col = int(floor(p.x) + floor(p.y)) & 1 ? vec3(0.8) : vec3(0.6);
-			min_n = vec3(0, 0, 1);
-			intersect_id = 0;
-		}
-		else {
-			min_t = INFINITY;
-			col = vec3(max(dot(rd, light), 0.));
-		}
-
-		// intersect scene
-		double t = min_t;
+// this effect can be achieved using rasterization
+vec3 rayint_surface(vec3 ro, vec3 rd) {
+	vec3 sum_absorb = vec3(0.);
+	for (int i = 0; i < 64; i++) {
+		double t = INFINITY; vec3 n;
 		if (intersectScene(BVH_R, ro, rd, t, n)) {
-			min_t = t, min_n = n;
-			//col = vec3(0.5) + 0.5*n;
-			//col = vec3(0.8) + 0.2*n;
-			col = isInside ? exp(-vec3(0., 0.2, 0.8)*min_t) : vec3(1.);
-			col = vec3(1, 0.9, 0.2);
-		}
-
-		// update ray
-		m_col *= col;
-		if (min_t == INFINITY) {
-			return m_col;
-		}
-		min_n = dot(rd, min_n) < 0. ? min_n : -min_n;  // ray hits into the surface
-		ro = ro + rd * min_t;
-		if (abs(min_n.z) == 1.) {
-			//rd = rd - min_n * (2.*dot(rd, min_n));
-			rd = randdir_cosWeighted(min_n, seed);
+			n = normalize(n);
+			double nd = -dot(n, rd);
+			if (nd < 0.) n = -n, nd = -nd;
+			sum_absorb += 0.1 * (vec3(0.5) + 0.3*n) / sqrt(nd*nd + 0.01);
 		}
 		else {
-			rd = rd - min_n * (2.*dot(rd, min_n));
-			//rd = randdir_cosWeighted(min_n, seed);
-			//rd = isInside ? randdir_Fresnel(rd, min_n, 1.5, 1.0, seed) : randdir_Fresnel(rd, min_n, 1.0, 1.5, seed);  // very likely that I have a bug
+			break;
 		}
-		if (dot(rd, min_n) < 0.) {
-			isInside ^= 1;  // reflected ray hits into the surface
-		}
+		ro = ro + rd * (t + 1e-6);
 	}
-	return m_col;
+	return vec3(1.) - exp(-sum_absorb);
 }
 
-
-// dim dome light + spherical bulb
-vec3 calcCol_bulb(vec3 ro, vec3 rd, uint32_t &seed, int recurse_remain = 20, bool hitsInside = false) {
-
-	const bool directLightSample = true;
-
-	// dome light
-	const vec3 light = normalize(vec3(0, 0, 1));
-	// light sphere
-	const vec3 light_pos = vec3(10, 0, 5);
-	const double light_r = 0.5;
-	const vec3 light_intensity = 100.*vec3(2., 1.5, 1.);
-
-	vec3 m_col = vec3(1.), t_col = vec3(0.), col;  // convert recursion to iteration
-	vec3 n, min_n;
-
-	// "recursive" ray-tracing
-	for (int iter = 0; iter < 20; iter++) {
-		ro += 1e-6*rd;  // alternate of t>1e-6
-
-		// intersect plane
-		double min_t = -ro.z / rd.z;
-		if (min_t > 0.) {
-			vec2 p = ro.xy() + min_t * rd.xy();
-			col = int(floor(p.x) + floor(p.y)) & 1 ? vec3(0.8) : vec3(0.6);
-			min_n = vec3(0, 0, 1);
+// surface must be closed and ro should not be inside the surface
+vec3 rayint_volume(vec3 ro, vec3 rd) {
+	double absorb = 0.;
+	bool isInside = false;
+	for (int i = 0; i < 64; i++) {
+		double t = INFINITY; vec3 n;
+		if (intersectScene(BVH_R, ro, rd, t, n)) {
+			if (isInside) absorb += t, isInside = false;
+			else isInside = true;
 		}
 		else {
-			min_t = INFINITY;
-			col = 0.1 * vec3(max(dot(rd, light), 0.));
-		}
-
-		// intersect light sphere
-		double t = min_t;
-		if (intersectSphere(light_pos, light_r, ro, rd, t, n)) {
-			min_t = t, min_n = vec3(0.);
-			col = light_intensity;
-		}
-
-		// intersect scene
-		t = min_t;
-		if (intersectScene(BVH_R, ro, rd, t, n) && t < min_t) {
-			min_t = t, min_n = n;
-			col = vec3(0.5) + 0.5*n;
-		}
-
-		// update ray
-		m_col *= col;
-		if (min_n == vec3(0.)) {  // hit light
-			if ((!directLightSample) || iter == 0) {
-				t_col += m_col;
-			}
 			break;
 		}
-		if (min_t == INFINITY) {  // hit sky dome
-			t_col += m_col;
-			break;
-		}
-		min_n = dot(rd, min_n) < 0. ? min_n : -min_n;  // ray hits into the surface
-		ro = ro + rd * min_t;
-		if (n.z == 1.) {  // hit plane (diffuse)
-			rd = randdir_cosWeighted(min_n, seed);
-		}
-		else {  // hit object
-			rd = rd - 2.*dot(rd, n)*n;
-			rd = randdir_cosWeighted(min_n, seed);
-		}
-
-		// direct light sampling
-		if (directLightSample && abs(min_n.z) == 1.) {
-			vec3 pol = light_pos + light_r * rand3(seed);  // random point on light source
-			vec3 dl = normalize(pol - ro);
-			t = length(pol - ro);
-			if (dot(dl, min_n) > 0. && !intersectScene(BVH_R, ro + 1e-6*dl, dl, t, n)) {  // can be optimized but I'm lazy
-				// from https://www.shadertoy.com/view/4tl3z4, no idea how does it work
-				double cos_a_max = sqrt(1. - clamp(light_r*light_r / (pol - ro).sqr(), 0., 1.));
-				double weight = 2. * (1. - cos_a_max);
-				t_col += (m_col * light_intensity) * (weight * clamp(dot(dl, min_n), 0., 1.));
-			}
-		}
+		ro = ro + rd * (t + 1e-6);
 	}
-
-	// gamma
-	double gamma = 0.8;
-	t_col = vec3(pow(t_col.x, gamma), pow(t_col.y, gamma), pow(t_col.z, gamma));
-	return t_col;
-
-
+	return vec3(1. - exp(-0.1*absorb));
 }
 
 
 void render_RT_BVH() {
-	static uint32_t call_time = 0;
-	call_time = lcg_next(call_time);
-
-	colorBuffer_N++;
-
 	Render_Exec([](int beg, int end, int step, bool* sig) {
 		const int WIN_SIZE = _WIN_W * _WIN_H;
 		for (int k = beg; k < end; k += step) {
 			int i = k % _WIN_W, j = k / _WIN_W;
-			// bruteforce Monte-Carlo sampling
 			const int N = 1;
-			vec3 col(0.);
-			for (int u = 0; u < N; u++) {
-				uint32_t seed = hashu(u*WIN_SIZE + k + call_time);
-				vec3 d = scrDir(vec2(i + rand01(seed), j + rand01(seed)));
-				col += calcCol(CamP, d, seed);
-			}
-			if (colorBuffer_N == 1) colorBuffer[i][j] = vec3(0.);
-			colorBuffer[i][j] += col / N;
-			Canvas(i, j) = toCOLORREF(colorBuffer[i][j] / colorBuffer_N);
+			vec3 col = rayint_surface(CamP, scrDir(vec2(i + 0.5, j + 0.5)));
+			Canvas(i, j) = toCOLORREF(col);
 		}
 		if (sig) *sig = true;
 	}, _WIN_W*_WIN_H);
@@ -414,7 +260,7 @@ void render() {
 
 
 	double t = fsec(NTime::now() - t0).count();
-	sprintf(text, "[%d×%d, %d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, Trig_N, 1000.0*t, 1. / t);
+	sprintf(text, "[%d×%d, %d]  %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, TN, 1000.0*t, 1. / t);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -430,23 +276,21 @@ bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
 
-	const int ID = 40;
+	const int ID = 10;
 	auto S = ParamSurfaces[ID];
 	auto info = ParamSurfaceInfo::info[ID];
 
 	std::vector<triangle> T;
-	if (0) S.param2trigs(T);
+	if (1) S.param2trigs(T);
 	else T = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, S.uD, S.vD, 6, 0.001*pow(determinant(info.InertiaTensor_u), 1. / 6.));
-	Trig_N = T.size();
+	TN = T.size();
 
 	std::vector<BVH_Triangle*> BT;
-	mat3 M = axis_angle(cross(vec3(1e-9, 1e-8, 1), info.minGravPotential_vec), acos(-info.minGravPotential_vec.z));
-	vec3 d = vec3(0, 0, info.minGravPotential_u + dot(info.minGravPotential_vec, info.CoM));
-	for (int i = 0; i < Trig_N; i++) {
-		vec3 A = M * T[i].A + d, B = M * T[i].B + d, C = M * T[i].C + d;
+	for (int i = 0; i < TN; i++) {
+		vec3 A = T[i].A, B = T[i].B, C = T[i].C;
 		BT.push_back(new BVH_Triangle{ cross(B - A, C - A), A, B - A, C - A });
 	}
-	Center = M * info.CoM + d;
+	Center = 0.5*(info.AABB_min + info.AABB_max);
 
 	BVH_R = new BVH;
 	vec3 Min(INFINITY), Max(-INFINITY);
@@ -472,13 +316,11 @@ void WindowResize(int _oldW, int _oldH, int _W, int _H) {
 	double s = sqrt((w * h) / (pw * ph));
 	Unit *= s, dist /= s;
 	Render_Needed = true;
-	colorBuffer_N = 0;
 }
 void WindowClose() {}
 
 void MouseWheel(int _DELTA) {
 	Render_Needed = true;
-	if (_DELTA) colorBuffer_N = 0;
 	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
 	else if (Shift) {
 		dist *= exp(-0.001*_DELTA);
@@ -502,7 +344,6 @@ void MouseMove(int _X, int _Y) {
 	Render_Needed = true;
 
 	if (mouse_down) {
-		colorBuffer_N = 0;
 		if (Ctrl) {
 			vec3 d = scrDir(P0);
 			vec3 p = CamP.z / d.z * d;

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stdio.h>
+#include <algorithm>
 
 #include "numerical/geometry.h"
 #include "UI/stl_encoder.h"
@@ -159,6 +160,14 @@ int main(int argc, char* argv[]) {
 		S.param2trigs(temp);
 		//temp = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.02, false, false);
 		int TN = temp.size();
+		if (0) {
+			// separated files
+			char s[64];
+			int L = sprintf(s, "%03d_%s.stl", i, S.name);
+			std::replace(&s[0], &s[L], ' ', '_');
+			writeSTL(s, &temp[0], TN, "", "cba");
+			continue;
+		}
 		auto info = ParamSurfaceInfo::info[i];
 		translateToCOM_shell(&temp[0], TN);
 		scaleGyrationRadiusTo_shell(&temp[0], TN, 0.2);
