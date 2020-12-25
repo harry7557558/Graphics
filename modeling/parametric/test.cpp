@@ -148,7 +148,7 @@ const std::vector<shapeInfo> info({\n\
 
 
 int main(int argc, char* argv[]) {
-	shapeInfos(); return 0;
+	//shapeInfos(); return 0;
 
 	FILE* fp = fopen(argv[1], "wb");
 
@@ -159,15 +159,22 @@ int main(int argc, char* argv[]) {
 		S.param2trigs(temp);
 		//temp = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.02, false, false);
 		int TN = temp.size();
+		auto info = ParamSurfaceInfo::info[i];
 		translateToCOM_shell(&temp[0], TN);
 		scaleGyrationRadiusTo_shell(&temp[0], TN, 0.2);
+		if (0) {
+			// balanced position
+			mat3 M = axis_angle(cross(info.minGravPotential_vec, vec3(0, 1e-8, -1)), acos(-info.minGravPotential_vec.z));
+			for (int i = 0; i < TN; i++) temp[i].applyMatrix(M);
+			translateShape_onPlane(&temp[0], TN);
+		}
 		translateShape(&temp[0], TN, vec3(i / 8, i % 8, 0.));
 		comps.insert(comps.end(), temp.begin(), temp.end());
 	}
 #else
-	auto S = ParamSurfaces[20];
+	auto S = ParamSurfaces[42];
 	S.param2trigs(comps);
-	comps = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.005, false, false);
+	//comps = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.005, false, false);
 #endif
 
 	writeSTL(fp, &comps[0], comps.size(), nullptr, "cba");

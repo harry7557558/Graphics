@@ -199,15 +199,31 @@ struct vec3 {
 	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
 
-	vec2 xy() { return vec2(x, y); }
-	vec2 xz() { return vec2(x, z); }
-	vec2 yz() { return vec2(y, z); }
 	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
 	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
 	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
 	friend vec3 exp(const vec3 &a) { return vec3(exp(a.x), exp(a.y), exp(a.z)); }
+
+	vec2 xy() const { return vec2(x, y); }
+	vec2 xz() const { return vec2(x, z); }
+	vec2 yz() const { return vec2(y, z); }
+	vec3 xyz() const { return vec3(x, y, z); }
+	vec3 xzy() const { return vec3(x, z, y); }
+	vec3 yzx() const { return vec3(y, z, x); }
+	vec3 yxz() const { return vec3(y, x, z); }
+	vec3 zxy() const { return vec3(z, x, y); }
+	vec3 zyx() const { return vec3(z, y, x); }
+	vec3 rz90() const { return vec3(-y, x, z); }
+	vec3 rz180() const { return vec3(-x, -y, z); }
+	vec3 rz270() const { return vec3(y, -x, z); }
+	vec3 ry90() const { return vec3(z, y, -x); }
+	vec3 ry180() const { return vec3(-x, y, -z); }
+	vec3 ry270() const { return vec3(-z, y, x); }
+	vec3 rx90() const { return vec3(x, -z, y); }
+	vec3 rx180() const { return vec3(x, -y, -z); }
+	vec3 rx270() const { return vec3(x, z, -y); }
 };
 
 ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}

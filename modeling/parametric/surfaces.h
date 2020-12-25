@@ -304,7 +304,7 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 	/*[29]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8;
 		vec3 p = vec3(cossin(v)*(R + r * cos(u)), r*sin(u));
-		return rotationMatrix_x(.5*PI)*(rotationMatrix_y(1.5*p.y)*p);
+		return (rotationMatrix_y(1.5*p.y)*p).rx90();
 	}, 0., 2.*PI, 0, 2.*PI, 60, 200, true, "twisted torus"),
 
 	/*[30]*/ ParametricSurfaceL([](double u, double v) {
@@ -368,6 +368,27 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		c *= vec2(1.0) + vec2(0.1, 0.1*c.x*c.x)*asin(0.98*cos(5.*v));
 		return rotationMatrix_z(c.y)*(vec3(cossin(v)*c.x, c.y) + vec3(0.1*sin(c.y), 0, 0));
 	}, 0., 1., 0, 2.*PI, 60, 120, true, "ice cream"),
+
+	/*[40]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = pow(v, 1.5) * (1. + 0.01*sin(60.*u)) * vec2(sin(u), (1. - .2*exp(-10 * sin(u)))*pow(v, 1.5)*(-cos(u) + 0.2*cos(3.*u) - 0.1*sin(2.*u) + 0.2*sin(u)));
+		return vec3(pow(1. + 0.05*v*v - exp(-5.*v), 2.), 1, 2.*v - 1.4*v*v)*vec3(cossin(2.*PI*v)*c.x, c.y).rx270();
+	}, 0., PI, 0, 1., 240, 80, false, "ark clam"),
+
+	/*[41]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = v * (1. + .01*sin(80.*PI*v)) * vec2(sin(u), sqrt(v) * (-cos(u) - 0.1*sin(2.*u)))*(0.2 + 0.8*sin(u));
+		return vec3(1., 1., .6)*vec3(cossin(PI*(.1 + .9*v))*c.x, c.y).rx270().ry180();
+	}, 0., PI, 0, 1., 80, 240, false, "Asian clam"),
+
+	/*[42]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = v * (1. + .002*sin(50.*PI*v) + .001*sin(60.*PI*v)) * vec2(sin(u), 2.*pow(sin(u), 0.2)*tanh(1.5*(-cos(u) - 0.2*sin(3.*u))));
+		vec3 p = vec3(cossin(PI*(.5 + .5*v))*c.x, c.y).rx270().ry180();
+		p.z = 0.4*p.z + 0.1*sin(PI*p.x); return p.rz90();
+	}, 0., PI, 0, 1., 120, 120, false, "razor clam"),
+
+	/*[43]*/ ParametricSurfaceL([](double u, double v) {
+		vec2 c = v * v * (1. + .003*sin(70.*PI*v) + .002*sin(80.*PI*v)) * vec2(2.*sin(u)*sin(u) + 0.3*sin(3.*u), -0.85*sin(u)*cos(u) + 0.1*sin(3.*u));
+		return vec3(cossin(PI*(.4 + .6*v))*vec2(1.,0.5)*c.x, c.y).rx270().ry180();
+	}, 0., PI, 0, 1., 80, 240, false, "mussel clam"),
 });
 
 
@@ -427,6 +448,14 @@ void translateToCOM_shell(triangle* T, int N) {
 }
 void translateToAABBCenter(triangle* T, int N) {
 	translateShape(T, N, -calcAABB(T, N));
+}
+
+// place the object on the xOy plane
+void translateShape_onPlane(triangle* T, int N) {
+	vec3 *P = (vec3*)T; N *= 3;
+	double min_z = INFINITY;
+	for (int i = 0; i < N; i++) min_z = min(min_z, P[i].z);
+	translateShape(T, N / 3, vec3(0, 0, -min_z));
 }
 
 
