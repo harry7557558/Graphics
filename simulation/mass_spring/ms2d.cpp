@@ -189,6 +189,7 @@ struct object {
 
 // scene
 object Scene;
+object Scene_ref;
 
 
 // acceleration due to gravity
@@ -336,7 +337,7 @@ void object::calcForce_dFdv(double Mat[]) {
 
 // standard Runge Kutta method
 #include "numerical/ode.h"
-void step_RungeKutta(double dt) {
+void step_RungeKutta(object &Scene, double dt) {
 	int N = Scene.vector_N();
 	double *x = new double[N];
 	Scene.toVector(x);
@@ -355,7 +356,7 @@ void step_RungeKutta(double dt) {
 }
 
 // standard Euler method
-void step_Euler(double dt) {
+void step_Euler(object &Scene, double dt) {
 	Scene.calcForce();
 	for (int i = 0, N = Scene.masses.size(); i < N; i++) {
 		if (i != Scene.drag_id) {
@@ -370,20 +371,82 @@ void step_Euler(double dt) {
 }
 
 // implicit Euler method (brute force, elimination)
-void step_impEuler_elim(double h) {
+void step_impEuler_elim(object &Scene, double h) {
 	// Δv = (I - h⋅m⁻¹⋅(∂f/∂v + h⋅∂f/∂x))⁻¹ [h⋅m⁻¹⋅(f(x₀,v₀) + h⋅∂f/∂x⋅v₀)]
 	// Δx = h⋅(v₀ + Δv)
 
 	// setup matrix
 	int mn = Scene.masses.size(), N = 2 * mn;
 	double *dFdx = new double[N*N], *dFdv = new double[N*N];
-	Scene.calcForce_dFdx(dFdx);
-	Scene.calcForce_dFdv(dFdv);
+	//Scene.calcForce_dFdx(dFdx);
+	//Scene.calcForce_dFdv(dFdv);
+	// numerical derivative
+	if (1) {
+		const auto Scene_backup = Scene;
+		double eps = 1e-4;
+		vec2 *F_xp = new vec2[N], *F_xm = new vec2[N], *F_yp = new vec2[N], *F_ym = new vec2[N];
+		for (int j = 0; j < mn; j++) {  // for each column
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].p.x += eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_xp[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].p.x -= eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_xm[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].p.y += eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_yp[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].p.y -= eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_ym[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			// derivative
+			for (int i = 0; i < mn; i++) {
+				mat2 dFdp = mat2((F_xp[i] - F_xm[i])*(.5 / eps), (F_yp[i] - F_ym[i])*(.5 / eps));
+				dFdx[N*(2*i)+(2*j)] = dFdp.v[0][0];
+				dFdx[N*(2*i)+(2*j + 1)] = dFdp.v[0][1];
+				dFdx[N*(2*i + 1) + (2*j)] = dFdp.v[1][0];
+				dFdx[N*(2*i + 1) + (2*j + 1)] = dFdp.v[1][1];
+			}
+		}
+		for (int j = 0; j < mn; j++) {  // for each column
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].v.x += eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_xp[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].v.x -= eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_xm[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].v.y += eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_yp[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			for (int i = 0; i < mn; i++) Scene.masses[i].v.y -= eps;
+			Scene.calcForce();
+			for (int i = 0; i < mn; i++) F_ym[i] = Scene.masses[i].F;
+			Scene = Scene_backup;
+			// derivative
+			for (int i = 0; i < mn; i++) {
+				mat2 dFdp = mat2((F_xp[i] - F_xm[i])*(.5 / eps), (F_yp[i] - F_ym[i])*(.5 / eps));
+				dFdv[N*(2*i)+(2*j)] = dFdp.v[0][0];
+				dFdv[N*(2*i)+(2*j + 1)] = dFdp.v[0][1];
+				dFdv[N*(2*i + 1) + (2*j)] = dFdp.v[1][0];
+				dFdv[N*(2*i + 1) + (2*j + 1)] = dFdp.v[1][1];
+			}
+		}
+		delete F_xp; delete F_xm; delete F_yp; delete F_ym;
+	}
+	// matrix
 	double *A = new double[N*N];
 	for (int i = 0; i < N; i++) {
 		double inv_m = Scene.masses[i / 2].inv_m;
 		for (int j = 0; j < N; j++) {
-			A[i*N + j] = (i == j ? 1. : 0.) - h * inv_m * (dFdv[i] + h * dFdx[i]);
+			A[i*N + j] = (i == j ? 1. : 0.) - h * inv_m * (dFdv[i*N + j] + h * dFdx[i*N + j]);
 		}
 	}
 	// setup vector
@@ -453,17 +516,18 @@ void step_impEuler_elim(double h) {
 
 void updateScene(double dt, vec2 cursor) {
 	// split large steps
-	if (dt > 0.001) {
-		int N = (int)(dt / 0.001 + 1);
+	double max_step = 0.001;
+	if (dt > max_step) {
+		int N = (int)(dt / max_step + 1);
 		for (int i = 0; i < N; i++) updateScene(dt / N, cursor);
 		return;
 	}
 
 	// solve ODE
 
-	//step_Euler(dt);
-	step_impEuler_elim(dt);
-	//step_RungeKutta(dt);
+	//step_Euler(Scene, dt);
+	step_impEuler_elim(Scene, dt);
+	step_RungeKutta(Scene_ref, dt);
 
 	// dragging + collision detection (to be implemented)
 	if (Scene.drag_id != -1) {
@@ -545,6 +609,14 @@ void render() {
 
 	// scene
 	{
+		if (1) {
+			for (int i = 0, sn = Scene_ref.springs.size(); i < sn; i++) {
+				drawLineF(Scene_ref.masses[Scene_ref.springs[i].m1].p, Scene_ref.masses[Scene_ref.springs[i].m2].p, 0x404040);
+			}
+			for (int i = 0, mn = Scene_ref.masses.size(); i < mn; i++) {
+				drawDotF(Scene_ref.masses[i].p, 2, 0x400000);
+			}
+		}
 		for (int i = 0, sn = Scene.springs.size(); i < sn; i++) {
 			drawLineF(Scene.masses[Scene.springs[i].m1].p, Scene.masses[Scene.springs[i].m2].p, 0xFFFFFF);
 		}
@@ -555,7 +627,7 @@ void render() {
 
 
 	vec2 cursor = fromInt(Cursor);
-	sprintf(text, "(%.2f,%.2f)", cursor.x, cursor.y);
+	sprintf(text, "(%.2f,%.2f)  %.2fs", cursor.x, cursor.y, Scene.time);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -670,10 +742,11 @@ void initScene() {
 	//presetScenes::box_X();
 	//presetScenes::box_XX(5, 4, 1.0, 0.8, 0.2);
 	//presetScenes::box_XX(10, 8, 2.0, 1.6, 1.5);
-	presetScenes::polygon_S(8, 0.5, 0.8);
+	//presetScenes::polygon_S(8, 0.5, 0.8);
 	//presetScenes::polygon_S(16, 0.5, 1.0);
-	//presetScenes::sheet_hang_2(16, 8, 3.0, 1.5, false, false);
+	presetScenes::sheet_hang_2(16, 8, 3.0, 1.5, false, false);
 	//presetScenes::sheet_hang_2(16, 8, 3.0, 2.4, false, true);
+	Scene_ref = Scene;
 }
 
 
@@ -747,7 +820,7 @@ void MouseWheel(int _DELTA) {
 	return;
 
 	double s = exp((Alt ? 0.0001 : 0.001)*_DELTA);
-	double D = length(vec2(_WIN_W, _WIN_H)), Max = 10.0*D, Min = 0.01*D;
+	double D = length(vec2(_WIN_W, _WIN_H)), Max = 100.0*D, Min = 0.0001*D;
 	if (Unit * s > Max) s = Max / Unit;
 	else if (Unit * s < Min) s = Min / Unit;
 	Center = mix(Cursor, Center, s);
