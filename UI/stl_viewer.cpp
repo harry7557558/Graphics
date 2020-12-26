@@ -12,7 +12,7 @@
 // Small and portable binary executable
 
 // Flaws:
-// Single-thread software rasterization that can be slow for models with >500k triangles
+// Single-thread software rasterization that can be slow for large models
 // Windows only
 // Lack the option of reading numerical values
 // Code isn't very readable
@@ -54,7 +54,7 @@
 
 // VISUALIZATION OPTIONS:
 // Press C or Shift+C to switch to next/previous coloring mode
-//   - Default: silver-white Phong shading; if a triangle's normal faces backward from view, its color is dark brown
+//   - Default: Phong shading with light gray-based color; Color appears warmer on the normal side and cooler on the back side
 //   - Normal color: the color of the triangles are based on their normals (independent to the viewport)
 //   - Heatmap: the color of the triangles only depend on the z-position of the triangle's center, useful for visualization of math functions
 //   - From file: see https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL, VisCAM and SolidView version; white if invalid
@@ -65,7 +65,10 @@
 //   - Polygon: no fill, stroke the triangle using filling color
 //   - Point cloud: no fill or stroke, use filling color to plot vertices
 // Press (Shift+)N to switch normal calculation mode (for rendering only)
-//   - [0] n=[from file] [1] n=AB×AC [2] n=BCxBA [3] n=ACxAB
+//   - [0] from file [1] counter-clockwise, right-hand rule [2] clockwise
+// Press T to enable/disable transparent rendering mode
+//   - Transparent rendering mode is designed for viewing the internal structure of models
+//   - Tip: Switch coloring mode (C) to improve clearness and asthetics
 // Press X to hide/show axis
 // Press G to hide/show grid ([-10,10] with grid width 1)
 //   - By default there are larger and smaller grid lines if the object is too large or small; Press F or Shift+G to turn on/off this feature
@@ -76,23 +79,19 @@
 // Press I to show/hide highlighting of the object's inertia tensor
 //   - The inertia tensor (calculated at the center of mass) is visualized as three yellow principle axes with lengths equal to the principle radiuses
 //   - If one or more calculations get NAN, there will be a dark green cross at the center of mass
-// By default, the center of mass and inertia tensor calculator (based on divergence theorem) assumes the object is a solid. Press P to switch between solid mode and surface(shell) mode
+// Press P to tell whether the object is a surface or a solid (affects the calculation of physical properties)
 // To-do list:
 //   - [not trivial] Fix the stroking issue
-//   - Fix bug: top-right axis distortion under high perspective and zooming
 //   - An option to always show viewport center
 //   - Math visualization:
-//     - show grid on other planes
 //     - setAxisRatio
 //     - A (mandatory) clipping box
 //   - Pop out dialog box to show numerical informations of the object
 //   - Hide/unhide part of object
 //   - Visualization of the objects' bounding box/sphere
 //   - Visualization of the volume of the object
-//   - Semi-transparent shading
 //   - Outline rendering based on geometry
 //   - Smoothed shading (interpolation)
-//   - Optimization for software rasterization
 //   - Option to show xOy plane with rendering for shadow
 
 // FILE AND EDITING:
@@ -138,12 +137,6 @@
 #include <tchar.h>
 
 
-// debug
-#define _USE_CONSOLE 0
-wchar_t _DEBUG_OUTPUT_BUF[0x1000];
-#define dbgprint(format, ...) { if (_USE_CONSOLE) {printf(format, ##__VA_ARGS__);} else {swprintf(_DEBUG_OUTPUT_BUF, 0x1000, _T(format), ##__VA_ARGS__); OutputDebugStringW(_DEBUG_OUTPUT_BUF);} }
-
-
 #pragma region Window Macros / Forward Declarations
 
 #define WIN_NAME "STL Viewer"
@@ -174,8 +167,6 @@ HBITMAP _HIMG; COLORREF *_WINIMG;
 #define Canvas(x,y) _WINIMG[(y)*_WIN_W+(x)]
 #define setColor(x,y,col) do{if((x)>=0&&(x)<_WIN_W&&(y)>=0&&(y)<_WIN_H)Canvas(x,y)=col;}while(0)
 
-double _DEPTHBUF[WinW_Max][WinH_Max];  // how you use this depends on you
-
 bool Render_Needed = true;
 
 #pragma endregion  // Windows global variables and forward declarations
@@ -198,7 +189,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
 	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME); if (!RegisterClassEx(&wc)) return -1;
 	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, WinW_Padding, WinH_Padding, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL); ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
 	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
@@ -321,6 +311,7 @@ vec3 readedValue = vec3(NAN);  // for reading values
 int ShadeMode = 0;
 int RenderMode = 0;
 int NormalMode = 0;
+bool TransparentShading = false;
 bool showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 bool showCOM = false, showInertia = false, TreatAsSolid = false;
 bool DarkBackground = false;
@@ -396,6 +387,12 @@ double rayIntersect(vec3 ro, vec3 rd) {
 
 #pragma region Rasterization functions
 
+int BUF_ALLOC = 0;
+double *_DEPTHBUF = 0;
+vec3 *_COLORBUF = 0;
+#define depthbuf(x,y) _DEPTHBUF[(y)*_WIN_W+(x)]
+#define colorbuf(x,y) _COLORBUF[(y)*_WIN_W+(x)]
+
 #include "ui/colors/ColorFunctions.h"
 
 typedef unsigned char byte;
@@ -458,6 +455,8 @@ void drawCircle(vec2 c, double r, COLORREF Color) {
 }
 
 
+vec3 calcShadeFromID(int i);
+
 void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
 	if (u < 0 || v < 0) {
@@ -475,7 +474,7 @@ void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 		double yf = p.y + slope * (x0 - p.x), zf = p.z + slopez * (x0 - p.x) - 1e-4;
 		for (int x = x0; x <= x1; x++) {
 			y = (int)(yf + 0.5);
-			if (y >= 0 && y < _WIN_H && zf < _DEPTHBUF[x][y] + 1e-6) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
+			if (y >= 0 && y < _WIN_H && zf < depthbuf(x, y) + 1e-6) Canvas(x, y) = col, depthbuf(x, y) = zf;
 			yf += slope, zf += slopez;
 		}
 	}
@@ -486,7 +485,7 @@ void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 		double xf = p.x + slope * (y0 - p.y), zf = p.z + slopez * (y0 - p.y) - 1e-4;
 		for (int y = y0; y <= y1; y++) {
 			x = (int)(xf + 0.5);
-			if (x >= 0 && x < _WIN_W && zf < _DEPTHBUF[x][y] + 1e-6) Canvas(x, y) = col, _DEPTHBUF[x][y] = zf;
+			if (x >= 0 && x < _WIN_W && zf < depthbuf(x, y) + 1e-6) Canvas(x, y) = col, depthbuf(x, y) = zf;
 			xf += slope, zf += slopez;
 		}
 	}
@@ -513,13 +512,14 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 			for (int i = y0; i < y1; i++) {
 				for (int j = x0; j < x1; j++) {
 					vec2 p(j, i);
-					double z = k * dot(n, vec3(p) - A);
-					if (z < _DEPTHBUF[j][i]) {  // test z-buffer first
-						vec2 ap = p - a, bp = p - b, cp = p - c;
-						if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0) {
+					vec2 ap = p - a, bp = p - b, cp = p - c;
+					if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0) {
+						double z = k * dot(n, vec3(p) - A);
+						if (z < depthbuf(j, i)) {
 							Canvas(j, i) = fill;
-							_DEPTHBUF[j][i] = z;
+							depthbuf(j, i) = z;
 						}
+						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill);
 					}
 				}
 			}
@@ -534,10 +534,11 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 				double z = k * dot(n, vec3(p) - A);
 				for (int j = x0; j < x1; j++) {
 					if (((pab < 0.) + (pbc < 0.) + (pca < 0.)) % 3 == 0) {
-						if (z < _DEPTHBUF[j][i]) {
+						if (z < depthbuf(j, i)) {
 							Canvas(j, i) = fill;
-							_DEPTHBUF[j][i] = z;
+							depthbuf(j, i) = z;
 						}
+						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill);
 					}
 					p.x += 1.;
 					pab += ab2.x, pbc += bc2.x, pca += ca2.x;
@@ -556,11 +557,12 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 					int x1 = min((int)xs1 + 1, _WIN_W);
 					double z = k * dot(n, vec3(x0, y, 0) - A);
 					for (int x = x0; x < x1; x++) {
-						if (z < _DEPTHBUF[x][y]) {
+						if (z < depthbuf(x, y)) {
 							Canvas(x, y) = fill;
-							_DEPTHBUF[x][y] = z;
+							depthbuf(x, y) = z;
 						}
 						z += dz;
+						if (TransparentShading) colorbuf(x, y) += calcShadeFromID(fill);
 					}
 				}
 			};
@@ -599,9 +601,9 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 							else continue;
 						}
 						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
-						if (z <= _DEPTHBUF[x][y]) {
+						if (z <= depthbuf(x, y)) {
 							Canvas(x, y) = stroke;
-							_DEPTHBUF[x][y] = z;
+							depthbuf(x, y) = z;
 						}
 					}
 				}
@@ -622,26 +624,11 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 							if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0);
 							else continue;
 						}
-#if 0
-						double h = dot(vec2(x, y) - p.xy(), d.xy()) / d2;
-						double eps = k * dot(n, vec3(d.xy()*dot(vec2(slope, 1), d.xy()) / d2, 0));
-						if (eps < 0.) eps *= -1;
-						vec2 c = p.xy() + d.xy()*h;
-						double z1 = k * dot(n, vec3(c, 0) - A) - eps;
-						//c = vec2(x, y);
 						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
-						//z = max(z, z_min);
-						if (z1 <= _DEPTHBUF[x][y]) {
+						if (z <= depthbuf(x, y)) {
 							Canvas(x, y) = stroke;
-							_DEPTHBUF[x][y] = z;
+							depthbuf(x, y) = z;
 						}
-#else
-						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
-						if (z <= _DEPTHBUF[x][y]) {
-							Canvas(x, y) = stroke;
-							_DEPTHBUF[x][y] = z;
-						}
-#endif
 					}
 				}
 			}
@@ -654,7 +641,7 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 			int x = int(p.x + .5), y = int(p.y + .5);
 			if (x >= 0 && x < _WIN_W && y >= 0 && y < _WIN_H) {
 				double z = k * dot(n, vec3(x, y, 0) - A);
-				if (z < _DEPTHBUF[x][y]) Canvas(x, y) = point, _DEPTHBUF[x][y] = z;
+				if (z < depthbuf(x, y)) Canvas(x, y) = point, depthbuf(x, y) = z;
 			}
 		};
 		drawDot(A); drawDot(B); drawDot(C);
@@ -671,20 +658,19 @@ std::chrono::steady_clock::time_point _iTimer = std::chrono::high_resolution_clo
 
 // a function that returns the color from triangle id
 vec3 light;
-COLORREF calcShadeFromID(int i) {
+vec3 calcShadeFromID(int i) {
 	vec3 A = T[i].a, B = T[i].b, C = T[i].c;
 	vec3 n = NormalMode == 0 ? T[i].n :
 		NormalMode == 1 ? ncross(B - A, C - A) :
-		NormalMode == 2 ? ncross(C - B, A - B) :
-		NormalMode == 3 ? ncross(C - A, B - A) : vec3(0.);
+		NormalMode == 2 ? ncross(C - A, B - A) : vec3(0.);
 	vec3 c = T_Color[i];  // default: from file
 	switch (ShadeMode) {
 	case 0: {  // phong
-		double k = clamp(dot(n, light), 0., 1.);
+		double k = dot(n, light);
 		vec3 d = normalize((A + B + C) / 3. - CamP);
 		double spc = dot(d - (2 * dot(d, n))*n, light);
 		spc = pow(max(spc, 0.), 20.0);
-		c = vec3(0.1, 0.05, 0.05) + vec3(0.75, 0.75, 0.65)*k + vec3(0.15)*spc;
+		c = vec3(0.1, 0.05, 0.05) + (k > 0. ? vec3(0.8, 0.8, 0.7) : vec3(0.6, 0.7, 0.8))*abs(k) + vec3(0.15)*spc;
 		break;
 	}
 	case 1: {  // shade by normal
@@ -709,13 +695,22 @@ COLORREF calcShadeFromID(int i) {
 		break;
 	}
 	}
-	return toCOLORREF(c);
+	return TransparentShading ? c / abs(dot(n, normalize((1. / 3.)*(A + B + C) - CamP))) : c;
 };
 
 
 void render() {
 	// initialize
-	for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) _DEPTHBUF[i][j] = INFINITY;
+	const int N_PIXEL = _WIN_W * _WIN_H;
+	if (N_PIXEL > BUF_ALLOC) {
+		if (_DEPTHBUF) { delete _DEPTHBUF; _DEPTHBUF = 0; }
+		if (_COLORBUF) { delete _COLORBUF; _COLORBUF = 0; }
+		BUF_ALLOC = N_PIXEL;
+		_DEPTHBUF = new double[BUF_ALLOC];
+		_COLORBUF = new vec3[BUF_ALLOC];
+	}
+	for (int i = 0; i < N_PIXEL; i++) _DEPTHBUF[i] = INFINITY;
+	if (TransparentShading) for (int i = 0; i < N_PIXEL; i++) _COLORBUF[i] = vec3(0.);
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
 	light = normalize(CamP - Center);
@@ -743,42 +738,16 @@ void render() {
 		T_transformed[i].c = TF(T[i].c);
 	}
 
-#if 0
-
-	// initialize background
-	if (DarkBackground) {
-		for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
-	}
-	else for (int j = 0; j < _WIN_H; j++) {
-		COLORREF c = toCOLORREF(mix(vec3(0.95), vec3(0.65, 0.65, 1.00), j / double(_WIN_H)));
-		for (int i = 0; i < _WIN_W; i++) _WINIMG[j*_WIN_W + i] = c;
-	}
-
-	// draw triangles
-	for (int i = 0; i < N; i++) {
-		vec3 At = T_transformed[i].a, Bt = T_transformed[i].b, Ct = T_transformed[i].c;
-		if (isnan(At.x + Bt.x + Ct.x)) continue;
-		COLORREF col = calcShadeFromID(i);
-		switch ((RenderMode % 4 + 4) % 4) {
-		case 0: drawTriangle_ZB(At, Bt, Ct, col); break;
-		case 1: drawTriangle_ZB(At, Bt, Ct, col, 0); break;
-		case 2: drawTriangle_ZB(At, Bt, Ct, -1, col); break;
-		case 3: drawTriangle_ZB(At, Bt, Ct, -1, -1, col); break;
-		}
-	}
-
-#else
-
 	// initialize canvas
 	const COLORREF BACKGROUND = 0xFFFFFFFF;
-	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = BACKGROUND;
+	for (int i = 0, l = N_PIXEL; i < l; i++) _WINIMG[i] = BACKGROUND;
 
-	// rasterize triangles, fill pixels using triangle ID instead of color
+	// rasterize triangles, fill pixels using triangle ID
 	const COLORREF BORDER = 0xFFFFFFFE;
 	for (int i = 0; i < N; i++) {
 		vec3 At = T_transformed[i].a, Bt = T_transformed[i].b, Ct = T_transformed[i].c;
 		if (!isnan(At.x + Bt.x + Ct.x)) {
-			switch ((RenderMode % 4 + 4) % 4) {
+			switch (((RenderMode % 4 + 4) % 4) * int(!TransparentShading)) {
 			case 0: drawTriangle_ZB(At, Bt, Ct, i); break;
 			case 1: drawTriangle_ZB(At, Bt, Ct, i, BORDER); break;  // special ID for border color
 			case 2: drawTriangle_ZB(At, Bt, Ct, -1, i); break;
@@ -788,18 +757,19 @@ void render() {
 	}
 
 	// calculate color
-	for (int px = 0, pxn = _WIN_W * _WIN_H; px < pxn; px++) {
+	if (TransparentShading) for (int px = 0; px < N_PIXEL; px++) {
+		_WINIMG[px] = toCOLORREF(vec3(1.) - exp(-0.1*_COLORBUF[px]));
+	}
+	else for (int px = 0; px < N_PIXEL; px++) {
 		int i = _WINIMG[px];
 		if (i == BORDER) _WINIMG[px] = 0;
 		if (i == BACKGROUND) {
 			if (DarkBackground) _WINIMG[px] = 0;
 			else _WINIMG[px] = toCOLORREF(mix(vec3(0.95), vec3(0.65, 0.65, 1.00), double(px / _WIN_W) / double(_WIN_H)));
 		}
-		if (i >= 0) _WINIMG[px] = calcShadeFromID(i);
+		if (i >= 0) _WINIMG[px] = toCOLORREF(calcShadeFromID(i));
 		//_WINIMG[px] = toCOLORREF(vec3(0.5 + 0.5*tanh(-0.005*(_DEPTHBUF[px % _WIN_W][px / _WIN_W] - (Tr*Center).z))));
 	}
-
-#endif
 
 	// grid and axes
 	{
@@ -889,7 +859,7 @@ void render() {
 		swprintf(text, L"%s [%d %s]  normal=%s   %dx%d %.1lffps",
 			&filename[lastslash],
 			N, TreatAsSolid ? L"solid" : L"surface",
-			NormalMode == 0 ? L"[file]" : NormalMode == 1 ? L"AB×AC" : NormalMode == 2 ? L"BC×BA" : NormalMode == 3 ? L"AC×AB" : L"ERROR!",
+			NormalMode == 0 ? L"file" : NormalMode == 1 ? L"ccw" : NormalMode == 2 ? L"cw" : L"ERROR!",
 			_WIN_W, _WIN_H, 1.0 / time_elapsed);
 	}
 	else {  // read value
@@ -912,8 +882,7 @@ bool readFile(const WCHAR* filename) {
 		T = new stl_triangle[N];
 		T_transformed = new stl_triangle[N];
 		T_Color = new vec3[N];
-	}
-	catch (...) { T = 0; N = 0; return false; }
+	} catch (...) { T = 0; T_transformed = 0; T_Color = 0; N = 0; return false; }
 	hasInvalidColor = false;
 	for (int i = 0; i < N; i++) {
 		float f[12];
@@ -949,8 +918,7 @@ bool saveFile(const WCHAR* filename) {
 		writevec3(
 			NormalMode == 0 ? T[i].n :
 			NormalMode == 1 ? ncross(B - A, C - A) :
-			NormalMode == 2 ? ncross(C - B, A - B) :
-			NormalMode == 3 ? ncross(C - A, B - A) : vec3(0.)
+			NormalMode == 2 ? ncross(C - A, B - A) : vec3(0.)
 		);
 		writevec3(A); writevec3(B); writevec3(C);
 		fputc(0, fp); fputc(0, fp);
@@ -987,13 +955,14 @@ void setDefaultView() {
 	if (_WIN_W*_WIN_H != 0.0) s /= sqrt(5e-6*_WIN_W*_WIN_H);
 	rz = -.25*PI, rx = 0.25, ry = 0.0, dist = 12.0 * s, Unit = 100.0 / s;
 	use_orthographic = false;
-	showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
+	//showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
+	//TransparentShading = false;
 	readedValue = vec3(NAN);
 	// do not change color/rendering mode
 #if 0
 	if (hasInvalidColor) {
 		if (ShadeMode == 3 || ShadeMode == 4) ShadeMode = 0;
-}
+	}
 #endif
 	Ctrl = Shift = Alt = false;
 }
@@ -1154,12 +1123,13 @@ void KeyUp(WPARAM _KEY) {
 	}
 	else {
 		if (_KEY == 'C') ShadeMode = (ShadeMode + (Shift ? 4 : 1)) % 5;
-		if (_KEY == VK_TAB) RenderMode += Shift ? -1 : 1;
-		if (_KEY == 'N') NormalMode = (NormalMode + (Shift ? 3 : 1)) % 4;
+		if (_KEY == VK_TAB && !TransparentShading) RenderMode += Shift ? -1 : 1;
+		if (_KEY == 'N') NormalMode = (NormalMode + (Shift ? 2 : 1)) % 3;
 		if (_KEY == 'X') showAxis ^= 1;
 		if (_KEY == 'G') showGrid ^= !Shift, showMajorMinorGrids ^= Shift;
 		if (_KEY == 'F') showMajorMinorGrids ^= 1;
 		if (_KEY == 'H') showVerticalGrids ^= 1;
+		if (_KEY == 'T') TransparentShading ^= 1;
 		if (_KEY == 'M') calcVolumeCenterInertia(), showCOM ^= 1;
 		if (_KEY == 'I') calcVolumeCenterInertia(), showInertia ^= 1;
 		if (_KEY == 'B') DarkBackground ^= 1;
