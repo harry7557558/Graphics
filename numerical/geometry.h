@@ -44,11 +44,13 @@ double invsqrt(double x) {
 
 // a sketchy planar vector template
 
+struct vec2;
 struct ivec2 {
 	int x, y;
 	ivec2() {}
 	ivec2(int a) :x(a), y(a) {}
 	ivec2(int x, int y) :x(x), y(y) {}
+	ivec2(vec2 p);
 	ivec2 operator - () const { return ivec2(-x, -y); }
 	ivec2 operator + (const ivec2 &v) const { return ivec2(x + v.x, y + v.y); }
 	ivec2 operator - (const ivec2 &v) const { return ivec2(x - v.x, y - v.y); }
@@ -60,6 +62,7 @@ struct vec2 {
 	explicit vec2(const double &a) :x(a), y(a) {}
 	explicit vec2(const double &x, const double &y) :x(x), y(y) {}
 	explicit vec2(const ivec2 &p) :x(p.x), y(p.y) {}
+
 	vec2 operator - () const { return vec2(-x, -y); }
 	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
 	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
@@ -103,12 +106,10 @@ struct vec2 {
 	friend vec2 log(const vec2 &a) { return vec2(log(a.x), log(a.y)); }
 };
 
-vec2 sincos(double a) {
-	return vec2(sin(a), cos(a));
-}
-vec2 cossin(double a) {
-	return vec2(cos(a), sin(a));
-}
+ivec2::ivec2(vec2 p) :x((int)p.x), y((int)p.y) {}
+
+vec2 sincos(double a) { return vec2(sin(a), cos(a)); }
+vec2 cossin(double a) { return vec2(cos(a), sin(a)); }
 
 
 
