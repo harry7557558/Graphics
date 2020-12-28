@@ -50,9 +50,10 @@ public:
 		int NTrigs = 0;
 		for (int ui = 0; ui < uD; ui++) {
 			for (int vi = 0; vi < vD; vi++) {
+				// normal direction: ∂p/∂v × ∂p/∂u
 				vec3 p00 = P[ui*(vD + 1) + vi];
-				vec3 p10 = P[ui*(vD + 1) + (vi + 1)];
-				vec3 p01 = P[(ui + 1)*(vD + 1) + vi];
+				vec3 p01 = P[ui*(vD + 1) + (vi + 1)];
+				vec3 p10 = P[(ui + 1)*(vD + 1) + vi];
 				vec3 p11 = P[(ui + 1)*(vD + 1) + (vi + 1)];
 				if ((p01 - p10).sqr() < (p00 - p11).sqr()) {
 					if (p10 != p00 && p10 != p01 && p00 != p01)
@@ -130,6 +131,19 @@ namespace ParametricSurfaceTemplates {
 		return (((-A + 3.*B - 3.*C + D)*t + (3.*A - 6.*B + 3.*C))*t + (3.*B - 3.*A))*t + A;
 	}
 
+
+	// swepts cu around cv, involves numerical differentiation
+	vec3 Swept_Surface(std::function<vec3(double u, double v)> cu, std::function<vec3(double v)> cv, double u, double v, bool mainNormal) {
+		const double eps = 1e-5;
+		vec3 s0 = cv(v), sp = cv(v + eps), sm = cv(v - eps);
+		vec3 dsdt = (sp - sm)*(.5 / eps);
+		vec3 d2sdt2 = (sp + sm - 2.*s0) / (eps*eps);
+		vec3 k = normalize(dsdt);
+		vec3 i = mainNormal ? -d2sdt2 : cross(k, vec3(0, 0, 1)); i = normalize(i - dot(i, k)*k);
+		vec3 j = cross(i, k);  // cross(k,i)??
+		vec3 su = cu(u, v);
+		return s0 + i * su.x + j * su.y + k * su.z;
+	}
 }
 
 
@@ -156,6 +170,7 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 
 	/*[4]*/ ParametricSurfaceL([](double u, double v) {
 		return ParametricSurfaceTemplates::Archimedean_snail(u, v, 3.5, 0.2, 8.0);
+		return vec3(0.75,0.75,1.4)*ParametricSurfaceTemplates::Archimedean_snail(u, v, 2.5, 0.6, 8.0);
 	}, 0., 2.*PI, 0., 1., 40, 120, false, "cone snail"),
 
 	/*[5]*/ ParametricSurfaceL([](double u, double v) {
@@ -389,6 +404,37 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		vec2 c = v * v * (1. + .003*sin(70.*PI*v) + .002*sin(80.*PI*v)) * vec2(2.*sin(u)*sin(u) + 0.3*sin(3.*u), -0.85*sin(u)*cos(u) + 0.1*sin(3.*u));
 		return vec3(cossin(PI*(.4 + .6*v))*vec2(1.,0.5)*c.x, c.y).rx270().ry180();
 	}, 0., PI, 0, 1., 80, 240, false, "mussel clam"),
+
+	/*[44]*/ ParametricSurfaceL([](double u, double v) {
+		return ParametricSurfaceTemplates::Swept_Surface(
+			[](double u, double v) { return 0.2*rotationMatrix_z(3.*v)*vec3(cos(u) - 0.1*cos(3.*u), sin(u) + 0.1*sin(3.*u), 0.); },
+			[](double t) { return vec3(cos(t), 1.618*sin(t), 0.25*sin(2.*t)); },
+			u, v, true);
+	}, 0., 2.*PI, 0, 2.*PI, 80, 160, true, "elliptic twist"),
+
+	/*[45]*/ ParametricSurfaceL([](double u, double v) {
+		return  ParametricSurfaceTemplates::Swept_Surface(
+			[](double u, double v) { return 0.3*rotationMatrix_z(3.*v)*vec3(cos(u), 0.5*sin(u), 0.); },
+			[](double t) {
+				vec3 p = vec3(2.*cos(t) - 0.1*sin(3.*t), sin(t) + 0.15*sin(3.*t), 0.);
+				return rotationMatrix_x(-3.*p.x)*p*vec3(-1, 1, -0.6);
+			},
+			u, v, false);
+	}, 0., 2.*PI, 0, 2.*PI, 40, 400, true, "dough twist"),
+
+	/*[46]*/ ParametricSurfaceL([](double u, double v) {
+		return ParametricSurfaceTemplates::Swept_Surface(
+			[](double u, double v) { return 0.5*rotationMatrix_z(5.*v)*vec3(cos(u) + 0.15*cos(6.*u), sin(u) + 0.15*sin(6.*u), 0.); },
+			[](double t) { return vec3(cossin(2.*t)*(3. + sin(5.*t)), cos(5.*t)); },
+			u, v, true);
+	}, 0., 2.*PI, 0, 2.*PI, 80, 240, true, "cinquefoil bundle"),
+
+	/*[47]*/ ParametricSurfaceL([](double u, double v) {
+		return ParametricSurfaceTemplates::Swept_Surface(
+			[](double u, double v) { return vec3(0.12*cossin(u), 0); },
+			[](double t) { return vec3(3.*cossin(t) + cos(36.*t)*cossin(t), sin(36.*t)); },
+			u, v, true);
+	}, 0., 2.*PI, 0, 2.*PI, 20, 1800, true, "circular solenoid"),
 });
 
 

@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
 			char s[64];
 			int L = sprintf(s, "%03d_%s.stl", i, S.name);
 			std::replace(&s[0], &s[L], ' ', '_');
-			writeSTL(s, &temp[0], TN, "", "cba");
+			writeSTL(s, &temp[0], TN, "", "abc");
 			continue;
 		}
 		auto info = ParamSurfaceInfo::info[i];
@@ -181,12 +181,12 @@ int main(int argc, char* argv[]) {
 		comps.insert(comps.end(), temp.begin(), temp.end());
 	}
 #else
-	auto S = ParamSurfaces[42];
+	auto S = ParamSurfaces[47];
 	S.param2trigs(comps);
 	//comps = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.005, false, false);
 #endif
 
-	writeSTL(fp, &comps[0], comps.size(), nullptr, "cba");
+	writeSTL(fp, &comps[0], comps.size(), nullptr, "abc");
 	//writeSTL_recolor_normal(fp, &comps[0], comps.size(), nullptr, [](vec3 n) { return 0.5*n + vec3(.5); });
 	fclose(fp);
 	return 0;
