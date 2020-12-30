@@ -2,7 +2,7 @@
 
 #include "ui/stl_encoder.h"
 
-std::vector<triangle> T;
+std::vector<triangle_3d> T;
 
 void addStick(vec3 p, vec3 q, double r, int N) {
 	vec3 d = normalize(q - p);
@@ -12,10 +12,10 @@ void addStick(vec3 p, vec3 q, double r, int N) {
 		double a0 = i * (2.*PI) / N, a1 = a0 + 2.*PI / N;
 		vec3 w0 = u * cos(a0) + v * sin(a0), w1 = u * cos(a1) + v * sin(a1);
 		vec3 p0 = p + r * w0, p1 = p + r * w1, q0 = q + r * w0, q1 = q + r * w1;
-		T.push_back(triangle{ q0, p0, q1 });
-		T.push_back(triangle{ p0, p1, q1 });
-		T.push_back(triangle{ p0, p, p1 });
-		T.push_back(triangle{ q1, q, q0 });
+		T.push_back(triangle_3d{ q0, p0, q1 });
+		T.push_back(triangle_3d{ p0, p1, q1 });
+		T.push_back(triangle_3d{ p0, p, p1 });
+		T.push_back(triangle_3d{ q1, q, q0 });
 	}
 }
 

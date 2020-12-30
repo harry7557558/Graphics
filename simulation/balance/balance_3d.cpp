@@ -62,7 +62,7 @@ double maxDot(const vec3* P, int N, vec3 n) {
 // biggest problem: often converge to a poor local minimum (idea: combine with SA so it can get out?)
 vec3 balance_downhillSimplex(const vec3* P, int N) {
 
-	const double accur_eps = 1e-4 * calcMaxRadius((triangle*)P, N / 3);
+	const double accur_eps = 1e-4 * calcMaxRadius((triangle_3d*)P, N / 3);
 	const int noimporv_break = 10;
 	const int max_iter = 1000;
 
@@ -77,16 +77,16 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 
 #if 1
 	// triangles on a unit isocahedron sorted in the increasing order of z
-	const triangle isoca[20] = {
-		triangle{vec3(0.000000,0.000000,-1.000000),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.000000,0.894427,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.525731,-0.723607,-0.447214)},
-		triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,-0.723607,-0.447214)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,-0.276393,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214),vec3(-0.850651,0.276393,-0.447214)},
-		triangle{vec3(0.000000,-0.894427,0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214),vec3(-0.850651,-0.276393,0.447214)}, triangle{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(-0.525731,0.723607,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214)},
-		triangle{vec3(0.000000,-0.000000,1.000000),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(0.000000,-0.894427,0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(0.525731,0.723607,0.447214)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.894427,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(-0.525731,0.723607,0.447214)}
+	const triangle_3d isoca[20] = {
+		triangle_3d{vec3(0.000000,0.000000,-1.000000),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.000000,0.894427,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.525731,-0.723607,-0.447214)},
+		triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,-0.723607,-0.447214)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,-0.276393,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214),vec3(0.525731,0.723607,0.447214)}, triangle_3d{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214),vec3(-0.850651,0.276393,-0.447214)},
+		triangle_3d{vec3(0.000000,-0.894427,0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214),vec3(-0.850651,-0.276393,0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle_3d{vec3(-0.850651,-0.276393,0.447214),vec3(-0.525731,0.723607,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle_3d{vec3(-0.525731,0.723607,0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214)},
+		triangle_3d{vec3(0.000000,-0.000000,1.000000),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,0.723607,0.447214)}, triangle_3d{vec3(0.000000,-0.894427,0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle_3d{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(0.525731,0.723607,0.447214)}, triangle_3d{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.894427,0.447214),vec3(0.000000,-0.000000,1.000000)}, triangle_3d{vec3(-0.850651,-0.276393,0.447214),vec3(0.000000,-0.000000,1.000000),vec3(-0.525731,0.723607,0.447214)}
 	};
 
 	// find a good starting position
 	for (int i = 0; i < 10; i++) {
-		vec3 n = normalize(isoca[i].A + isoca[i].B + isoca[i].C);
+		vec3 n = normalize(isoca[i][0] + isoca[i][1] + isoca[i][2]);
 		n = normalize(vec3(0, 0, -0.4) + 0.6*n);  // want it to land closer to the bottom
 		double d = maxDot(P, N, n);
 		if (d < maxd) {
@@ -118,7 +118,7 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 		if (SORT_POINTS) {
 			const double sc = 1.1;
 			scene_stl.push_back(stl_triangle(
-				triangle{ S[0].n*S[0].val*sc, S[1].n*S[1].val*sc, S[2].n*S[2].val*sc },
+				triangle_3d{ S[0].n*S[0].val*sc, S[1].n*S[1].val*sc, S[2].n*S[2].val*sc },
 				vec3(0.5 + 0.5*cos(0.5*iter), 0.2 + 0.2*sin(0.8*iter), 0.5 - 0.5*cos(0.5*iter))));
 		}
 
@@ -192,7 +192,7 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 
 // generate object from object id
 // points: non-repeating vertices of the triangles
-void generateObject(int id, std::vector<triangle> &trigs,
+void generateObject(int id, std::vector<triangle_3d> &trigs,
 	std::vector<vec3> *points = nullptr, bool translateToCOM = false) {
 	if (points) {
 		ParamSurfaces[id].param2points(*points);
@@ -222,7 +222,7 @@ void generateObject(int id, std::vector<triangle> &trigs,
 void visualizeObjectiveFunction(const vec3* P, int PN, std::vector<stl_triangle> &trigs) {
 
 	const int SUBDIV = 5;  // subdivision level
-	static triangle T[20 << (2 * SUBDIV)]; int TN = 0;  // store triangles
+	static triangle_3d T[20 << (2 * SUBDIV)]; int TN = 0;  // store triangles
 	double minval = INFINITY, maxval = -INFINITY;  // store minimum and maximum sample values
 
 	auto Fun = [&](vec3 n)->vec3 {
@@ -234,17 +234,17 @@ void visualizeObjectiveFunction(const vec3* P, int PN, std::vector<stl_triangle>
 
 	// subdividing a regular icosahedron
 	const double p = 0.6180339887498948482;
-	const triangle ISO[20] = {
-		triangle{vec3(0,p,1),vec3(1,0,p),vec3(p,1,0)}, triangle{vec3(0,-p,1),vec3(1,0,p),vec3(0,p,1)}, triangle{vec3(0,-p,1),vec3(p,-1,0),vec3(1,0,p)}, triangle{vec3(0,-p,-1),vec3(-1,0,-p),vec3(0,p,-1)},
-		triangle{vec3(-p,1,0),vec3(0,p,1),vec3(p,1,0)}, triangle{vec3(-p,1,0),vec3(p,1,0),vec3(0,p,-1)}, triangle{vec3(-p,1,0),vec3(0,p,-1),vec3(-1,0,-p)}, triangle{vec3(1,0,-p),vec3(1,0,p),vec3(p,-1,0)},
-		triangle{vec3(1,0,-p),vec3(0,-p,-1),vec3(0,p,-1)}, triangle{vec3(1,0,-p),vec3(p,1,0),vec3(1,0,p)}, triangle{vec3(1,0,-p),vec3(0,p,-1),vec3(p,1,0)}, triangle{vec3(1,0,-p),vec3(p,-1,0),vec3(0,-p,-1)},
-		triangle{vec3(-1,0,p),vec3(0,-p,1),vec3(0,p,1)}, triangle{vec3(-1,0,p),vec3(0,p,1),vec3(-p,1,0)}, triangle{vec3(-1,0,p),vec3(-p,1,0),vec3(-1,0,-p)}, triangle{vec3(-p,-1,0),vec3(p,-1,0),vec3(0,-p,1)},
-		triangle{vec3(-p,-1,0),vec3(0,-p,1),vec3(-1,0,p)}, triangle{vec3(-p,-1,0),vec3(-1,0,-p),vec3(0,-p,-1)}, triangle{vec3(-p,-1,0),vec3(0,-p,-1),vec3(p,-1,0)}, triangle{vec3(-p,-1,0),vec3(-1,0,p),vec3(-1,0,-p)},
+	const triangle_3d ISO[20] = {
+		triangle_3d{vec3(0,p,1),vec3(1,0,p),vec3(p,1,0)}, triangle_3d{vec3(0,-p,1),vec3(1,0,p),vec3(0,p,1)}, triangle_3d{vec3(0,-p,1),vec3(p,-1,0),vec3(1,0,p)}, triangle_3d{vec3(0,-p,-1),vec3(-1,0,-p),vec3(0,p,-1)},
+		triangle_3d{vec3(-p,1,0),vec3(0,p,1),vec3(p,1,0)}, triangle_3d{vec3(-p,1,0),vec3(p,1,0),vec3(0,p,-1)}, triangle_3d{vec3(-p,1,0),vec3(0,p,-1),vec3(-1,0,-p)}, triangle_3d{vec3(1,0,-p),vec3(1,0,p),vec3(p,-1,0)},
+		triangle_3d{vec3(1,0,-p),vec3(0,-p,-1),vec3(0,p,-1)}, triangle_3d{vec3(1,0,-p),vec3(p,1,0),vec3(1,0,p)}, triangle_3d{vec3(1,0,-p),vec3(0,p,-1),vec3(p,1,0)}, triangle_3d{vec3(1,0,-p),vec3(p,-1,0),vec3(0,-p,-1)},
+		triangle_3d{vec3(-1,0,p),vec3(0,-p,1),vec3(0,p,1)}, triangle_3d{vec3(-1,0,p),vec3(0,p,1),vec3(-p,1,0)}, triangle_3d{vec3(-1,0,p),vec3(-p,1,0),vec3(-1,0,-p)}, triangle_3d{vec3(-p,-1,0),vec3(p,-1,0),vec3(0,-p,1)},
+		triangle_3d{vec3(-p,-1,0),vec3(0,-p,1),vec3(-1,0,p)}, triangle_3d{vec3(-p,-1,0),vec3(-1,0,-p),vec3(0,-p,-1)}, triangle_3d{vec3(-p,-1,0),vec3(0,-p,-1),vec3(p,-1,0)}, triangle_3d{vec3(-p,-1,0),vec3(-1,0,p),vec3(-1,0,-p)},
 	};
 	for (int F = 0; F < 20; F++) {
-		vec3 P = ISO[F].A;
-		vec3 A = ISO[F].C - ISO[F].A;
-		vec3 B = ISO[F].B - ISO[F].A;
+		vec3 P = ISO[F][0];
+		vec3 A = ISO[F][1] - ISO[F][0];
+		vec3 B = ISO[F][2] - ISO[F][0];
 
 		const int sd = 1 << SUBDIV;
 		const double sdm = exp2(-SUBDIV);
@@ -263,9 +263,9 @@ void visualizeObjectiveFunction(const vec3* P, int PN, std::vector<stl_triangle>
 				vec3 p01 = ns[i][j + 1];
 				vec3 p10 = ns[i + 1][j];
 				vec3 p11 = ns[i + 1][j + 1];
-				T[TN++] = triangle{ p01, p00, p10 };
+				T[TN++] = triangle_3d(p01, p00, p10);
 				if (i + j < sd - 1)
-					T[TN++] = triangle{ p10, p11, p01 };
+					T[TN++] = triangle_3d(p10, p11, p01);
 			}
 		}
 	}
@@ -280,7 +280,7 @@ void visualizeObjectiveFunction(const vec3* P, int PN, std::vector<stl_triangle>
 // balance a triangulated object placed on a plane
 // points: non-repeating vertices on the object
 // trigs: faces of the object
-void balanceObject(std::vector<vec3> &points, std::vector<triangle> &trigs,
+void balanceObject(std::vector<vec3> &points, std::vector<triangle_3d> &trigs,
 	vec3 translate = vec3(0.), double resize = 1.0) {
 
 	int PN = points.size(), TN = trigs.size();
@@ -313,7 +313,7 @@ void balanceObject(std::vector<vec3> &points, std::vector<triangle> &trigs,
 int main(int argc, char* argv[]) {
 
 
-	std::vector<triangle> scene;
+	std::vector<triangle_3d> scene;
 	scene.reserve(0x200000);
 
 	auto start_time = std::chrono::high_resolution_clock::now();
@@ -323,7 +323,7 @@ int main(int argc, char* argv[]) {
 	// test all shapes
 	for (int i = 0; i < OBJ_N; i++) {
 		std::vector<vec3> points;
-		std::vector<triangle> trigs;
+		std::vector<triangle_3d> trigs;
 		generateObject(i, trigs, &points);
 		balanceObject(points, trigs, vec3(i / 8, i % 8, 0));
 		scene.insert(scene.end(), trigs.begin(), trigs.end());
@@ -334,7 +334,7 @@ int main(int argc, char* argv[]) {
 	// visualization for debug
 	if (0) do {
 		std::vector<vec3> points;
-		std::vector<triangle> trigs;
+		std::vector<triangle_3d> trigs;
 		generateObject(0, trigs, &points, true);
 		if (SORT_POINTS) std::sort(points.begin(), points.end(),
 			[](vec3 a, vec3 b) {return a.sqr() > b.sqr(); });
@@ -360,7 +360,7 @@ int main(int argc, char* argv[]) {
 	FILE* fp = fopen(argv[1], "wb");
 	convertTriangles_color_normal(scene_stl, &scene[0], scene.size(),
 		[](vec3 n) { return 0.5*n + vec3(.5); });
-	writeSTL(fp, &scene_stl[0], scene_stl.size(), nullptr, "cba");
+	writeSTL(fp, &scene_stl[0], scene_stl.size(), nullptr, STL_CCW);
 	fclose(fp);
 	return 0;
 }

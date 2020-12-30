@@ -74,7 +74,7 @@ class AdaptiveParametricSurfaceTriangulator_dist {
 	Fun fun;
 
 	// store triangles
-	std::vector<triangle> Trigs;
+	std::vector<triangle_3d> Trigs;
 
 public:
 
@@ -88,7 +88,7 @@ public:
 	}
 
 	// user call function
-	std::vector<triangle> triangulate_adaptive(double u0, double u1, double v0, double v1, int un, int vn, int max_depth, double tolerance, bool isUClose = false, bool isVClose = false);
+	std::vector<triangle_3d> triangulate_adaptive(double u0, double u1, double v0, double v1, int un, int vn, int max_depth, double tolerance, bool isUClose = false, bool isVClose = false);
 
 private:
 
@@ -102,7 +102,7 @@ private:
 
 
 template<typename Fun>
-std::vector<triangle> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triangulate_adaptive(
+std::vector<triangle_3d> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triangulate_adaptive(
 	double u0, double u1, double v0, double v1, int un, int vn, int max_depth, double tolerance, bool isUClose, bool isVClose) {
 	samples_map->clear();
 	Trigs.clear();
@@ -291,15 +291,15 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::addQuadPatch(const sample 
 		// no edge splitted, normal triangulation
 		if ((s[0].p - s[2].p).sqr() > (s[1].p - s[3].p).sqr()) {
 			if (s[3].p != s[0].p && s[3].p != s[1].p && s[0].p != s[1].p)
-				Trigs.push_back(triangle{ s[3].p, s[0].p, s[1].p });
+				Trigs.push_back(triangle_3d(s[3].p, s[0].p, s[1].p));
 			if (s[1].p != s[2].p && s[1].p != s[3].p && s[2].p != s[3].p)
-				Trigs.push_back(triangle{ s[1].p, s[2].p, s[3].p });
+				Trigs.push_back(triangle_3d(s[1].p, s[2].p, s[3].p));
 		}
 		else {
 			if (s[2].p != s[3].p && s[2].p != s[0].p && s[3].p != s[0].p)
-				Trigs.push_back(triangle{ s[2].p, s[3].p, s[0].p });
+				Trigs.push_back(triangle_3d(s[2].p, s[3].p, s[0].p));
 			if (s[0].p != s[1].p && s[0].p != s[2].p && s[1].p != s[2].p)
-				Trigs.push_back(triangle{ s[0].p, s[1].p, s[2].p });
+				Trigs.push_back(triangle_3d(s[0].p, s[1].p, s[2].p));
 		}
 		return;
 	}
@@ -383,7 +383,7 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::addTriPatch(const sample s
 	// calculate the index of the situation
 	int situation_index = int(hasMid[0]) + 2 * int(hasMid[1]) + 4 * int(hasMid[2]);
 	if (situation_index == 0) {
-		Trigs.push_back(triangle{ s[0].p, s[1].p, s[2].p });
+		Trigs.push_back(triangle_3d(s[0].p, s[1].p, s[2].p));
 		return;
 	}
 

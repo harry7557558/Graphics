@@ -572,7 +572,7 @@ bool triangulate(double(*f)(vec3), double r) {
 	vec3 p; int tp = 0;
 	uint32_t seed = 0;
 	do {
-		p = rand3(lcg_next(seed), lcg_next(seed)) * (lcg_next(seed)*(2. / 4294967296.));
+		p = rand3(seed) * (lcg_next(seed)*(2. / 4294967296.));
 		if (++tp > 1000) return false;
 	} while (!land(f, p));
 	// once the first point is settled, failing in landing points is not easy to happen
@@ -613,7 +613,7 @@ int main(int argc, char* argv[]) {
 	for (int i = 0, l = T.size(); i < l; i++) {
 		Trigs.push_back(stl_triangle(T[i]->A, T[i]->B, T[i]->C, T[i]->col));
 	}
-	writeSTL(argv[1], &Trigs[0], Trigs.size(), nullptr, "bac");  // normals are incorrect
+	writeSTL(argv[1], &Trigs[0], Trigs.size());  // normals are incorrect
 
 	return 0;
 }

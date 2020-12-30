@@ -3,15 +3,15 @@
 #include "numerical/geometry.h"
 
 // parametric equation, 0 < u,v < 1
-#include "modeling/generators/parametric/surfaces.h"
+#include "modeling/parametric/surfaces.h"
 vec3 fun(double u, double v) {
-	//return vec3(cos(u)*cossin(v), sin(u));
-	//return vec3(cos(u)*cossin(5.*pow(v, 10.)), sin(u));
-	//return vec3((1. + cos(2.*u))*cossin(v), sin(2.*u));
-	//return vec3((1.0 + cos(3.*u))*cossin(5.*v), sin(3.*u));
-	//return vec3((1. + cos(2.*u))*cossin(v), sin(2.*u) - exp(-1000.*(1. - 2.*u)*(1. - 2.*u)));
-	//return vec3(v, u, u*v);
-	//return vec3(v + 0.2*u*u, u - 0.2*tan(v), tanh(1 - sin(3.*v)*cos(2.*u)));
+	//return vec3(cos(v)*cossin(u), sin(v));
+	//return vec3(cos(v)*cossin(5.*pow(u, 10.)), sin(v));
+	//return vec3((1. + cos(2.*v))*cossin(u), sin(2.*v));
+	//return vec3((1.0 + cos(3.*v))*cossin(5.*u), sin(3.*v));
+	//return vec3((1. + cos(2.*v))*cossin(u), sin(2.*v) - exp(-1000.*(1. - 2.*v)*(1. - 2.*v)));
+	//return vec3(u, v, u*v);
+	//return vec3(u + 0.2*v*v, v - 0.2*tan(u), tanh(1 - sin(3.*u)*cos(2.*v)));
 	//auto S = &ParamSurfaces[21]; return S->P(mix(S->u0, S->u1, u), mix(S->v0, S->v1, v));  // uneven torus
 	//auto S = &ParamSurfaces[23]; return S->P(mix(S->u0, S->u1, u), mix(S->v0, S->v1, v));  // deformed torus (star)
 	//auto S = &ParamSurfaces[29]; return 0.5*S->P(mix(S->u0, S->u1, u), mix(S->v0, S->v1, v));  // twisted torus
@@ -37,7 +37,6 @@ vec3 fun(double u, double v) {
 
 // this will store discretized triangles
 #include <vector>
-std::vector<triangle> Trigs;
 #include "ui/stl_encoder.h"
 std::vector<stl_triangle> Shape;
 
@@ -46,7 +45,7 @@ void drawDot(vec3 p, double r, vec3 col) {
 	for (int i = 0; i < 8; i++) {
 		vec3 v = vec3(0, 0, i >= 4 ? -1. : 1.);
 		vec3 e1 = vec3(cossin(.5*PI*i));
-		vec3 e2 = vec3(cossin(.5*PI*(i + v.z)));
+		vec3 e2 = vec3(cossin(.5*PI*(i - v.z)));
 		Shape.push_back(stl_triangle(p + r * v, p + r * e2, p + r * e1, col));
 	}
 }
@@ -393,9 +392,8 @@ void addTriPatch(const sample s[3]) {
 int main(int argc, char* argv[]) {
 	triangulate_adaptive(1, 1, 16, 0.01);
 
-	//writeSTL(argv[1], &Trigs[0], Trigs.size(), nullptr, "bac");
-	writeSTL(argv[1], &Shape[0], Shape.size(), nullptr, "cba");
-	samples_map.clear(); Trigs.clear(); Shape.clear();
+	writeSTL(argv[1], &Shape[0], Shape.size(), nullptr, STL_CCW);
+	samples_map.clear(); Shape.clear();
 	return 0;
 }
 

@@ -35,12 +35,12 @@ struct stl_triangle {
 	stl_vec3 n, a, b, c;
 	int16_t col = 0;
 	stl_triangle() {}
-	stl_triangle(triangle T) {
-		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C);
+	stl_triangle(triangle_3d T) {
+		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]);
 		n = vec3(0.);
 	}
-	stl_triangle(triangle T, vec3 col) {
-		a = stl_vec3(T.A), b = stl_vec3(T.B), c = stl_vec3(T.C), n = vec3(0.);
+	stl_triangle(triangle_3d T, vec3 col) {
+		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]), n = vec3(0.);
 		this->setColor(col);
 	}
 	stl_triangle(vec3 a, vec3 b, vec3 c, vec3 col = vec3(NAN)) {
@@ -60,11 +60,12 @@ struct stl_triangle {
 
 
 
-// correct_normal: a lowercase string with 3 characters indicating the direction of the normals
-// right-hand rule; ex. "bac" => n=cross(b-a,c-a)  "abc" => n=cross(a-b,c-b)
+constexpr uint8_t STL_CCW = 0x01;
+constexpr uint8_t STL_CW = 0x02;
 
 bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	const char header[80] = nullptr, const uint8_t correct_normal = 0) {
+	if (!fp) return false;
 
 	// 80-byte header
 	if (header == 0) {
@@ -79,26 +80,17 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 	if (fwrite(&N, sizeof(N), 1, fp) != 1)
 		return false;
 
-	// normal correction
-	int cnt[256];  // interpret string
-	for (int i = 0; i < 256; i++) cnt[i] = 0;
-	for (int i = 0; i < 3; i++)
-		cnt[correct_normal[i]]++;
-	if (cnt[0] == 3);  // no normal correction
-	else {
-		if (!(cnt['a'] == 1 && cnt['b'] == 1 && cnt['c'] == 1))
-			return false;  // invalid string
-		else {
-			int ai = correct_normal[0] - 'a', bi = correct_normal[1] - 'a', ci = correct_normal[2] - 'a';
-			for (unsigned i = 0; i < N; i++) {
-				const stl_vec3* p = &data[i].a;
-				stl_vec3 a = p[ai], b = p[bi], c = p[ci];
-				stl_vec3 u(b.x - a.x, b.y - a.y, b.z - a.z);
-				stl_vec3 v(c.x - a.x, c.y - a.y, c.z - a.z);
-				stl_vec3 n(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
-				double m = 1.0 / sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
-				data[i].n = stl_vec3((float)(m*n.x), (float)(m*n.y), (float)(m*n.z));
-			}
+	// normal calculation
+	if (correct_normal == STL_CCW || correct_normal == STL_CW) {
+		for (unsigned i = 0; i < N; i++) {
+			const stl_vec3* p = &data[i].a;
+			stl_vec3 a = p[0], b = p[1], c = p[2];
+			stl_vec3 u(b.x - a.x, b.y - a.y, b.z - a.z);
+			stl_vec3 v(c.x - a.x, c.y - a.y, c.z - a.z);
+			if (correct_normal == STL_CW) std::swap(u, v);
+			stl_vec3 n(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
+			double m = 1.0 / sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+			data[i].n = stl_vec3((float)(m*n.x), (float)(m*n.y), (float)(m*n.z));
 		}
 	}
 
@@ -112,8 +104,8 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 	return true;
 }
 
-bool writeSTL(FILE* fp, const triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "bac") {
+bool writeSTL(FILE* fp, const triangle_3d data[], unsigned N,
+	const char header[80] = nullptr, const uint8_t correct_normal = STL_CCW) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
@@ -123,15 +115,15 @@ bool writeSTL(FILE* fp, const triangle data[], unsigned N,
 }
 
 bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "\0\0\0") {
+	const char header[80] = nullptr, const uint8_t correct_normal = 0) {
 	FILE* fp = fopen(filename, "wb");
 	if (!fp) return false;
 	bool ok = writeSTL(fp, data, N, header, correct_normal);
 	fclose(fp);
 	return ok;
 }
-bool writeSTL(const char filename[], const triangle data[], unsigned N,
-	const char header[80] = nullptr, const char* correct_normal = "bac") {
+bool writeSTL(const char filename[], const triangle_3d data[], unsigned N,
+	const char header[80] = nullptr, const uint8_t correct_normal = STL_CCW) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
@@ -146,7 +138,7 @@ bool writeSTL(const char filename[], const triangle data[], unsigned N,
 // vec3 ColorF(vec3)
 template<typename trig, typename ColorFunction>
 bool writeSTL_recolor(FILE* fp, const trig data[], unsigned N,
-	const char header[80], const char* correct_normal, ColorFunction ColorF) {
+	const char header[80], const uint8_t correct_normal, ColorFunction ColorF) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++) {
@@ -157,29 +149,29 @@ bool writeSTL_recolor(FILE* fp, const trig data[], unsigned N,
 }
 // convert triangle arrays
 template<typename ColorFunction>  // vec3 ColorFunction(vec3 position)
-void convertTriangles_color(std::vector<stl_triangle> &res, const triangle src[], unsigned N, ColorFunction ColorF) {
+void convertTriangles_color(std::vector<stl_triangle> &res, const triangle_3d src[], unsigned N, ColorFunction ColorF) {
 	res.reserve(res.size() + N);
 	for (unsigned i = 0; i < N; i++) {
-		res.push_back(stl_triangle(src[i], ColorF((1. / 3.)*(src[i].A + src[i].B + src[i].C))));
+		res.push_back(stl_triangle(src[i], ColorF(src[i].center())));
 	}
 }
 template<typename ColorFunction>  // vec3 ColorFunction(vec3 unit_normal)
-void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangle src[], unsigned N,
+void convertTriangles_color_normal(std::vector<stl_triangle> &res, const triangle_3d src[], unsigned N,
 	ColorFunction ColorF = [](vec3 n) { return 0.5*n + vec3(.5); }) {
 	res.reserve(res.size() + N);
 	for (unsigned i = 0; i < N; i++) {
-		res.push_back(stl_triangle(src[i], ColorF(ncross(src[i].B - src[i].A, src[i].C - src[i].A))));
+		res.push_back(stl_triangle(src[i], ColorF(src[i].unit_normal())));
 	}
 }
 template<typename ColorFunction>
-bool writeSTL_recolor_normal(FILE* fp, const triangle data[], unsigned N,
+bool writeSTL_recolor_normal(FILE* fp, const triangle_3d data[], unsigned N,
 	const char header[80], ColorFunction ColorF = [](vec3 n) { return 0.5*n + vec3(.5); }) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++) {
-		T[i] = stl_triangle(data[i], ColorF(ncross(data[i].B - data[i].A, data[i].C - data[i].A)));
+		T[i] = stl_triangle(data[i], ColorF(data[i].unit_normal()));
 	}
-	bool res = writeSTL(fp, T, N, header, "bac");
+	bool res = writeSTL(fp, T, N, header, STL_CCW);
 	delete T; return res;
 }
 

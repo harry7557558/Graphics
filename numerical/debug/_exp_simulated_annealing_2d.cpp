@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
 	downhillSimplex_2d();
 
 	FILE *fp = fopen(argv[1], "wb");
-	writeSTL(fp, &STL[0], STL.size(), nullptr, "bac");
+	writeSTL(fp, &STL[0], STL.size(), nullptr, STL_CCW);
 	fclose(fp);
 	return 0;
 }

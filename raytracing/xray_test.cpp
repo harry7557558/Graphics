@@ -280,14 +280,14 @@ void Init() {
 	auto S = ParamSurfaces[ID];
 	auto info = ParamSurfaceInfo::info[ID];
 
-	std::vector<triangle> T;
+	std::vector<triangle_3d> T;
 	if (1) S.param2trigs(T);
 	else T = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, S.uD, S.vD, 6, 0.001*pow(determinant(info.InertiaTensor_u), 1. / 6.));
 	TN = T.size();
 
 	std::vector<BVH_Triangle*> BT;
 	for (int i = 0; i < TN; i++) {
-		vec3 A = T[i].A, B = T[i].B, C = T[i].C;
+		vec3 A = T[i][0], B = T[i][1], C = T[i][2];
 		BT.push_back(new BVH_Triangle{ cross(B - A, C - A), A, B - A, C - A });
 	}
 	Center = 0.5*(info.AABB_min + info.AABB_max);

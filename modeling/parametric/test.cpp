@@ -13,7 +13,7 @@
 #include "simulation/balance/balance_3d_nms.h"
 
 
-std::vector<triangle> comps;
+std::vector<triangle_3d> comps;
 
 
 // calculate some informations of each shape in "surfaces.h" and write them to "surfaces_info.h"
@@ -55,7 +55,7 @@ const std::vector<shapeInfo> info({\n\
 		std::vector<vec3> Ps;
 		S.param2points(Ps);
 		int PN = Ps.size();
-		std::vector<triangle> T;
+		std::vector<triangle_3d> T;
 		int TN = S.points2trigs(&Ps[0], T);
 
 		strcpy(info.name, S.name);
@@ -73,7 +73,7 @@ const std::vector<shapeInfo> info({\n\
 		if (info.isSolid) {
 			double V = 0.; vec3 C(0.); mat3 I(0.);
 			for (int i = 0; i < TN; i++) {
-				vec3 a = T[i].B, b = T[i].A, c = T[i].C;  // volume must be positive
+				vec3 a = T[i][1], b = T[i][0], c = T[i][2];  // volume must be positive
 				double dV = det(a, b, c) / 6.;
 				V += dV;
 				C += dV * (a + b + c) / 4.;
@@ -87,7 +87,7 @@ const std::vector<shapeInfo> info({\n\
 		else {
 			double A = 0.; vec3 C(0.); mat3 I(0.);
 			for (int i = 0; i < TN; i++) {
-				vec3 a = T[i].A, b = T[i].B, c = T[i].C;
+				vec3 a = T[i][0], b = T[i][1], c = T[i][2];
 				double dA = 0.5*length(cross(b - a, c - a));
 				A += dA;
 				C += dA / 3. * (a + b + c);
@@ -106,7 +106,7 @@ const std::vector<shapeInfo> info({\n\
 		// find an orientation that will be "still" when placed
 		for (int i = 0; i < PN; i++) Ps[i] -= info.CoM;
 		vec3 minn = vec3(0, 1e-6, -1);
-		info.minGravPotential_vec = balance_3d_NMS(&Ps[0], Ps.size(), minn, 1e-8*pow(determinant(info.InertiaTensor_u), 1./6.), &info.minGravPotential_u);
+		info.minGravPotential_vec = balance_3d_NMS(&Ps[0], Ps.size(), minn, 1e-8*pow(determinant(info.InertiaTensor_u), 1. / 6.), &info.minGravPotential_u);
 
 		// output
 		if (1) {
@@ -128,7 +128,7 @@ const std::vector<shapeInfo> info({\n\
 				info.AABB_min.x, info.AABB_min.y, info.AABB_min.z, info.AABB_max.x, info.AABB_max.y, info.AABB_max.z);
 			fprintf(fp, "\t\t%.8lg, vec3(%.8lg,%.8lg,%.8lg),\n",
 				info.SA_or_V, info.CoM.x, info.CoM.y, info.CoM.z);
-			fprintf(fp, "\t\tmat3(%.8lg,%.8lg,%.8lg,\n\t\t     %.8lg,%.8lg,%.8lg,\n\t\t     %.8lg,%.8lg,%.8lg ),\n",
+			fprintf(fp, "\t\tmat3(%.8lg,%.8lg,%.8lg,\n\t\t     %.8lg,%.8lg,%.8lg,\n\t\t     %.8lg,%.8lg,%.8lg),\n",
 				info.InertiaTensor_u.v[0][0], info.InertiaTensor_u.v[0][1], info.InertiaTensor_u.v[0][2], info.InertiaTensor_u.v[1][0], info.InertiaTensor_u.v[1][1], info.InertiaTensor_u.v[1][2], info.InertiaTensor_u.v[2][0], info.InertiaTensor_u.v[2][1], info.InertiaTensor_u.v[2][2]);
 			fprintf(fp, "\t\tvec3(%.8lf,%.8lf,%.8lf), %.8lg\n",
 				info.minGravPotential_vec.x, info.minGravPotential_vec.y, info.minGravPotential_vec.z, info.minGravPotential_u);
@@ -155,20 +155,21 @@ int main(int argc, char* argv[]) {
 
 #if 1
 	for (unsigned i = 0; i < ParamSurfaces.size(); i++) {
-		std::vector<triangle> temp;
+		std::vector<triangle_3d> temp;
 		auto S = ParamSurfaces[i];
+		auto info = ParamSurfaceInfo::info[i];
+		printf("%d - %s\n", i, S.name);
 		S.param2trigs(temp);
-		//temp = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.02, false, false);
+		//temp = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.01*pow(determinant(info.InertiaTensor_u), 1. / 6.), false, false);
 		int TN = temp.size();
 		if (0) {
 			// separated files
 			char s[64];
 			int L = sprintf(s, "%03d_%s.stl", i, S.name);
 			std::replace(&s[0], &s[L], ' ', '_');
-			writeSTL(s, &temp[0], TN, "", "abc");
+			writeSTL(s, &temp[0], TN, "", STL_CCW);
 			continue;
 		}
-		auto info = ParamSurfaceInfo::info[i];
 		translateToCOM_shell(&temp[0], TN);
 		scaleGyrationRadiusTo_shell(&temp[0], TN, 0.2);
 		if (0) {
@@ -183,10 +184,9 @@ int main(int argc, char* argv[]) {
 #else
 	auto S = ParamSurfaces[47];
 	S.param2trigs(comps);
-	//comps = AdaptiveParametricSurfaceTriangulator_dist(S.P).triangulate_adaptive(S.u0, S.u1, S.v0, S.v1, 7, 7, 16, 0.005, false, false);
 #endif
 
-	writeSTL(fp, &comps[0], comps.size(), nullptr, "abc");
+	writeSTL(fp, &comps[0], comps.size(), nullptr, STL_CCW);
 	//writeSTL_recolor_normal(fp, &comps[0], comps.size(), nullptr, [](vec3 n) { return 0.5*n + vec3(.5); });
 	fclose(fp);
 	return 0;

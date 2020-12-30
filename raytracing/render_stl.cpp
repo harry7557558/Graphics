@@ -1053,21 +1053,21 @@ void render() {
 bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
-	//readBinarySTL("3D Models\\Blender_Cube.stl");  // 12
-	//readBinarySTL("3D Models\\Blender_Isosphere.stl");  // 80
-	//readBinarySTL("3D Models\\Blender_Suzanne.stl");  // 968
-	//readBinarySTL("3D Models\\Utah_Teapot.stl");  // 9438
-	//readBinarySTL("3D Models\\Blender_Suzanne3.stl");  // 62976
-	//readBinarySTL("3D Models\\Stanford_Bunny.stl");  // 112402, modified version from Wikipedia
-	//readBinarySTL("3D Models\\Stanford_Armadillo.stl");  // 345944
-	//readBinarySTL("3D Models\\The_Thinker.stl");  // 837482
-	readBinarySTL("3D Models\\Stanford_Dragon.stl");  // 871414
-	//readBinarySTL("3D Models\\Stanford_Happy_Buddha.stl");  // 1087716
-	//readBinarySTL("3D Models\\Blender_Pipe.stl");  // 3145728
-	//readBinarySTL("3D Models\\Stanford_Asian_Dragon.stl");  // 7218906
-	//readBinarySTL("3D Models\\Stanford_Thai.stl");  // 10000000
-	//readBinarySTL("3D Models\\Stanford_Lucy.stl");  // 28055742, out of memory in x86
-	//Parametric1(500, 2500);
+	//readBinarySTL("modeling\\Blender_Cube.stl");  // 12
+	//readBinarySTL("modeling\\Blender_Isosphere.stl");  // 80
+	//readBinarySTL("modeling\\Blender_Suzanne.stl");  // 968
+	//readBinarySTL("modeling\\Utah_Teapot.stl");  // 9438
+	//readBinarySTL("modeling\\Blender_Suzanne3.stl");  // 62976
+	//readBinarySTL("modeling\\Stanford_Bunny.stl");  // 112402, modified version from Wikipedia
+	//readBinarySTL("modeling\\Stanford_Armadillo.stl");  // 345944
+	//readBinarySTL("modeling\\The_Thinker.stl");  // 837482
+	//readBinarySTL("modeling\\Stanford_Dragon.stl");  // 871414
+	//readBinarySTL("modeling\\Stanford_Happy_Buddha.stl");  // 1087716
+	//readBinarySTL("modeling\\Blender_Pipe.stl");  // 3145728
+	//readBinarySTL("modeling\\Stanford_Asian_Dragon.stl");  // 7218906
+	//readBinarySTL("modeling\\Stanford_Thai.stl");  // 10000000
+	//readBinarySTL("modeling\\Stanford_Lucy.stl");  // 28055742, out of memory in x86
+	Parametric1(500, 2500);
 	vec3 p0, p1; BoundingBox(STL, STL_N, p0, p1);
 	vec3 c = 0.5*(p1 + p0), b = 0.5*(p1 - p0);
 	double ir = 1.0 / cbrt(b.x*b.y*b.z);

@@ -44,7 +44,7 @@ double fun(vec3 p) {
 
 
 
-void marching_cube(double(*fun)(vec3), std::vector<triangle> &T, vec3 p0, vec3 p1, ivec3 dif) {
+void marching_cube(double(*fun)(vec3), std::vector<triangle_3d> &T, vec3 p0, vec3 p1, ivec3 dif) {
 	vec3 dp = (p1 - p0) / vec3(dif);
 
 	// sample between two "scan planes" instead of a 3d volume, intended to save memory
@@ -165,11 +165,11 @@ void marching_cube(double(*fun)(vec3), std::vector<triangle> &T, vec3 p0, vec3 p
 
 					// construct triangles
 					for (int t = 0; triTable[cubeIndex][t] != -1; t += 3) {
-						T.push_back(triangle{
+						T.push_back(triangle_3d(
 							intp[triTable[cubeIndex][t]],
 							intp[triTable[cubeIndex][t + 1]],
-							intp[triTable[cubeIndex][t + 2]],
-							});
+							intp[triTable[cubeIndex][t + 2]]
+							));
 					}
 				}
 			}
@@ -185,7 +185,7 @@ void marching_cube(double(*fun)(vec3), std::vector<triangle> &T, vec3 p0, vec3 p
 #include <chrono>
 
 int main(int argc, char* argv[]) {
-	std::vector<triangle> T;
+	std::vector<triangle_3d> T;
 
 	auto time_start = std::chrono::high_resolution_clock::now();
 
@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
 	double time_elapsed = std::chrono::duration<double>(time_end - time_start).count();
 	printf("%lf\n", time_elapsed);
 
-	writeSTL(argv[1], &T[0], T.size(), nullptr, "abc");
+	writeSTL(argv[1], &T[0], T.size(), nullptr, STL_CCW);
 	return 0;
 }
 

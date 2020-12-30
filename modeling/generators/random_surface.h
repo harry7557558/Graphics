@@ -5,9 +5,7 @@
 #include <algorithm>
 #include <vector>
 
-#define triangle geom_triangle
 #include "numerical\random.h"
-#undef triangle
 
 
 

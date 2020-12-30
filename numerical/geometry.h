@@ -306,19 +306,32 @@ mat3 rotationMatrix_z(double a) {
 
 
 
-// mostly used for debug output
+// mostly used for debug
 double degree(double rad) {
 	return rad * (180. / PI);
+}
+double radians(double deg) {
+	return deg * (PI / 180.);
 }
 
 
 
-struct triangle {
-	vec3 A, B, C;
-	void translate(vec3 d) { A += d, B += d, C += d; }
-	void scale(double s) { A *= s, B *= s, C *= s; }
-	void applyMatrix(mat3 M) { A = M * A, B = M * B, C = M * C; }
-	double area() const { return 0.5*length(cross(B - A, C - A)); }
+// triangle class
+#include <initializer_list>
+struct triangle_3d {
+	vec3 V[3];
+	vec3& operator[](int d) { return V[d]; }
+	const vec3& operator[](int d) const { return V[d]; }
+	triangle_3d() {}
+	triangle_3d(vec3 v0, vec3 v1, vec3 v2) { V[0] = v0, V[1] = v1, V[2] = v2; }
+	triangle_3d(std::initializer_list<vec3> s) { V[0] = *s.begin(), V[1] = *(s.begin() + 1), V[2] = *(s.begin() + 2); }
+	vec3 center() const { return (V[0] + V[1] + V[2])*(1. / 3.); }
+	vec3 normal() const { return cross(V[1] - V[0], V[2] - V[0]); }  // ccw
+	vec3 unit_normal() const { return ncross(V[1] - V[0], V[2] - V[0]); }
+	void translate(vec3 d) { V[0] += d, V[1] += d, V[2] += d; }
+	void scale(double s) { V[0] *= s, V[1] *= s, V[2] *= s; }
+	void applyMatrix(mat3 M) { V[0] = M * V[0], V[1] = M * V[1], V[2] = M * V[2]; }
+	double area() const { return 0.5*length(cross(V[1] - V[0], V[2] - V[0])); }
 };
 
 

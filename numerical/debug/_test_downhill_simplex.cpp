@@ -1,5 +1,3 @@
-#include "ui/stl_encoder.h"
-std::vector<stl_triangle> STL;
 #include "numerical/optimization.h"
 
 void test2d() {
@@ -49,10 +47,8 @@ void test3d() {
 }
 
 int main() {
-	//STL.resize(2 * 400 * 400);
-	//stl_fun2trigs([](double x, double y) { return sin(x) + sin(y) + 0.1*(x*x + y * y); }, &STL[0], -40, 40, -40, 40, 400, 400, -10, 10);
 	//test2d();
 	test3d();
-	writeSTL("D:\\t.stl", &STL[0], STL.size(), nullptr, "bac");
+	return 0;
 }
 

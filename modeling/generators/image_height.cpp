@@ -32,13 +32,13 @@ int main(int argc, char* argv[]) {
 			vec3 p10 = sc * vec3(i + 1, j, togray(c10));
 			vec3 p11 = sc * vec3(i + 1, j + 1, togray(c11));
 			vec3 col = (1. / 255.) * vec3(c00.r, c00.g, c00.b);
-			stl[Td++] = stl_triangle(p10, p00, p01, col);
-			stl[Td++] = stl_triangle(p01, p11, p10, col);
+			stl[Td++] = stl_triangle(p01, p00, p10, col);
+			stl[Td++] = stl_triangle(p10, p11, p01, col);
 		}
 	}
 
 	// output
-	writeSTL(argv[2], stl, TN, nullptr, "bac");
+	writeSTL(argv[2], stl, TN, nullptr, STL_CCW);
 	delete stl;
 	free(img);
 	return 0;
