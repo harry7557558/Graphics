@@ -526,8 +526,8 @@ mesh randomDistortion(int D = 4) {
 			double k = randf(-1.2, 1.2);
 			mat3 R = randRotation();
 			for (int i = 0; i < L; i++) {
-				double a = k * P[i].z, c = cos(a), s = sin(a);
-				P[i].setP(R * (mat3(c, -s, 0, s, c, 0, 0, 0, 1)*P[i]));
+				double a = k * P[i].z;
+				P[i].setP(R * (rotationMatrix_z(a)*P[i]));
 			}
 			break;
 		}

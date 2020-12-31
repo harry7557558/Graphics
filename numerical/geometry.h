@@ -249,7 +249,7 @@ public:
 	explicit mat3(vec3 i, vec3 j, vec3 k) {  // matrix by column vectors
 		for (int u = 0; u < 3; u++) v[u][0] = ((double*)&i)[u], v[u][1] = ((double*)&j)[u], v[u][2] = ((double*)&k)[u];
 	}
-	explicit mat3(double _00, double _01, double _02, double _10, double _11, double _12, double _20, double _21, double _22) {  // ordered in row-wise
+	explicit mat3(double _00, double _10, double _20, double _01, double _11, double _21, double _02, double _12, double _22) {  // ordered in column-wise
 		v[0][0] = _00, v[0][1] = _01, v[0][2] = _02, v[1][0] = _10, v[1][1] = _11, v[1][2] = _12, v[2][0] = _20, v[2][1] = _21, v[2][2] = _22;
 	}
 	vec3 row(int i) const { return vec3(v[i][0], v[i][1], v[i][2]); }
@@ -274,32 +274,32 @@ mat3 tensor(vec3 u, vec3 v) { return mat3(u*v.x, u*v.y, u*v.z); }
 mat3 axis_angle(vec3 n, double a) {
 	n = normalize(n); double ct = cos(a), st = sin(a);
 	return mat3(
-		ct + n.x*n.x*(1 - ct), n.x*n.y*(1 - ct) - n.z*st, n.x*n.z*(1 - ct) + n.y*st,
-		n.y*n.x*(1 - ct) + n.z*st, ct + n.y*n.y*(1 - ct), n.y*n.z*(1 - ct) - n.x*st,
-		n.z*n.x*(1 - ct) - n.y*st, n.z*n.y*(1 - ct) + n.x*st, ct + n.z*n.z*(1 - ct)
+		ct + n.x*n.x*(1 - ct), n.y*n.x*(1 - ct) + n.z*st, n.z*n.x*(1 - ct) - n.y*st,
+		n.x*n.y*(1 - ct) - n.z*st, ct + n.y*n.y*(1 - ct), n.z*n.y*(1 - ct) + n.x*st,
+		n.x*n.z*(1 - ct) + n.y*st, n.y*n.z*(1 - ct) - n.x*st, ct + n.z*n.z*(1 - ct)
 	);
 }
 mat3 rotationMatrix_x(double a) {
 	double ca = cos(a), sa = sin(a);
 	return mat3(
 		1, 0, 0,
-		0, ca, -sa,
-		0, sa, ca
+		0, ca, sa,
+		0, -sa, ca
 	);
 }
 mat3 rotationMatrix_y(double a) {
 	double ca = cos(a), sa = sin(a);
 	return mat3(
-		ca, 0, sa,
+		ca, 0, -sa,
 		0, 1, 0,
-		-sa, 0, ca
+		sa, 0, ca
 	);
 }
 mat3 rotationMatrix_z(double a) {
 	double ca = cos(a), sa = sin(a);
 	return mat3(
-		ca, -sa, 0,
-		sa, ca, 0,
+		ca, sa, 0,
+		-sa, ca, 0,
 		0, 0, 1
 	);
 }

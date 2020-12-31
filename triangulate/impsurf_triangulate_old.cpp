@@ -12,7 +12,6 @@
 #define Dout(s) std::cout << s
 #define dout(s) std::cout << s
 
-#define RotationMatrix_xz(x,z) mat3(cos(z), -sin(z), 0, cos(x)*sin(z), cos(x)*cos(z), -sin(x), sin(x)*sin(z), sin(x)*cos(z), cos(x));
 
 
 
@@ -188,6 +187,10 @@ vec3 calcGradient(double(*f)(vec3), vec3 p) {
 // numerically calculate radius of curvature
 double calcCurvatureR(double(*f)(vec3), vec3 p) {
 	vec3 n = calcGradient(f, p);
+#define RotationMatrix_xz(rx,rz) mat3(\
+		cos(rz), -sin(rz), 0,\
+		cos(rx)*sin(rz), cos(rx)*cos(rz), -sin(rx),\
+		sin(rx)*sin(rz), sin(rx)*cos(rz), cos(rx)).transpose()
 	mat3 R = RotationMatrix_xz(atan2(sqrt(n.x*n.x + n.y*n.y), n.z), atan2(n.x, -n.y));
 	vec3 x = R * vec3(UPSILON, 0, 0), y = R * vec3(0, UPSILON, 0);
 	double ax = ndot(calcGradient(f, p + x), calcGradient(f, p - x));
