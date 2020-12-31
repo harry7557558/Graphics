@@ -1,7 +1,4 @@
-// (simple??) 3D template
-// Compiled as VC++, use to hack heavy Win32 GUI standards that does not help anything with visualization works
-// Contains lots of rendering functions (on CPU, of course)
-// To use: copy-paste it and remove unused functions
+// (simple??) Win32 3D GUI template
 
 // Default UI:
 // Perspective axis & grid with default scenes
@@ -10,12 +7,6 @@
 // Adjust center of scene: Ctrl+Drag xy, Ctrl+Scroll z
 // Home / Ctrl+0 to reset viewport
 // Right click to topmost the window
-
-// To-do:
-// Alt+Drag to "look around", Alt+Scroll to "fly"; WSAD
-// Nasty-but-fast rasterizers
-// Multi-thread rendering
-
 
 #include <cmath>
 #include <stdio.h>
@@ -45,9 +36,8 @@ wchar_t _DEBUG_OUTPUT_BUF[0x1000];
 
 #pragma region Window Macros / Forward Declarations
 
-// Main window: UI
 
-#define WIN_NAME "UI"
+#define WIN_NAME "3D GUI Template"
 #define WinW_Padding 100
 #define WinH_Padding 100
 #define WinW_Default 640
@@ -83,7 +73,6 @@ bool Render_Needed = true;
 
 
 // Win32 Entry
-// Compress these code to save space because I don't understand any of them
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 #define _RDBK { if (!Render_Needed) break; HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); Render_Needed = false; break; }
@@ -100,7 +89,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) KeyDown(wParam); _RDBK } case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) KeyUp(wParam); _RDBK }
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
-#if 0
+#if 1
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	if (_USE_CONSOLE) if (AttachConsole(ATTACH_PARENT_PROCESS) || AllocConsole()) freopen("CONIN$", "r", stdin), freopen("CONOUT$", "w", stdout), freopen("CONOUT$", "w", stderr);
 #else
@@ -114,135 +103,12 @@ int main() {
 
 #pragma endregion  // WIN32
 
-// COLORREF
-enum WebSafeColors {
-	ALICEBLUE = 0xF0F8FF, ANTIQUEWHITE = 0xFAEBD7, AQUA = 0x00FFFF, AQUAMARINE = 0x7FFFD4, AZURE = 0xF0FFFF, BEIGE = 0xF5F5DC,
-	BISQUE = 0xFFE4C4, BLACK = 0x000000, BLANCHEDALMOND = 0xFFEBCD, BLUE = 0x0000FF, BLUEVIOLET = 0x8A2BE2, BROWN = 0xA52A2A,
-	BURLYWOOD = 0xDEB887, CADETBLUE = 0x5F9EA0, CHARTREUSE = 0x7FFF00, CHOCOLATE = 0xD2691E, CORAL = 0xFF7F50, CORNFLOWERBLUE = 0x6495ED,
-	CORNSILK = 0xFFF8DC, CRIMSON = 0xDC143C, CYAN = 0x00FFFF, DARKBLUE = 0x00008B, DARKCYAN = 0x008B8B, DARKGOLDENROD = 0xB8860B,
-	DARKGRAY = 0xA9A9A9, DARKGREY = 0xA9A9A9, DARKGREEN = 0x006400, DARKKHAKI = 0xBDB76B, DARKMAGENTA = 0x8B008B, DARKOLIVEGREEN = 0x556B2F,
-	DARKORANGE = 0xFF8C00, DARKORCHID = 0x9932CC, DARKRED = 0x8B0000, DARKSALMON = 0xE9967A, DARKSEAGREEN = 0x8FBC8F, DARKSLATEBLUE = 0x483D8B,
-	DARKSLATEGRAY = 0x2F4F4F, DARKSLATEGREY = 0x2F4F4F, DARKTURQUOISE = 0x00CED1, DARKVIOLET = 0x9400D3, DEEPPINK = 0xFF1493, DEEPSKYBLUE = 0x00BFFF,
-	DIMGRAY = 0x696969, DIMGREY = 0x696969, DODGERBLUE = 0x1E90FF, FIREBRICK = 0xB22222, FLORALWHITE = 0xFFFAF0, FORESTGREEN = 0x228B22,
-	FUCHSIA = 0xFF00FF, GAINSBORO = 0xDCDCDC, GHOSTWHITE = 0xF8F8FF, GOLD = 0xFFD700, GOLDENROD = 0xDAA520, GRAY = 0x808080,
-	GREY = 0x808080, GREEN = 0x008000, GREENYELLOW = 0xADFF2F, HONEYDEW = 0xF0FFF0, HOTPINK = 0xFF69B4, INDIANRED = 0xCD5C5C,
-	INDIGO = 0x4B0082, IVORY = 0xFFFFF0, KHAKI = 0xF0E68C, LAVENDER = 0xE6E6FA, LAVENDERBLUSH = 0xFFF0F5, LAWNGREEN = 0x7CFC00,
-	LEMONCHIFFON = 0xFFFACD, LIGHTBLUE = 0xADD8E6, LIGHTCORAL = 0xF08080, LIGHTCYAN = 0xE0FFFF, LIGHTGOLDENRODYELLOW = 0xFAFAD2, LIGHTGRAY = 0xD3D3D3,
-	LIGHTGREY = 0xD3D3D3, LIGHTGREEN = 0x90EE90, LIGHTPINK = 0xFFB6C1, LIGHTSALMON = 0xFFA07A, LIGHTSEAGREEN = 0x20B2AA, LIGHTSKYBLUE = 0x87CEFA,
-	LIGHTSLATEGRAY = 0x778899, LIGHTSLATEGREY = 0x778899, LIGHTSTEELBLUE = 0xB0C4DE, LIGHTYELLOW = 0xFFFFE0, LIME = 0x00FF00, LIMEGREEN = 0x32CD32,
-	LINEN = 0xFAF0E6, MAGENTA = 0xFF00FF, MAROON = 0x800000, MEDIUMAQUAMARINE = 0x66CDAA, MEDIUMBLUE = 0x0000CD, MEDIUMORCHID = 0xBA55D3,
-	MEDIUMPURPLE = 0x9370DB, MEDIUMSEAGREEN = 0x3CB371, MEDIUMSLATEBLUE = 0x7B68EE, MEDIUMSPRINGGREEN = 0x00FA9A, MEDIUMTURQUOISE = 0x48D1CC, MEDIUMVIOLETRED = 0xC71585,
-	MIDNIGHTBLUE = 0x191970, MINTCREAM = 0xF5FFFA, MISTYROSE = 0xFFE4E1, MOCCASIN = 0xFFE4B5, NAVAJOWHITE = 0xFFDEAD, NAVY = 0x000080,
-	OLDLACE = 0xFDF5E6, OLIVE = 0x808000, OLIVEDRAB = 0x6B8E23, ORANGE = 0xFFA500, ORANGERED = 0xFF4500, ORCHID = 0xDA70D6,
-	PALEGOLDENROD = 0xEEE8AA, PALEGREEN = 0x98FB98, PALETURQUOISE = 0xAFEEEE, PALEVIOLETRED = 0xDB7093, PAPAYAWHIP = 0xFFEFD5, PEACHPUFF = 0xFFDAB9,
-	PERU = 0xCD853F, PINK = 0xFFC0CB, PLUM = 0xDDA0DD, POWDERBLUE = 0xB0E0E6, PURPLE = 0x800080, REBECCAPURPLE = 0x663399,
-	RED = 0xFF0000, ROSYBROWN = 0xBC8F8F, ROYALBLUE = 0x4169E1, SADDLEBROWN = 0x8B4513, SALMON = 0xFA8072, SANDYBROWN = 0xF4A460,
-	SEAGREEN = 0x2E8B57, SEASHELL = 0xFFF5EE, SIENNA = 0xA0522D, SILVER = 0xC0C0C0, SKYBLUE = 0x87CEEB, SLATEBLUE = 0x6A5ACD,
-	SLATEGRAY = 0x708090, SLATEGREY = 0x708090, SNOW = 0xFFFAFA, SPRINGGREEN = 0x00FF7F, STEELBLUE = 0x4682B4, TAN = 0xD2B48C,
-	TEAL = 0x008080, THISTLE = 0xD8BFD8, TOMATO = 0xFF6347, TURQUOISE = 0x40E0D0, VIOLET = 0xEE82EE, WHEAT = 0xF5DEB3,
-	WHITE = 0xFFFFFF, WHITESMOKE = 0xF5F5F5, YELLOW = 0xFFFF00, YELLOWGREEN = 0x9ACD32,
-};
 
 // ================================== Vector Classes/Functions ==================================
 
 #pragma region Vector & Matrix
 
-// >100 sloc, 6kb
-// replace these by a header file if you care about code size
-
-#define PI 3.1415926535897932384626
-#define mix(x,y,a) ((x)*(1.0-(a))+(y)*(a))
-#define clamp(x,a,b) ((x)<(a)?(a):(x)>(b)?(b):(x))
-double mod(double x, double m) { return x - m * floor(x / m); }
-
-class vec2 {
-public:
-	double x, y;
-	explicit vec2() {}
-	explicit vec2(const double &a) :x(a), y(a) {}
-	explicit vec2(const double &x, const double &y) :x(x), y(y) {}
-	vec2 operator - () const { return vec2(-x, -y); }
-	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
-	vec2 operator - (const vec2 &v) const { return vec2(x - v.x, y - v.y); }
-	vec2 operator * (const vec2 &v) const { return vec2(x * v.x, y * v.y); }	// not standard
-	vec2 operator * (const double &a) const { return vec2(x*a, y*a); }
-	double sqr() const { return x * x + y * y; } 	// not standard
-	friend double length(const vec2 &v) { return sqrt(v.x*v.x + v.y*v.y); }
-	friend vec2 normalize(const vec2 &v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y)); }
-	friend double dot(const vec2 &u, const vec2 &v) { return u.x*v.x + u.y*v.y; }
-	friend double det(const vec2 &u, const vec2 &v) { return u.x*v.y - u.y*v.x; } 	// not standard
-#if 1
-	void operator += (const vec2 &v) { x += v.x, y += v.y; }
-	void operator -= (const vec2 &v) { x -= v.x, y -= v.y; }
-	void operator *= (const vec2 &v) { x *= v.x, y *= v.y; }
-	friend vec2 operator * (const double &a, const vec2 &v) { return vec2(a*v.x, a*v.y); }
-	void operator *= (const double &a) { x *= a, y *= a; }
-	vec2 operator / (const double &a) const { return vec2(x / a, y / a); }
-	void operator /= (const double &a) { x /= a, y /= a; }
-#endif
-	vec2 yx() const { return vec2(y, x); }
-	vec2 rot() const { return vec2(-y, x); }
-	vec2 rotr() const { return vec2(y, -x); }
-#if 1
-	// added when needed
-	bool operator == (const vec2 &v) const { return x == v.x && y == v.y; }
-	bool operator != (const vec2 &v) const { return x != v.x || y != v.y; }
-	vec2 operator / (const vec2 &v) const { return vec2(x / v.x, y / v.y); }
-	friend vec2 pMax(const vec2 &a, const vec2 &b) { return vec2(max(a.x, b.x), max(a.y, b.y)); }
-	friend vec2 pMin(const vec2 &a, const vec2 &b) { return vec2(min(a.x, b.x), min(a.y, b.y)); }
-	// element-wise functions
-	friend vec2 abs(const vec2 &a) { return vec2(abs(a.x), abs(a.y)); }
-	friend vec2 floor(const vec2 &a) { return vec2(floor(a.x), floor(a.y)); }
-	friend vec2 ceil(const vec2 &a) { return vec2(ceil(a.x), ceil(a.y)); }
-	friend vec2 sqrt(const vec2 &a) { return vec2(sqrt(a.x), sqrt(a.y)); }
-	friend vec2 sin(const vec2 &a) { return vec2(sin(a.x), sin(a.y)); }
-	friend vec2 cos(const vec2 &a) { return vec2(cos(a.x), cos(a.y)); }
-	friend vec2 atan(const vec2 &a) { return vec2(atan(a.x), atan(a.y)); }
-#endif
-};
-
-class vec3 {
-public:
-	double x, y, z;
-	explicit vec3() {}
-	explicit vec3(const double &a) :x(a), y(a), z(a) {}
-	explicit vec3(const double &x, const double &y, const double &z) :x(x), y(y), z(z) {}
-	explicit vec3(const vec2 &v, const double &z) :x(v.x), y(v.y), z(z) {}
-	vec3 operator - () const { return vec3(-x, -y, -z); }
-	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
-	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
-	vec3 operator * (const vec3 &v) const { return vec3(x * v.x, y * v.y, z * v.z); }
-	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
-	double sqr() const { return x * x + y * y + z * z; } 	// non-standard
-	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-	friend vec3 normalize(vec3 v) { return v * (1. / sqrt(v.x*v.x + v.y*v.y + v.z*v.z)); }
-	friend double dot(vec3 u, vec3 v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
-	friend vec3 cross(vec3 u, vec3 v) { return vec3(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
-#if 1
-	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
-	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
-	void operator *= (const vec3 &v) { x *= v.x, y *= v.y, z *= v.z; }
-	friend vec3 operator * (const double &a, const vec3 &v) { return vec3(a*v.x, a*v.y, a*v.z); }
-	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
-	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
-	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
-#endif
-	vec2 xy() const { return vec2(x, y); }
-	vec2 xz() const { return vec2(x, z); }
-	vec2 yz() const { return vec2(y, z); }
-#if 1
-	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
-	bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
-	vec3 operator / (const vec3 &v) const { return vec3(x / v.x, y / v.y, z / v.z); }
-	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
-	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
-	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
-	friend vec3 floor(const vec3 &a) { return vec3(floor(a.x), floor(a.y), floor(a.z)); }
-	friend vec3 ceil(const vec3 &a) { return vec3(ceil(a.x), ceil(a.y), ceil(a.z)); }
-	friend vec3 mod(const vec3 &a, double m) { return vec3(mod(a.x, m), mod(a.y, m), mod(a.z, m)); }
-#endif
-};
-
+#include "numerical/geometry.h"
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
 
@@ -749,14 +615,14 @@ void render() {
 
 	// default scene
 	{
-		drawRod_RT(vec0, veci, 0.05, RED);
-		drawRod_RT(vec0, vecj, 0.05, GREEN);
-		drawRod_RT(vec0, veck, 0.05, BLUE);
-		drawSphere_RT(vec3(0.5, 0, 0), 0.1, YELLOW);
-		drawTriangle_RT(vec0, veci, vecj, GRAY);
-		drawArrow_RT(vec3(0.3, 0.3, 0), vec3(.3, .3, .5), .1, MAGENTA);
-		drawCircle_RT(vec3(0.2, 0.5, 0.1), vec3(2, 1, 1), 0.1, ORANGE);
-		drawVector_RT(vec3(1, 0, .4), vec3(-1, 1, .5), 0.03, PURPLE, false);
+		drawRod_RT(vec0, veci, 0.05, 0xff0000);
+		drawRod_RT(vec0, vecj, 0.05, 0x008000);
+		drawRod_RT(vec0, veck, 0.05, 0x0000ff);
+		drawSphere_RT(vec3(0.5, 0, 0), 0.1, 0xffff00);
+		drawTriangle_RT(vec0, veci, vecj, 0x808080);
+		drawArrow_RT(vec3(0.3, 0.3, 0), vec3(.3, .3, .5), .1, 0xff00ff);
+		drawCircle_RT(vec3(0.2, 0.5, 0.1), vec3(2, 1, 1), 0.1, 0xff8000);
+		drawVector_RT(vec3(1, 0, .4), vec3(-1, 1, .5), 0.03, 0x800080, false);
 	}
 
 	// the actual fps is less because of displaying time
