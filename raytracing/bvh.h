@@ -35,7 +35,7 @@ void constructBVH(BVH* &R, std::vector<BVH_Triangle*> &T, vec3 &Min, vec3 &Max) 
 	}
 	else R->Obj[0] = NULL;
 
-	// Analysis shows this is the most time-consuming part in this function
+	// Analysis shows this is the most time-consuming part of this function
 	const double _3 = 1. / 3;
 	for (int i = 0; i < N; i++) {
 		vec3 C = T[i]->P + _3 * (T[i]->A + T[i]->B);

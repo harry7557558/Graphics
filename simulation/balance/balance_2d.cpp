@@ -49,7 +49,7 @@ double calcGravPotential(const object &obj, vec2 g) {
 // the "proper" way to minimize the energy (exact solution as reference)
 // this solution works in O(NlogN) even though O(N^2) brute-force solution should have no problem with the test cases
 
-// calculate the convex hull of an object, result is automatically counter-clockwise
+// calculate the convex hull of an object, the result is automatically counter-clockwise
 object convexHull(object P) {
 	std::sort(P.begin(), P.end(), [](vec2 p, vec2 q) { return p.x == q.x ? p.y < q.y : p.x < q.x; });
 	object C;
@@ -119,7 +119,7 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	// simulated annealing
 	uint32_t seed1 = 0, seed2 = 1, seed3 = 2;  // random number seeds
 	double rand;
-	double a = 0.;  // configulation
+	double a = 0.;  // configuration
 	double T = 100.0;  // temperature
 	double E = Fun(a);  // energy (gravitational potential)
 	double min_a = a, min_E = E, min_T = T;  // record minimum value encountered
@@ -129,7 +129,7 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = (int32_t(seed1 = seed1 * 1664525u + 1013904223u) + .5) / 2147483648.;  // -1<rand<1
-			double da = T * erfinv(rand);  // change of configulation
+			double da = T * erfinv(rand);  // change of configuration
 			double a_new = a + da;
 			double E_new = Fun(a_new);
 			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
@@ -208,7 +208,7 @@ int loadObjs(const char* filename) {
 		if (poly.back() == poly[0])
 			poly.pop_back();
 
-		// calculate the center of mass using divergence theorem
+		// calculate the center of mass using the divergence theorem
 		vec2 C(0); double A(0);
 		for (int i = 0, n = poly.size(); i < n; i++) {
 			vec2 p = poly[i], q = poly[(i + 1) % n];

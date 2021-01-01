@@ -289,7 +289,7 @@ std::vector<curveInterval> fitCurve_reParameterize(std::vector<curveInterval> Pi
 			// optimize with current parametrization
 			uv = fitCurve_minimizeParameterSumSqr(P0, P1, T0, T1, N, Ps, ts, ws);
 
-			// re-parametrize
+			// reparameterize
 			err = 0.;  // in practice: abort if still too big after some number of iterations
 			cubicCurve C = bezierAlg(P0, P0 + T0 * uv.x, P1 - T1 * uv.y, P1);
 			for (int i = 0; i < N; i++) {
@@ -325,7 +325,7 @@ std::vector<curveInterval> fitCurve_reParameterize(std::vector<curveInterval> Pi
 
 // minimize the integral of error without tangent constraints
 // 3x+ more samples but the result is much better visually
-// @useTangentRepresentation: set to true to represent control points using parallel and orthogonal components of tangent vector in downhill simplex optimization
+// @useTangentRepresentation: set to true to represent control points using parallel and orthogonal components of tangent vectors in downhill simplex optimization
 std::vector<curveInterval> fitCurve_intError_4(std::vector<curveInterval> Pieces, bool useTangentRepresentation) {
 	distCubic2_callCount = 0;
 
@@ -454,7 +454,7 @@ std::vector<curveInterval> fitCurve_reParameterize_4(std::vector<curveInterval> 
 			// optimize with current parametrization
 			fitCurve_minimizeParameterSumSqr_4(P0, P1, C0, C1, N, Ps, ts, ws);
 
-			// re-parametrize
+			// reparameterize
 			err = 0.;  // in practice: abort if still too big after some number of iterations
 			cubicCurve C = bezierAlg(P0, C0, C1, P1);
 			for (int i = 0; i < N; i++) {

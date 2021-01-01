@@ -65,7 +65,7 @@ void marching_cube(double(*fun)(vec3), std::vector<triangle> &T, vec3 p0, vec3 p
 		}
 	}
 
-	// marchine cube
+	// marching cube
 	for (int k = 0; k < dif.z; k++) {
 
 		// switch the planes
@@ -184,7 +184,7 @@ void marching_cube(double(*fun)(vec3), std::vector<triangle> &T, vec3 p0, vec3 p
 }
 
 
-// refinment after marching_cube
+// refinement after marching_cube
 void subdivide_trigs_refine(double(*fun)(vec3), vec3* P, int N, double max_move) {
 	/*
 		move points closer to the zero-isosurface
@@ -214,7 +214,7 @@ void subdivide_trigs_refine(double(*fun)(vec3), vec3* P, int N, double max_move)
 void subdivide_trigs_splitTriangle(double(*fun)(vec3), triangle T, std::vector<triangle> &Ts, double max_length, int recurse_remain = 20) {
 	/*
 		recursively split and refine a triangle until its side length does not exceed max_length
-		and append splitted triangles to Ts
+		and append split triangles to Ts
 	*/
 	// use lookup table
 	vec3 Vertice[6] = { T.A, T.B, T.C };

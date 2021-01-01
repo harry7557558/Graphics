@@ -11,7 +11,7 @@
  *  Rotate Shape:               shift + drag
  *  Scale Shape:                S + drag
  *  Add Point:                  ctrl + click
- *  Delete Point:               right click
+ *  Delete Point:               right-click
  *  Switch Endpoint:            left / right
  *  Reverse Point Direction:    space
  *  Center Points:              shift + c (only available in FourierSeries mode)

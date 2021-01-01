@@ -62,7 +62,7 @@ void marching_cube(double(*fun)(vec3), std::vector<triangle_3d> &T, vec3 p0, vec
 		}
 	}
 
-	// marchine cube
+	// marching cube
 	for (int k = 0; k < dif.z; k++) {
 
 		// switch the planes

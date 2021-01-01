@@ -38,7 +38,7 @@ double Simulated_Annealing() {
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = int32_t(seed1 = seed1 * 1664525u + 1013904223u) / 2147483648.;  // -1<=rand<1
-			double dx = T * erfinv(rand);  // change of configulation
+			double dx = T * erfinv(rand);  // change of configuration
 			double x_new = x + dx;
 			double E_new = Fun(x_new);
 			double prob = exp(-(E_new - E) / T);  // probability, note that E is approximately between -2 and 2

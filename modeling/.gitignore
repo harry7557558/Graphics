@@ -159,7 +159,7 @@ parametric/024_textured_torus_(tire).stl
 parametric/025_textured_torus_(cells).stl
 parametric/026_textured_torus_(wavy).stl
 parametric/027_textured_torus_(hexa).stl
-parametric/028_bended_torus.stl
+parametric/028_bent_torus.stl
 parametric/029_twisted_torus.stl
 parametric/030_toric_heart.stl
 parametric/031_toric_cercis.stl
@@ -175,6 +175,10 @@ parametric/040_ark_clam.stl
 parametric/041_Asian_clam.stl
 parametric/042_razor_clam.stl
 parametric/043_mussel_clam.stl
+parametric/044_elliptic_twist.stl
+parametric/045_dough_twist.stl
+parametric/046_cinquefoil_bundle.stl
+parametric/047_circular_solenoid.stl
 plots/sickfun00.stl
 plots/sickfun01.stl
 plots/sickfun02.stl

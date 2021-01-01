@@ -51,7 +51,7 @@ double Fun0(double x, double y) {
 }
 
 
-// make the graph more consistant and the solver's life harder
+// make the graph more consistent and the solver's life harder
 const double Rad = 5.;  // -Rad<x<Rad, -Rad<y<Rad
 const int Dif = 320;  // equal-spaced Dif×Dif sample grid
 double Grid[Dif + 1][Dif + 1];  // sample values
@@ -108,8 +108,8 @@ void simulated_annealing_naive() {
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = ((int32_t)lcg_next(seed1) + .5) / 2147483648.;  // -1<rand<1
-			vec2 dx = T * erfinv(rand) * cossin(lcg_next(seed1)*(2.*PI / 4294967296.));  // change of configulation
-			vec2 x_new = x + dx;  // new configulation
+			vec2 dx = T * erfinv(rand) * cossin(lcg_next(seed1)*(2.*PI / 4294967296.));  // change of configuration
+			vec2 x_new = x + dx;  // new configuration
 			double E_new = Fun(x_new);
 			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
 			rand = (seed2 = seed2 * 1664525u + 1013904223u) / 4294967296.;  // 0<=rand<1

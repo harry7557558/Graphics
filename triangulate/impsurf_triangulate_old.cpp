@@ -132,7 +132,7 @@ double Imp9(vec3 p) {  // a star created for fun
 	return 4.0*d*d - p.z*(5.*u.x*u.x - 10.*u.x*u.z + u.z*u.z) - 1.0;
 }
 
-double ImpX(vec3 p) {		// cup constructed with csg, ultra complex piecewise implicit surface
+double ImpX(vec3 p) {		// cup constructed with CSG, complex piecewise implicit surface
 	vec3 P = p + vec3(0, 0, 0.5);
 	double cyl = SD_Cylinder_z(0.75, 0, 2, P);
 	double sd = abs(cyl - 0.15) - 0.08;
@@ -174,7 +174,7 @@ struct gapNode {
 #define EPSILON 1e-6
 #define UPSILON 1e-4
 
-// tetrahedron method numerically calculate gradient
+// tetrahedron method numerically calculate the gradient
 vec3 calcGradient(double(*f)(vec3), vec3 p) {
 	double k_111 = f(vec3(p.x + EPSILON, p.y + EPSILON, p.z + EPSILON));
 	double k_100 = f(vec3(p.x + EPSILON, p.y - EPSILON, p.z - EPSILON));
@@ -184,7 +184,7 @@ vec3 calcGradient(double(*f)(vec3), vec3 p) {
 	n /= 4 * EPSILON; return n;
 }
 
-// numerically calculate radius of curvature
+// numerically calculate the radius of curvature
 double calcCurvatureR(double(*f)(vec3), vec3 p) {
 	vec3 n = calcGradient(f, p);
 #define RotationMatrix_xz(rx,rz) mat3(\
@@ -200,7 +200,7 @@ double calcCurvatureR(double(*f)(vec3), vec3 p) {
 	return clamp(r, 0.1, 1.0);
 }
 
-// Newton's iteration method finding point on surface
+// Newton iteration method, find a point on a surface
 bool land(double(*f)(vec3), vec3 &p) {
 	vec3 n; double d;
 	int i = 0; do {
@@ -587,7 +587,7 @@ bool triangulate(double(*f)(vec3), double r) {
 	land(f, a); land(f, b);
 	T.push_back(new f_triangle(p, a, b, vec3(0.8, 0, 0)));
 
-	// growing phase, gap defined by a list of vertexes
+	// growing phase, the gap defined by a list of vertices
 	gapNode *g0 = new gapNode; g0->p = p, g0->m = 0, g0->n = new gapNode;
 	gapNode *g = g0->n; g->m = g0, g->p = b, g->n = 0;
 	if (!spread(f, b, a, r, g)) return false;

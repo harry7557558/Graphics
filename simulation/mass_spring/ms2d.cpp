@@ -1,4 +1,4 @@
-// mass spring simulation in 2d
+// mass-spring simulation in 2d
 
 // implicit method: my formula is incorrect??
 
@@ -696,7 +696,7 @@ public:
 			// longitude springs
 			s.springs.push_back(os(i, (i + 1) % N, 2.*r1*sin(PI / N), ks, kd));
 			s.springs.push_back(os(i + N, (i + 1) % N + N, 2.*r2*sin(PI / N), ks, kd));
-			// lattitude springs
+			// latitude springs
 			s.springs.push_back(os(i, i + N, abs(r2 - r1), ks, kd));
 			// cross springs
 			s.springs.push_back(os(i, (i + 1) % N + N, NAN, ks, kd));

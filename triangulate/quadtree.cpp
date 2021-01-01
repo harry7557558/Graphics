@@ -162,7 +162,7 @@ namespace MARCH_LOOKUP_TABLES {
 		ivec2(0,1), ivec2(1,2), ivec2(2,3), ivec2(3,0)  // bottom, right, top, left
 	};
 
-	// indicate segments connecting edges from bitwise compressed vertice singns
+	// indicate segments connecting edges from bitwise compressed vertice signs
 	// max 2 segments, distinct vertices
 	const static int SEGMENT_TABLE[16][4] = {
 		{ -1, }, // 0000

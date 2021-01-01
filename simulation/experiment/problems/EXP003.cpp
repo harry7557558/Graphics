@@ -5,7 +5,7 @@
 
 // Issues: similar to EXP002
 // May not be a good experiment as the variable of the analytic solution is not t
-// The error is magnificated significantly near the end of the simulation
+// The error is magnified significantly near the end of the simulation
 // I may have a bug
 
 #define BatchTest 1

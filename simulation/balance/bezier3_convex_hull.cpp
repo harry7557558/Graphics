@@ -1,4 +1,4 @@
-// find the convex hull of a path enclosed by cubic Bezier curve
+// find the convex hull of a path defined by cubic Bezier splines
 
 // as a temporary experiment to find the exact solution to the 2d balance problem,
 // (use to compare numerical solutions,)
@@ -257,7 +257,7 @@ obj_node* clipList(obj_node *p, std::vector<obj_node*> *delete_list = nullptr) {
 
 	// store the "garbage" elements and "recycle" them later
 	// this is necessary because a recursive call checks whether a node is deleted by checking if its lst or nxt is nullptr
-	// seems like there is still memory leak somewhere... :(
+	// seems like there is still a memory leak somewhere... :(
 	if (delete_list == nullptr) {
 		delete_list = new std::vector<obj_node*>;
 		p = clipList(p, delete_list);
@@ -392,7 +392,7 @@ object convexHull(object P) {
 		C.insert(C.end(), app.begin(), app.end());
 		return convexHull(C);
 	}
-	int breakcount = 0;  // only allow 1 to avoid certain issue
+	int breakcount = 0;  // only allow 1 to avoid issues
 	for (int i = 0, l = Cv.size(); i < l; i++) {
 		vertex v0 = Cv[i], v1 = Cv[(i + 1) % l];
 		if (breakcount || v0.cr == v1.cl) C.push_back(P[v0.cr]);

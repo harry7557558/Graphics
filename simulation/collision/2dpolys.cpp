@@ -185,7 +185,7 @@ void calcIntPath() {
 					Vd[ui] = V[(ui + 1) % un] - V[ui];
 					Vd2[ui] = 1.0 / Vd[ui].sqr();
 				}
-				// check the vertices all other objects
+				// check the vertices of all other objects
 				for (int v = 0; v < OBJECT_N; v++) if (v != u) {
 					double rs = Body[u].r + Body[v].r;
 					if ((st[v].x - st[u].x).sqr() < rs * rs) {  // bounding sphere check

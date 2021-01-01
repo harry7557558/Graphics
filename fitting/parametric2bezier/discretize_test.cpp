@@ -235,7 +235,7 @@ std::vector<segment_sample> discretizeParametricCurve(std::function<vec2(double)
 		}
 
 		/*
-		After call, check:
+		After the call, check:
 		 * too large turning angles;
 		 * rapid change in chord lengths;
 		 * discontinuities in segments;
@@ -259,7 +259,7 @@ std::vector<segment_sample> discretizeParametricCurve(std::function<vec2(double)
 		P_1.t = NAN;
 	}
 
-	// subdivition global variables
+	// subdivision global variables
 	double tc, tc0, tc1;
 	vec2 pc, pc0, pc1;
 	bool hasJump = false;
@@ -708,7 +708,7 @@ std::vector<segment> discretizeParametricCurve_BST(Fun F,
 		}
 
 		/*
-		After call, check:
+		After the call, check:
 		 * too large turning angles;
 		 * rapid change in chord lengths;
 		 * discontinuities in segments;

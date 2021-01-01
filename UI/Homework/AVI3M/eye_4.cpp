@@ -78,7 +78,7 @@ vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed, int recurse_remain = 20, bool hit
 			}
 			break;
 		}
-		if (min_t == INFINITY) {  // hit sky dome
+		if (min_t == INFINITY) {  // hit skydome
 			t_col += m_col;
 			break;
 		}

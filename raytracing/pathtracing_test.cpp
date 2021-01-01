@@ -1,4 +1,4 @@
-// pathtracing test
+// path tracing test
 
 #include <cmath>
 #include <stdio.h>
@@ -335,7 +335,7 @@ vec3 calcCol_bulb(vec3 ro, vec3 rd, uint32_t &seed, int recurse_remain = 20, boo
 			}
 			break;
 		}
-		if (min_t == INFINITY) {  // hit sky dome
+		if (min_t == INFINITY) {  // hit skydome
 			t_col += m_col;
 			break;
 		}
@@ -382,7 +382,7 @@ void render_RT_BVH() {
 		const int WIN_SIZE = _WIN_W * _WIN_H;
 		for (int k = beg; k < end; k += step) {
 			int i = k % _WIN_W, j = k / _WIN_W;
-			// bruteforce Monte-Carlo sampling
+			// brute force Monte-Carlo sampling
 			const int N = 1;
 			vec3 col(0.);
 			for (int u = 0; u < N; u++) {

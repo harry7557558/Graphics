@@ -68,7 +68,7 @@
 //   - [0] from file [1] counter-clockwise, right-hand rule [2] clockwise
 // Press T to enable/disable transparent rendering mode
 //   - Transparent rendering mode is designed for viewing the internal structure of models
-//   - Tip: Switch coloring mode (C) to improve clearness and asthetics
+//   - Tip: Switch coloring mode (C) to improve clearness and aesthetics
 // Press X to hide/show axis
 // Press G to hide/show grid ([-10,10] with grid width 1)
 //   - By default there are larger and smaller grid lines if the object is too large or small; Press F or Shift+G to turn on/off this feature
@@ -206,7 +206,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 typedef struct { vec3 n, a, b, c; } stl_triangle;
 typedef int16_t stl_color;
 
-// covert stl_color to vec3
+// convert stl_color to vec3
 // https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
 vec3 stlColor2vec3(stl_color c) {
 	if (c >= 0) return vec3(1.);  // otherwise, max 31/32=0.97

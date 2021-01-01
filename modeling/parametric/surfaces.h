@@ -131,7 +131,7 @@ namespace ParametricSurfaceTemplates {
 	}
 
 
-	// swepts cv around cu, involves numerical differentiation
+	// sweeps cv around cu, involves numerical differentiation
 	vec3 Swept_Surface(std::function<vec3(double v, double u)> cv, std::function<vec3(double u)> cu, double u, double v, bool mainNormal) {
 		const double eps = 1e-5;
 		vec3 s0 = cu(u), sp = cu(u + eps), sm = cu(u - eps);
@@ -313,7 +313,7 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 		double r = hypot(0.8*cos(v) - 0.05*cos(3.*v), 0.8*sin(v) + 0.05*sin(3.*v));
 		vec3 p = vec3(cossin(u)*(R + r * cos(v)), r*sin(v));
 		return p + vec3(0, 0, 0.1*p.x*p.y + 0.1*p.y*p.y);
-	}, 0., 2.*PI, 0, 2.*PI, 100, 60, true, "bended torus"),
+	}, 0., 2.*PI, 0, 2.*PI, 100, 60, true, "bent torus"),
 
 	/*[29]*/ ParametricSurfaceL([](double u, double v) {
 		double R = 2.0, r = 0.8;
@@ -447,10 +447,10 @@ const std::vector<ParametricSurfaceL> ParamSurfaces({
 // @AABB_min, @AABB_max: axis-aligned bounding box
 // @SA_or_V: the surface area (surface) or volume (solid) of the shape
 // @CoM: center of mass of the object, assuming uniform density
-// @InertiaTensor_u: multiply this by the mass of the object to get the inertia tensor calculated at center of mass
+// @InertiaTensor_u: multiply this by the mass of the object to get the inertia tensor calculated at the center of mass
 // @minGravPotential_vec: a local minimum of function E(n)=max([dot(n,p-CoM) for p in shape]) subject to |n|==1,
 //                        the shape will be physically balanced when placed on a horizontal plane with this direction facing down
-// @minGravPotential_u: height of center of mass above the plane when placed with @minGravPotential_vec facing down
+// @minGravPotential_u: height of the center of mass above the plane when placed with @minGravPotential_vec facing down
 
 namespace ParamSurfaceInfo {
 #include "surfaces_info.h"
@@ -462,7 +462,7 @@ namespace ParamSurfaceInfo {
 // functions that may be useful for normalizing test shapes
 
 // calculate the center of mass of an object
-// assume the object is a surface with uniform surface density
+// assume the object is a surface with a uniform surface density
 vec3 calcCOM_shell(const triangle_3d* T, int N) {
 	double A = 0; vec3 C(0.);
 	for (int i = 0; i < N; i++) {
@@ -515,7 +515,7 @@ double calcMaxRadius(const triangle_3d* T, int N) {
 	}
 	return sqrt(maxR);
 }
-// calculate the radius of gyration of an object, assuming uniform surface density
+// calculate the radius of gyration of an object, assuming a uniform surface density
 double calcGyrationRadius_shell(const triangle_3d* T, int N) {
 	// not sure if I calculated this correctly
 	double A = 0.; mat3 I(0.);

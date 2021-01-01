@@ -1,7 +1,7 @@
 // try to balance a 3d object placed on a plane
 // by minimizing its gravitational potential energy
 
-// seems like downhill simplex method wins
+// seems like the downhill simplex method wins
 
 
 #include <stdio.h>
@@ -76,8 +76,8 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 
 
 #if 1
-	// triangles on a unit isocahedron sorted in the increasing order of z
-	const triangle_3d isoca[20] = {
+	// triangles on a unit icosahedron sorted in the increasing order of z
+	const triangle_3d icosa[20] = {
 		triangle_3d{vec3(0.000000,0.000000,-1.000000),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.000000,0.894427,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,0.276393,-0.447214),vec3(0.000000,0.000000,-1.000000)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,0.000000,-1.000000),vec3(0.525731,-0.723607,-0.447214)},
 		triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.850651,-0.276393,0.447214),vec3(0.525731,-0.723607,-0.447214)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(-0.850651,-0.276393,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.000000,0.894427,-0.447214),vec3(0.525731,0.723607,0.447214)}, triangle_3d{vec3(-0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214),vec3(-0.850651,0.276393,-0.447214)},
 		triangle_3d{vec3(0.000000,-0.894427,0.447214),vec3(0.525731,-0.723607,-0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle_3d{vec3(-0.525731,-0.723607,-0.447214),vec3(0.000000,-0.894427,0.447214),vec3(-0.850651,-0.276393,0.447214)}, triangle_3d{vec3(0.850651,0.276393,-0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.850651,-0.276393,0.447214)}, triangle_3d{vec3(-0.850651,-0.276393,0.447214),vec3(-0.525731,0.723607,0.447214),vec3(-0.850651,0.276393,-0.447214)}, triangle_3d{vec3(-0.525731,0.723607,0.447214),vec3(0.525731,0.723607,0.447214),vec3(0.000000,0.894427,-0.447214)},
@@ -86,12 +86,12 @@ vec3 balance_downhillSimplex(const vec3* P, int N) {
 
 	// find a good starting position
 	for (int i = 0; i < 10; i++) {
-		vec3 n = normalize(isoca[i][0] + isoca[i][1] + isoca[i][2]);
+		vec3 n = normalize(icosa[i][0] + icosa[i][1] + icosa[i][2]);
 		n = normalize(vec3(0, 0, -0.4) + 0.6*n);  // want it to land closer to the bottom
 		double d = maxDot(P, N, n);
 		if (d < maxd) {
 			maxd = d, maxn = n;
-			//S[0].n = isoca[i].A, S[1].n = isoca[i].B, S[2].n = isoca[i].C;
+			//S[0].n = icosa[i].A, S[1].n = icosa[i].B, S[2].n = icosa[i].C;
 		}
 	}
 #endif

@@ -44,7 +44,7 @@ class AdaptiveParametricSurfaceTriangulator_dist {
 		vec3 p;
 	};
 
-	// data structure to store samples for surface reconstruction and to void duplicated samples
+	// data structure to store samples for surface reconstruction and to void duplicate samples
 	std::map<vec2, vec3, std::function<bool(vec2, vec2)>> *samples_map;
 	sample sample_m(vec2 uv) {
 		sample s; s.uv = uv;
@@ -54,7 +54,7 @@ class AdaptiveParametricSurfaceTriangulator_dist {
 		return s;
 	}
 
-	// surface patchs
+	// surface patches
 	struct quadpatch {
 		sample s[4];
 		quadpatch() {}
@@ -241,7 +241,7 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sampl
 	if (situation_index >= 16 && subsquare_table[situation_index][0] == -1) {
 		situation_index = 15;  // subdivide all squares
 	}
-	// prevent termination condition satisfication caused by coincidence
+	// prevent termination condition satisfaction caused by coincidence
 	// (some coincidence cases still passes)
 	if (situation_index == 0 && !(
 		isGoodEnough_line(ss[0].p, ss[8].p, ss[2].p, 1.4142*tol)

@@ -8,7 +8,7 @@
 #include <vector>
 
 
-// return the points the convex hull in order
+// return the points on the convex hull in order
 template<typename vec_2>
 std::vector<vec_2> convexHull_2d(std::vector<vec_2> P) {
 	std::sort(P.begin(), P.end(), [](vec_2 p, vec_2 q) {

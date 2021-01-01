@@ -1,5 +1,5 @@
 // Curve fitting experiment - fit 2d parametric curves to cubic Bezier spline
-// Using the reparameterization algorithm that is commonly used in vector graphics softwares
+// Using the reparameterization algorithm that is commonly used in vector graphics software
 // For parametric curves, it doesn't work better than numerical optimization; (faster but very unstable, produces a large number of curve pieces)
 
 #include <stdio.h>
@@ -149,7 +149,7 @@ std::vector<segment_sample> discretizeParametricCurve_rec(std::function<vec2(dou
 		}
 
 		/*
-		After call, check:
+		After the call, check:
 		 * too large turning angles;
 		 * rapid change in chord lengths;
 		 * discontinuities in segments;
@@ -173,7 +173,7 @@ std::vector<segment_sample> discretizeParametricCurve_rec(std::function<vec2(dou
 		P_1.t = NAN;
 	}
 
-	// subdivition global variables
+	// subdivision global variables
 	double tc, tc0, tc1;
 	vec2 pc, pc0, pc1;
 	bool hasJump = false;
@@ -742,7 +742,7 @@ void drawChart(/*non-const warning*/vec2 Data[SVG::Graph_N], const char x_name[]
 	if (maxVal.y == 0.) maxVal.y = grid.y = 1.;
 	vec2 Sc = vec2(SVG::Chart_W, SVG::Chart_H) / (maxVal = pMin(maxVal + grid, maxVal * 1.2));
 
-	// lables
+	// labels
 	printf("<text text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='%lg' y='%d'>%s</text>\n",
 		SVG::Chart_W*.5, SVG::Chart_H + 50, x_name);
 	printf("<text transform='translate(%d %lg) rotate(-90)' text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='0' y='0'>%s</text>\n",

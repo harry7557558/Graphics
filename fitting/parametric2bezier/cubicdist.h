@@ -1,5 +1,5 @@
 // Serves for parametric2bezier.cpp
-// Finding the distance from a point to a cubic parametric cuve
+// Finding the distance from a point to a cubic parametric curve
 
 
 // Quintic equation solvers
@@ -12,7 +12,7 @@ int rootFinder_Bezier(double C[], double R[]);
 
 
 
-// calculate the square of distance to a cubic parametric curve
+// calculate the square of the distance to a cubic parametric curve
 // by finding the roots of a quintic polynomial
 double CubicCurveDistance2(vec2 C[4], vec2 P, double *min_t = nullptr) {
 	vec2 c0 = C[0] - P, c1 = C[1], c2 = C[2], c3 = C[3];
@@ -109,7 +109,7 @@ int rootFinder_Bezier_recurse(double K[], double *R, double t0, double t1, int r
 				K[i] = 0.5*(K[i] + K[i + 1]);
 			}
 		}
-		// recursively find root
+		// recursively find the root
 		int N1 = rootFinder_Bezier_recurse(_K, R, t0, 0.5*(t0 + t1), remain - 1);
 		int N2 = rootFinder_Bezier_recurse(K, &R[N1], 0.5*(t0 + t1), t1, remain - 1);
 		return N1 + N2;

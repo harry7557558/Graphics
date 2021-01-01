@@ -64,7 +64,7 @@ double erfinv(double x) {
 	return (x < 0 ? -1 : 1) * sqrt(-t + sqrt(t*t - n / 0.147));
 }
 
-// portable pseudorandom value generators
+// portable pseudo-random value generators
 double randf(double a, double b) { return a + (randu() * (1. / 4294967296.))*(b - a); }  // uniform distribution in [a,b)
 double randf_n(double a) { return sqrt(2.) * a * erfinv(2. * randf(0., 1.) - 1.); }  // normal distribution by standard deviation
 int randi(int a, int b) { return int(randf(a, b)); }  // uniform pseudorandom integer in [a,b)

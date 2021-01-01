@@ -63,7 +63,7 @@ cubicCurve bezierAlg(vec2 A, vec2 B, vec2 C, vec2 D) {
 
 
 
-// calculate the square of distance to a cubic parametric curve
+// calculate the square of the distance to a cubic parametric curve
 #include "cubicdist.h"
 static uint32_t distCubic2_callCount = 0;  // a counter for testing
 double distCubic2(cubicCurve c, vec2 p) {
@@ -144,8 +144,8 @@ double fitPartCurve(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double
 }
 
 // P0, P1: starting and ending points; T0, T1: tangent vector (derivative)
-// Error is calculated as the integral of shortest distance to the bezier curve respect to arc length of C
-// lod_radius: radius for the level of detail; use line segments instead of bezier curve for complicated/fractal curves (necessary)
+// Error is calculated as the integral of the shortest distance to the Bezier curve respect to the arc length of C
+// lod_radius: radius for the level of detail; use line segments instead of Bezier curve for complicated/fractal curves (necessary)
 template<typename Fun>
 std::vector<cubicBezier> fitSpline(Fun C, vec2 P0, vec2 P1, vec2 T0, vec2 T1, double t0, double t1,
 	double allowed_err, double lod_radius, double* Err = nullptr, double *LengthC = nullptr) {
@@ -303,7 +303,7 @@ std::vector<vec2> splitSingularity(const Fun &C, double t0, double t1, int mindi
 			else t0 = tc, v0 = vc, dif0 = dif2;
 			double new_dist = dif0 * dt;
 			if (t1 - t0 < eps) {
-				// needs to makes sure there is a jump
+				// needs to make sure there is a jump
 				if (new_dist / dist < 0.99) {
 					//fprintf(stderr, "%lf\n", (new_dist / dist));
 					if (!(t1 == t0 || i == 59)) continue;
@@ -614,7 +614,7 @@ std::vector<segment> Param2Segments(ParamCurve C, vec2 P0, vec2 P1, double t0, d
 		r.push_back(s); return r;
 	}
 
-	// otherwise, recursively split at the point with maximum error
+	// otherwise, recursively split at the point with a maximum error
 	// this also applies when there are occurrences of NANs inside the interval
 	std::vector<segment> r0 = Param2Segments(C, P0, mp, t0, mt, allowed_err, 1, max_recur - 1);
 	std::vector<segment> r1 = Param2Segments(C, mp, P1, mt, t1, allowed_err, 1, max_recur - 1);
@@ -641,7 +641,7 @@ namespace SVG {
 	const int Graph_N = CS1 - CS0;  // number of function graphs
 	const int W = 600, H = 400;  // width and height of each function graph
 	const double SC = 120.0, invSC = 1.0 / SC;  // scale from function coordinate to screen coordinate
-	const vec2 Bound = 0.5 * vec2(W, H) * invSC;  // viewbox for each function graph: ±Bound
+	const vec2 Bound = 0.5 * vec2(W, H) * invSC;  // view box for each function graph: ±Bound
 	const int Chart_N = 7;  // number of statistic charts
 	const int Chart_W = 800, Chart_H = 300;  // width and height of each chart
 	const vec2 Chart_Margin = vec2(120, 60);  // horizontal and vertical margin of each chart
@@ -765,7 +765,7 @@ void drawFittedCurve(const ParametricCurveL &C, int &spn, double &err, double &t
 
 
 // draw a chart and write SVG element code to stdout, assume data points are non-negative
-// when grid is non-positive: automatically
+// when the grid is non-positive: automatically
 void drawChart(/*non-const warning*/vec2 Data[SVG::Graph_N], const char x_name[], const char y_name[], vec2 grid, const char unit_x[] = "", const char unit_y[] = "", bool show_linear = true) {
 
 	// calculate maximum value for determining grid size
@@ -788,7 +788,7 @@ void drawChart(/*non-const warning*/vec2 Data[SVG::Graph_N], const char x_name[]
 	if (maxVal.y == 0.) maxVal.y = grid.y = 1.;
 	vec2 Sc = vec2(SVG::Chart_W, SVG::Chart_H) / (maxVal = pMin(maxVal + grid, maxVal * 1.2));
 
-	// lables
+	// labels
 	printf("<text text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='%lg' y='%d'>%s</text>\n",
 		SVG::Chart_W*.5, SVG::Chart_H + 50, x_name);
 	printf("<text transform='translate(%d %lg) rotate(-90)' text-anchor='middle' style='font-size:20px;font-family:\"Times New Roman\"' x='0' y='0'>%s</text>\n",

@@ -6,7 +6,7 @@
 // To be fair, Euler's method is called 4 times per step, Midpoint 2 times, and Runge-Kutta one time
 
 // Result:
-// Euler's method almost a chaos; NAN at the end
+// Euler's method almost chaos; NAN at the end
 // Midpoint method has significant energy drift that makes the pendulum flies "over" when the angle is large
 // Runge-Kutta method: visually perfect! maximum energy error 0.005
 

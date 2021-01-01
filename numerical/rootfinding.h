@@ -22,7 +22,7 @@
 
 
 
-// These solvers may be accelerated a lot if manually write them inline and do simplifications according to the circumstance.
+// These solvers may be accelerated a lot if manually writing them inline and do simplifications according to the circumstance.
 // It is recommended to perform one Newton iteration for analytical solutions when accuracy is required.
 
 // In all functions: a multiple root is counted as multiple single roots
@@ -144,7 +144,7 @@ int solveQuartic_dg(double k4, double k3, double k2, double k1, double k0, doubl
 
 
 
-// Solve an arbitrary degree polynomial using bisection method
+// Solve an arbitrary degree polynomial using the bisection method
 // O(N²) or O(N²logN), numerically stable when the polynomial does not have multiple roots
 
 // N: the degree of the polynomial

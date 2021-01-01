@@ -1,4 +1,4 @@
-// incompleted attempt to adaptively triangulate parametric surfaces
+// incomplete attempt to adaptively triangulate parametric surfaces
 
 #include "numerical/geometry.h"
 
@@ -205,7 +205,7 @@ void subdivide_quad(const sample s0[4], int remain_recurse, double tol) {
 	if (situation_index >= 16 && subsquare_table[situation_index][0] == -1) {
 		situation_index = 15;  // subdivide all squares
 	}
-	// prevent termination condition satisfication caused by coincidence
+	// prevent termination condition satisfaction caused by coincidence
 	// (some coincidence cases still passes)
 	if (situation_index == 0 && !(
 		isGoodEnough_line(ss[0].p, ss[8].p, ss[2].p, 1.4142*tol)

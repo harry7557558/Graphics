@@ -62,7 +62,7 @@ double calcGravPotential(const object &obj, vec2 g) {
 
 
 // simulated annealing, same as the one in balance_2d.cpp
-// (ironically, a brute-force search takes less samples to get more accurate estimates)
+// (ironically, a brute-force search takes fewer samples to get more accurate estimates)
 
 vec2 minimizeGravPotential_SA(const object &Obj) {
 	// estimate the "radius" of the object
@@ -80,7 +80,7 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	// simulated annealing
 	uint32_t seed1 = 0, seed2 = 1, seed3 = 2;  // random number seeds
 	double rand;
-	double a = 0.;  // configulation
+	double a = 0.;  // configuration
 	double T = 100.0;  // temperature
 	double E = Fun(a);  // energy (gravitational potential)
 	double min_a = a, min_E = E, min_T = T;  // record minimum value encountered
@@ -90,7 +90,7 @@ vec2 minimizeGravPotential_SA(const object &Obj) {
 	for (int iter = 0; iter < max_iter; iter++) {
 		for (int ty = 0; ty < max_try; ty++) {
 			rand = (int32_t(seed1 = seed1 * 1664525u + 1013904223u) + .5) / 2147483648.;  // -1<rand<1
-			double da = T * erfinv(rand);  // change of configulation
+			double da = T * erfinv(rand);  // change of configuration
 			double a_new = a + da;
 			double E_new = Fun(a_new);
 			double prob = exp(-(E_new - E) / (T*R));  // probability, note that E is approximately between -2 and 2
@@ -193,8 +193,8 @@ int loadObjs(const char* filename) {
 			continue;
 		}
 
-		// calculate the center of mass using divergence theorem
-		// convert to line integral
+		// calculate the center of mass using the divergence theorem
+		// convert to a line integral
 		vec2 Ctr(0); double S(0);
 		for (int i = 0, n = obj.size(); i < n; i++) {
 			vec2 A = obj[i].A, B = obj[i].B, C = obj[i].C, D = obj[i].D;

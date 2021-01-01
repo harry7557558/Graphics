@@ -1,4 +1,4 @@
-// An block initially resting on a plane is pulled horizontally by a Hookean spring at a constant velocity.
+// A block initially resting on a plane is pulled horizontally by a Hookean spring at a constant velocity.
 // The coefficient of friction between the block and the plane is a function of the block's velocity μ=μ(v).
 // Find the relationship between the block's velocity and time.
 

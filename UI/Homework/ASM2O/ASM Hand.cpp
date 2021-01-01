@@ -12,7 +12,7 @@
     Selection:
         Click to select a point;
         Shift + Click to select multiple points;
-        You can also click points on time axis window to select/unselect points (no Shift key required);
+        You can also click points on the time axis window to select/unselect points (no Shift key required);
         Ctrl + A to select all points;
         Ctrl + I is for inverse selection;
         Click empty space on the preview window to unselect all points;
@@ -48,7 +48,7 @@
         Viewport and control point data are saved as text, start with character '#'
         Files are opened in append mode when saving files.
         Opening a file will replace the current scene with a new scene.
-        Due to the lack of error handling, if the program crashes due to file format error, restart the program.
+        Due to the lack of error handling, if the program crashes due to a file format error, restart the program.
 
 */
 
@@ -1694,8 +1694,8 @@ void KeyUpT(WPARAM _KEY) {
     Files start with a character '#'
     The program searches for that character after opening the file.
 
-    There will be a basic error handling for file open error, but no further handling of file format error.
-    Opening a file will clear the current scene. If errors occur or program crashes due to file format error, restart this program.
+    There will be a basic error handling for file open error, but no further handling of file format errors.
+    Opening a file will clear the current scene. If errors occur or program crashes due to a file format error, restart this program.
 
 */
 

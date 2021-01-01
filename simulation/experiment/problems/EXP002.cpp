@@ -2,7 +2,7 @@
 // Euler:       30 ⚠ 0 ⛔ 66 ❗ 0 ✅
 // Midpoint:    1 ⚠ 0 ⛔ 57 ❗ 38 ✅
 // Runge-Kutta: 3 ⚠ 0 ⛔ 59 ❗ 34 ✅
-// Biggest issue: losing accuracy at certain point
+// Biggest issue: losing accuracy at some points
 
 // Note:
 // "⚠" is considered to be unstable as it is caused by "overflow", a difference from EXP001
@@ -28,7 +28,7 @@ double dt = 0.01;
 double t_max = 10.0 - 1e-8;
 
 
-// derivative of state
+// derivative of the state
 void dxdt(const double* x, double t, double* dxdt) {
 	vec2 p = *(vec2*)x;
 	vec2 d = normalize(vec2(L, vf*t) - p);
