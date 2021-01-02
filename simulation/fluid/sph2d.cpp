@@ -97,10 +97,23 @@ bool Ctrl = false, Shift = false, Alt = false;
 
 // forward declarations of rendering functions
 void drawLine(vec2 p, vec2 q, COLORREF col);
-void drawBoxF(double x0, double x1, double y0, double y1, COLORREF col);
-void drawDot(vec2 c, double r, COLORREF col);
+void drawBox(vec2 p0, vec2 p1, COLORREF col);
+void drawCircle(vec2 c, double r, COLORREF col);
+void fillBox(vec2 p0, vec2 p1, COLORREF col);
+void fillCircle(vec2 c, double r, COLORREF col);
+void drawTriangle(vec2 A, vec2 B, vec2 C, COLORREF col);
+void fillTriangle(vec2 A, vec2 B, vec2 C, COLORREF col);
 #define drawLineF(p,q,col) drawLine(fromFloat(p),fromFloat(q),col)
-#define drawDotF(p,r,col) drawDot(fromFloat(p),r,col)
+#define drawBoxF(p0,p1,col) drawBox(fromFloat(p0),fromFloat(p1),col)
+#define drawCircleF(c,r,col) drawCircle(fromFloat(c),(r)*Unit,col)
+#define fillBoxF(p0,p1,col) fillBox(fromFloat(p0),fromFloat(p1),col)
+#define fillCircleF(c,r,col) fillCircle(fromFloat(c),(r)*Unit,col)
+#define drawDotF(c,r,col) fillCircle(fromFloat(c),r,col)  // r: in screen coordinate
+#define drawDotSquareF(c,r,col) fillBox(fromFloat(c)-vec2(r),fromFloat(c)+vec2(r),col)  // r: in screen coordinate
+#define drawDotHollowF(c,r,col) drawCircle(fromFloat(c),r,col)  // r: in screen coordinate
+#define drawSquareHollowF(c,r,col) drawBox(fromFloat(c)-vec2(r),fromFloat(c)+vec2(r),col)  // r: in screen coordinate
+#define drawTriangleF(A,B,C,col) drawTriangle(fromFloat(A),fromFloat(B),fromFloat(C),col)
+#define fillTriangleF(A,B,C,col) fillTriangle(fromFloat(A),fromFloat(B),fromFloat(C),col)
 
 #pragma endregion  // Window variables
 
@@ -112,6 +125,8 @@ namespace SPH {
 	struct particle {
 		vec2 p;  // position
 		vec2 v;  // velocity
+		double density;  // density
+		double pressure;  // pressure
 	} *Particles = 0;  // array of particles
 	double t = 0.;  // time
 
@@ -120,7 +135,7 @@ namespace SPH {
 	double h;  // smoothing radius
 	double W(double d) {  // smoothing kernel, a function of distance
 		double x = d / h;
-		double f = x < 1. ? 1. - x * x*(1.5 + 0.75*x) : x < 2. ? 0.25*(2. - x)*(2. - x)*(2. - x) : 0.;
+		double f = x < 1. ? 1. + x * x*(-1.5 + 0.75*x) : x < 2. ? 0.25*(2. - x)*(2. - x)*(2. - x) : 0.;
 		return f / (PI*h*h) * (10. / 7.);
 	}
 	vec2 W_grad(vec2 d) {  // gradient of the smoothing kernel
@@ -131,12 +146,10 @@ namespace SPH {
 	}
 
 	// forces
-	double rho_0 = 1.0;  // rest density
-	double pressure(double rho) {  // calculate pressure from fluid density
-		return 10.*(pow(rho / rho_0, 7.) - 1.);
+	double density_0 = 1.0;  // rest density
+	double pressure(double density) {  // calculate pressure from fluid density
+		return 10.*(pow(density / density_0, 7.) - 1.);
 	}
-	double *Rhos = 0;  // density at each particle
-	double *Pressures = 0;  // pressure at each particle
 	double viscosity = 0.;  // fluid viscosity, unit: m²/s; a=viscosity*∇²v
 	vec2 g = vec2(0, -9.8);  // acceleration due to gravity
 	vec2(*Boundary)(vec2) = 0;  // penalty acceleration field that defines the rigid boundary
@@ -146,8 +159,20 @@ namespace SPH {
 	vec2 Grid_LB;  // lower bottom of the grid starting point
 	vec2 Grid_dp;  // size of each grid, should be vec2(2h,2h)
 	ivec2 Grid_N;  // dimension of the overall grid, top right Grid_LB+Grid_dp*Grid_N
+	const int MAX_PN_G = 15;  // maximum number of particles in each grid
+	struct gridcell {
+		int N = 0;  // number of associated particles
+		int Ps[MAX_PN_G];  // index of particles
+	} *Grid = 0;  // grids
+	bool isValidGrid(ivec2 p) { return p.x >= 0 && p.y >= 0 && p.x < Grid_N.x && p.y < Grid_N.y; }  // if a grid ID is valid
+	gridcell* getGrid(ivec2 p) { return &Grid[p.y*Grid_N.x + p.x]; }  // access grid cell
+	ivec2 getGridId(vec2 p) { return ivec2(floor((p - Grid_LB) / Grid_dp)); }  // calculate grid from position
 	void calcGrid();  // update simulation grid
-	int *Neighbor_N = 0;  // number of neighbors of each particle
+	const int MAX_NEIGHBOR_P = 63;  // maximum number of neighbors of each particle
+	struct particle_neighbor {
+		int N = 0;  // number of neighbors
+		int Ns[MAX_NEIGHBOR_P];  // index of neighbors
+	} *Neighbors = 0;
 
 };  // namespace SPH
 
@@ -167,11 +192,21 @@ void SPH::calcGrid() {
 	// update Grid_LB and Grid_N
 	Grid_LB = LB;
 	Grid_N = (ivec2)ceil((TR - LB) / Grid_dp);
+	// create grid
+	gridcell *g_del = Grid;
+	gridcell *g_new = new gridcell[Grid_N.x*Grid_N.y];
+	Grid = g_new;
+	if (g_del) delete g_del;
+	for (int i = 0; i < N; i++) {
+		ivec2 gi = getGridId(Particles[i].p);
+		gridcell* g = getGrid(gi);
+		if (g->N < MAX_PN_G) g->Ps[g->N++] = i;
+	}
 }
 
 void updateScene(double dt) {
 	// split large steps
-	double max_step = 0.000001;
+	double max_step = 0.0002;
 	if (dt > max_step) {
 		int N = (int)(dt / max_step + 1);
 		for (int i = 0; i < N; i++) updateScene(dt / N);
@@ -182,28 +217,49 @@ void updateScene(double dt) {
 
 	// find neighbors of each particle
 	calcGrid();
-	if (!Neighbor_N) Neighbor_N = new int[N];
-	std::vector<int> *Neighbors = new std::vector<int>[N];
+	particle_neighbor *Neighbors_del = Neighbors;
+	particle_neighbor *Neighbors_new = new particle_neighbor[N];
+	Neighbors = Neighbors_new;
+	if (Neighbors_del) delete Neighbors_del;
 	for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++) if (j != i) {
-			if (length(Particles[j].p - Particles[i].p) < 2.*h)
-				Neighbors[i].push_back(j);
-		}
-		Neighbor_N[i] = Neighbors[i].size();
+		particle_neighbor *nb = &Neighbors[i];
+		nb->N = 0;
+		auto addGrid = [&](ivec2 gi) {
+			if (!isValidGrid(gi)) return;
+			gridcell *g = getGrid(gi);
+			for (int ju = 0; ju < g->N; ju++) {
+				int j = g->Ps[ju];
+				if (j != i
+					&& length(Particles[j].p - Particles[i].p) < 2.*h
+					&& nb->N < MAX_NEIGHBOR_P) {
+					nb->Ns[nb->N++] = j;
+				}
+			}
+		};
+		ivec2 g = getGridId(Particles[i].p);
+		addGrid(g);
+		addGrid(g + ivec2(-1, 0));
+		addGrid(g + ivec2(1, 0));
+		addGrid(g + ivec2(0, -1));
+		addGrid(g + ivec2(0, 1));
+		addGrid(g + ivec2(-1, -1));
+		addGrid(g + ivec2(-1, 1));
+		addGrid(g + ivec2(1, -1));
+		addGrid(g + ivec2(1, 1));
 	}
 
 	// calculate the density and pressure at each particle
-	if (!Rhos) Rhos = new double[N];
-	if (!Pressures) Pressures = new double[N];
 	for (int i = 0; i < N; i++) {
-		double rho = 0.;
-		for (int _ = 0; _ < Neighbor_N[i]; _++) {
-			int j = Neighbors[i][_];
-			rho += m * W(length(Particles[j].p - Particles[i].p));
+		double density = 0.;
+		for (int _ = 0; _ < Neighbors[i].N; _++) {
+			int j = Neighbors[i].Ns[_];
+			density += m * W(length(Particles[j].p - Particles[i].p));
 		}
-		Rhos[i] = rho;
-		Pressures[i] = pressure(rho);
+		Particles[i].density = density;
+		Particles[i].pressure = pressure(density);
+		//if (density != 0.) printf("%lf\n", density);
 	}
+	//return;
 
 	// compute the acceleration of each particle
 	if (!Accelerations) Accelerations = new vec2[N];
@@ -212,18 +268,19 @@ void updateScene(double dt) {
 		Accelerations[i] -= 0.5*Particles[i].v;
 	}
 	for (int i = 0; i < N; i++) {
-		if (Rhos[i] == 0.) continue;
+		if (Particles[i].density == 0.) continue;
 		// estimate the gradient of pressure
 		vec2 grad_P(0.);
-		for (int u = 0; u < Neighbor_N[i]; u++) {
-			int j = Neighbors[i][u];
-			if (Rhos[j] == 0.) throw(0);
-			//grad_P += m / Rhos[j] * Pressures[j] * W_grad(Particles[j].p - Particles[i].p);
-			grad_P += W_grad(Particles[j].p - Particles[i].p);
+		for (int u = 0; u < Neighbors[i].N; u++) {
+			int j = Neighbors[i].Ns[u];
+			if (Particles[j].density == 0.) throw(0);
+			//grad_P += m / Particles[j].density * Particles[j].pressure * W_grad(Particles[j].p - Particles[i].p);
+			grad_P += Particles[i].density * m * (Particles[i].pressure / (Particles[i].density*Particles[i].density) + Particles[j].pressure / (Particles[j].density*Particles[j].density)) * W_grad(Particles[j].p - Particles[i].p);
+			//grad_P += W_grad(Particles[j].p - Particles[i].p);
 		}
 		// add acceleration due to pressure difference
-		//Accelerations[i] -= grad_P / Rhos[i];
-		Accelerations[i] += grad_P;
+		Accelerations[i] += grad_P / Particles[i].density;
+		//Accelerations[i] += 0.01*grad_P;
 	}
 
 	// update position and velocity of each particle
@@ -233,7 +290,6 @@ void updateScene(double dt) {
 	}
 
 	SPH::t += dt;
-	delete[] Neighbors;
 }
 
 
@@ -270,27 +326,57 @@ void drawLine(vec2 p, vec2 q, COLORREF col) {
 		}
 	}
 };
-void drawBoxF(double x0, double x1, double y0, double y1, COLORREF col) {
-	drawLineF(vec2(x0, y0), vec2(x1, y0), col);
-	drawLineF(vec2(x0, y1), vec2(x1, y1), col);
-	drawLineF(vec2(x0, y0), vec2(x0, y1), col);
-	drawLineF(vec2(x1, y0), vec2(x1, y1), col);
+void drawBox(vec2 p0, vec2 p1, COLORREF col) {
+	drawLine(vec2(p0.x, p0.y), vec2(p1.x, p0.y), col);
+	drawLine(vec2(p0.x, p1.y), vec2(p1.x, p1.y), col);
+	drawLine(vec2(p0.x, p0.y), vec2(p0.x, p1.y), col);
+	drawLine(vec2(p1.x, p0.y), vec2(p1.x, p1.y), col);
 };
-void drawDot(vec2 c, double r, COLORREF col) {
+void drawCircle(vec2 c, double r, COLORREF col) {
+	int s = int(r / sqrt(2) + 0.5);
+	int cx = (int)c.x, cy = (int)c.y;
+	for (int i = 0, im = min(s, max(_WIN_W - cx, cx)) + 1; i < im; i++) {
+		int u = (int)sqrt(r*r - i * i);
+		setColor(cx + i, cy + u, col); setColor(cx + i, cy - u, col); setColor(cx - i, cy + u, col); setColor(cx - i, cy - u, col);
+		setColor(cx + u, cy + i, col); setColor(cx + u, cy - i, col); setColor(cx - u, cy + i, col); setColor(cx - u, cy - i, col);
+	}
+}
+void fillBox(vec2 p0, vec2 p1, COLORREF col) {
+	int i0 = max(0, (int)p0.x), i1 = min(_WIN_W - 1, (int)p1.x);
+	int j0 = max(0, (int)p0.y), j1 = min(_WIN_H - 1, (int)p1.y);
+	for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
+		Canvas(i, j) = col;
+	}
+}
+void fillCircle(vec2 c, double r, COLORREF col) {
+	c -= vec2(0.5);
 	int i0 = max(0, (int)floor(c.x - r - 1)), i1 = min(_WIN_W - 1, (int)ceil(c.x + r + 1));
 	int j0 = max(0, (int)floor(c.y - r - 1)), j1 = min(_WIN_H - 1, (int)ceil(c.y + r + 1));
 	for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
-		double d = length(vec2(i, j) - c) - r;
+		double d = (vec2(i, j) - c).sqr() - r * r;
 		if (d < 0.) Canvas(i, j) = col;
 	}
 }
+void drawTriangle(vec2 A, vec2 B, vec2 C, COLORREF col) {
+	drawLine(A, B, col); drawLine(B, C, col); drawLine(C, A, col);
+}
+void fillTriangle(vec2 A, vec2 B, vec2 C, COLORREF col) {
+	int x0 = max((int)min(min(A.x, B.x), C.x), 0), x1 = min((int)max(max(A.x, B.x), C.x), _WIN_W - 1);
+	int y0 = max((int)min(min(A.y, B.y), C.y), 0), y1 = min((int)max(max(A.y, B.y), C.y), _WIN_H - 1);
+	for (int i = y0; i <= y1; i++) for (int j = x0; j <= x1; j++) {
+		vec2 P(j, i);
+		if (((det(P - A, P - B) < 0) + (det(P - B, P - C) < 0) + (det(P - C, P - A) < 0)) % 3 == 0)
+			Canvas(j, i) = col;
+	}
+}
 
+#include "ui/colors/ColorFunctions.h"
 
 void render() {
 	// debug
 	auto t1 = std::chrono::high_resolution_clock::now();
 	double dt = std::chrono::duration<double>(t1 - t0).count();
-	printf("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
+	//printf("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
 	t0 = t1;
 
 	// initialize window
@@ -308,20 +394,37 @@ void render() {
 	}
 
 	// visualize SPH grid
-	if (0) {
-		using namespace SPH;
-		for (int i = 0; i < Grid_N.x; i++) {
-			for (int j = 0; j < Grid_N.y; j++) {
-				drawBoxF(Grid_LB.x + i * Grid_dp.x, Grid_LB.x + (i + 1)*Grid_dp.x, Grid_LB.y + j * Grid_dp.y, Grid_LB.y + (j + 1)*Grid_dp.y, 0x202040);
+	if (1) {
+		for (int i = 0; i < SPH::Grid_N.x; i++) {
+			for (int j = 0; j < SPH::Grid_N.y; j++) {
+				drawBoxF(SPH::Grid_LB + vec2(i, j) * SPH::Grid_dp, SPH::Grid_LB + vec2(i + 1, j + 1)*SPH::Grid_dp, 0x202040);
+				if (0) {
+					SPH::gridcell* gi = SPH::getGrid(ivec2(i, j) - ivec2(0, 0));
+					if (gi->N > 0) {
+						COLORREF col = gi->N * 0x604000;
+						//col = gi->Ps[0] * 12345679 + 32542778;
+						fillBoxF(SPH::Grid_LB + vec2(i, j) * SPH::Grid_dp, SPH::Grid_LB + vec2(i + 1, j + 1)*SPH::Grid_dp, col);
+					}
+				}
 			}
 		}
 	}
 
 	// draw SPH particles
 	{
+		double density = 0.;
 		for (int i = 0; i < SPH::N; i++) {
-			drawDotF(SPH::Particles[i].p, 0.5*SPH::h*Unit, 0x0080FF);
+			density += SPH::Particles[i].density / SPH::N;
+			//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
+			vec3 col = ColorFunctions::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
+			drawDotF(SPH::Particles[i].p, SPH::h*Unit,
+				COLORREF(col.z * 255) | (COLORREF(col.y * 255) << 8) | (COLORREF(col.x * 255) << 16));
+			if (0) {
+				//drawDotF(SPH::Particles[i].p, SPH::h*Unit, i * 12345679 + 32542778);
+				if (SPH::Neighbors && SPH::Neighbors[i].N) drawDotF(SPH::Particles[i].p, SPH::h*Unit, 0x00FFFF);
+			}
 		}
+		printf("(%lf,%lf),", SPH::t, density);
 	}
 
 
@@ -335,6 +438,8 @@ void render() {
 
 // ============================================== User ==============================================
 
+
+#include "numerical/random.h"
 
 // preset scenes
 class presetScenes {
@@ -350,10 +455,32 @@ private:  // boundary functions
 
 public:  // preset scenes
 
-	static void Scene_0(double dist) {
+	static void Scene_random(int N, double h, vec2 v0 = vec2(0.)) {
+		SPH::h = h;
+		SPH::m = 0.5 / N;
+		SPH::N = N;
+		SPH::Particles = new SPH::particle[N];
+		uint32_t seed = 0;
+		for (int i = 0; i < N; i++) {
+			vec2 p = vec2(2.* rand01(seed), rand01(seed));
+			int j; for (j = 0; j < i; j++) {
+				if (length(SPH::Particles[j].p - p) < 2.*h) {
+					i--; break;
+				}
+			}
+			if (j == i)
+				SPH::Particles[i] = SPH::particle{ p, v0 };
+		}
+		SPH::Boundary = box_21;
+		SPH::Grid_LB = vec2(0, 0);
+		SPH::Grid_dp = vec2(2.*h);
+		SPH::Grid_N = ivec2(ceil((vec2(2, 1) - SPH::Grid_LB) / SPH::Grid_dp));
+	}
+
+	static void Scene_left(double dist) {
 		using namespace SPH;
 		h = dist;
-		m = rho_0 / (4.*W(h) + 4.*W(1.414214*h));
+		m = density_0 / (4.*W(h) + 4.*W(1.414214*h));
 		int xN = (int)floor(0.4999 / dist);
 		int yN = (int)floor(0.9999 / dist);
 		Particles = new particle[xN*yN];
@@ -378,10 +505,12 @@ public:  // preset scenes
 #include <thread>
 
 void WindowCreate(int _W, int _H) {
-	presetScenes::Scene_0(0.1);
+	//presetScenes::Scene_random(500, 0.02, vec2(1, 0));
+	//presetScenes::Scene_left(0.025);
+	presetScenes::Scene_left(0.01);
 
 	vec2 Center = SPH::Grid_LB + 0.5*vec2(SPH::Grid_N)*SPH::Grid_dp;
-	Unit = min(_WIN_W / (SPH::Grid_N.x*SPH::Grid_dp.x), _WIN_H / (SPH::Grid_N.y*SPH::Grid_dp.y));
+	Unit = 0.9 * min(_WIN_W / (SPH::Grid_N.x*SPH::Grid_dp.x), _WIN_H / (SPH::Grid_N.y*SPH::Grid_dp.y));
 	Origin = (fromInt(0.5*vec2(_WIN_W, _WIN_H)) - Center) * Unit;
 
 	// simulation thread

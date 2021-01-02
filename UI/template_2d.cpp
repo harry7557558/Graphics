@@ -109,6 +109,8 @@ void fillTriangle(vec2 A, vec2 B, vec2 C, COLORREF col);
 #define drawLineF(p,q,col) drawLine(fromFloat(p),fromFloat(q),col)
 #define drawBoxF(p0,p1,col) drawBox(fromFloat(p0),fromFloat(p1),col)
 #define drawCircleF(c,r,col) drawCircle(fromFloat(c),(r)*Unit,col)
+#define fillBoxF(p0,p1,col) fillBox(fromFloat(p0),fromFloat(p1),col)
+#define fillCircleF(c,r,col) fillCircle(fromFloat(c),(r)*Unit,col)
 #define drawDotF(c,r,col) fillCircle(fromFloat(c),r,col)  // r: in screen coordinate
 #define drawDotSquareF(c,r,col) fillBox(fromFloat(c)-vec2(r),fromFloat(c)+vec2(r),col)  // r: in screen coordinate
 #define drawDotHollowF(c,r,col) drawCircle(fromFloat(c),r,col)  // r: in screen coordinate
@@ -164,7 +166,7 @@ void drawCircle(vec2 c, double r, COLORREF col) {
 	int s = int(r / sqrt(2) + 0.5);
 	int cx = (int)c.x, cy = (int)c.y;
 	for (int i = 0, im = min(s, max(_WIN_W - cx, cx)) + 1; i < im; i++) {
-		int u = sqrt(r*r - i * i);
+		int u = (int)sqrt(r*r - i * i);
 		setColor(cx + i, cy + u, col); setColor(cx + i, cy - u, col); setColor(cx - i, cy + u, col); setColor(cx - i, cy - u, col);
 		setColor(cx + u, cy + i, col); setColor(cx + u, cy - i, col); setColor(cx - u, cy + i, col); setColor(cx - u, cy - i, col);
 	}
