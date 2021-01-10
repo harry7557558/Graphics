@@ -134,7 +134,7 @@ namespace SPH {
 	double m;  // mass of each particle
 	double h;  // smoothing radius
 	double W(double d) {  // smoothing kernel, a function of distance
-		double x = d / h;
+		double x = abs(d) / h;
 		double f = x < 1. ? 1. + x * x*(-1.5 + 0.75*x) : x < 2. ? 0.25*(2. - x)*(2. - x)*(2. - x) : 0.;
 		return f / (PI*h*h) * (10. / 7.);
 	}
@@ -189,6 +189,11 @@ void SPH::calcGrid() {
 		TR = pMax(TR, Particles[i].p);
 	}
 	LB -= Grid_dp, TR += Grid_dp;
+	if (0) {
+		const double R = 3.;
+		TR.x = clamp(TR.x, -R, R); TR.y = clamp(TR.y, -R, R);
+		LB.x = clamp(LB.x, -R, R); LB.y = clamp(LB.y, -R, R);
+	}
 	// update Grid_LB and Grid_N
 	Grid_LB = LB;
 	Grid_N = (ivec2)ceil((TR - LB) / Grid_dp);
@@ -199,8 +204,10 @@ void SPH::calcGrid() {
 	if (g_del) delete g_del;
 	for (int i = 0; i < N; i++) {
 		ivec2 gi = getGridId(Particles[i].p);
-		gridcell* g = getGrid(gi);
-		if (g->N < MAX_PN_G) g->Ps[g->N++] = i;
+		if (isValidGrid(gi)) {
+			gridcell* g = getGrid(gi);
+			if (g->N < MAX_PN_G) g->Ps[g->N++] = i;
+		}
 	}
 }
 
@@ -250,7 +257,7 @@ void updateScene(double dt) {
 
 	// calculate the density and pressure at each particle
 	for (int i = 0; i < N; i++) {
-		double density = 0.;
+		double density = 1e-12;
 		for (int _ = 0; _ < Neighbors[i].N; _++) {
 			int j = Neighbors[i].Ns[_];
 			density += m * W(length(Particles[j].p - Particles[i].p));
@@ -259,7 +266,6 @@ void updateScene(double dt) {
 		Particles[i].pressure = pressure(density);
 		//if (density != 0.) printf("%lf\n", density);
 	}
-	//return;
 
 	// compute the acceleration of each particle
 	if (!Accelerations) Accelerations = new vec2[N];
@@ -268,19 +274,18 @@ void updateScene(double dt) {
 		Accelerations[i] -= 0.5*Particles[i].v;
 	}
 	for (int i = 0; i < N; i++) {
-		if (Particles[i].density == 0.) continue;
-		// estimate the gradient of pressure
-		vec2 grad_P(0.);
+		// estimate the gradient of pressure and the element-wise laplacian of velocity
+		vec2 grad_P(0.), lap_v(0.);
 		for (int u = 0; u < Neighbors[i].N; u++) {
 			int j = Neighbors[i].Ns[u];
-			if (Particles[j].density == 0.) throw(0);
-			//grad_P += m / Particles[j].density * Particles[j].pressure * W_grad(Particles[j].p - Particles[i].p);
-			grad_P += Particles[i].density * m * (Particles[i].pressure / (Particles[i].density*Particles[i].density) + Particles[j].pressure / (Particles[j].density*Particles[j].density)) * W_grad(Particles[j].p - Particles[i].p);
-			//grad_P += W_grad(Particles[j].p - Particles[i].p);
+			vec2 xij = Particles[j].p - Particles[i].p, vij = Particles[j].v - Particles[i].v;
+			double rhoi = Particles[i].density, rhoj = Particles[j].density, pi = Particles[i].pressure, pj = Particles[j].pressure;
+			grad_P += rhoi * m * (pi / (rhoi*rhoi) + pj / (rhoj*rhoj)) * W_grad(xij);
+			lap_v += 2.*m / rhoj * vij + (xij*W_grad(xij)) / (xij.sqr() + 0.01*h*h);
 		}
 		// add acceleration due to pressure difference
 		Accelerations[i] += grad_P / Particles[i].density;
-		//Accelerations[i] += 0.01*grad_P;
+		//Accelerations[i] += viscosity * lap_v;
 	}
 
 	// update position and velocity of each particle
@@ -424,12 +429,23 @@ void render() {
 				if (SPH::Neighbors && SPH::Neighbors[i].N) drawDotF(SPH::Particles[i].p, SPH::h*Unit, 0x00FFFF);
 			}
 		}
-		printf("(%lf,%lf),", SPH::t, density);
+		//printf("(%lf,%lf),", SPH::t, density);
+	}
+
+	// momentum and energy calculation
+	vec2 P = vec2(0.);  // total momentum
+	double Eg = 0., Ek = 0.;  // gravitational potential and kinetic
+	for (int i = 0; i < SPH::N; i++) {
+		double m = SPH::m;
+		Eg += -m * dot(SPH::Particles[i].p, SPH::g);
+		Ek += 0.5 * m * SPH::Particles[i].v.sqr();
+		P += m * SPH::Particles[i].v;
+		// should also add potential energy due to the boundary
 	}
 
 
 	vec2 cursor = fromInt(Cursor);
-	sprintf(text, "(%.2f,%.2f)  t=%.3lf", cursor.x, cursor.y, SPH::t);
+	sprintf(text, "(%.2f,%.2f)  t=%.3lf   E=Eg+Ek=%.3lg+%.3lg=%.3lg", cursor.x, cursor.y, SPH::t, Eg, Ek, Eg + Ek);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -451,6 +467,37 @@ private:  // boundary functions
 			p.x<0. ? -p.x : p.x>2. ? -(p.x - 2.) : 0.,
 			p.y<0. ? -p.y : p.y>1. ? -(p.y - 1.) : 0.
 		);
+	}
+	static vec2 box_21_pad(vec2 p) {
+		return 1000.*vec2(
+			p.x<0. ? -p.x + 1. : p.x>2. ? -(p.x - 2.) - 1. : 0.,
+			p.y<0. ? -p.y + 1. : p.y>1. ? -(p.y - 1.) - 1. : 0.
+		);
+	}
+	static vec2 circular(vec2 p) {
+		return 10000.*max(length(p) - 1., 0.)*normalize(-p);
+	}
+	static vec2 box_block(vec2 p) {
+		auto E = [](double x, double y)->double {
+			return max(max(
+				max(abs(x - 1.5) - 1.5, abs(y - 1.) - 1.),  // room
+				-max(abs(x - 2.2) - 0.2, y - 0.2)  // block
+			), 0.);
+		};
+		const double eps = 0.01;
+		return -10000.*(vec2(E(p.x + eps, p.y), E(p.x, p.y + eps)) - vec2(E(p.x, p.y))) / eps;
+	}
+
+	// non-boundary force fields
+	static vec2 np_centric(vec2 p) {
+		return -50.*p;
+	}
+	static vec2 np_circular(vec2 p) {
+		return 4.5*p.rot() - 50.*p*(p.sqr() - 1.);
+	}
+	static vec2 np_rouded_quad(vec2 p) {
+		vec2 q = vec2(p.x - p.y, p.x + p.y);
+		return 4.5*p.rot() - 50.*p*(length(q*q) - 1.);
 	}
 
 public:  // preset scenes
@@ -493,7 +540,9 @@ public:  // preset scenes
 				};
 			}
 		}
-		Boundary = box_21;
+		viscosity = 0.2;
+		Boundary = box_21_pad;
+		//Boundary = box_block;
 		Grid_LB = vec2(0, 0);
 		Grid_dp = vec2(2.*h);
 		Grid_N = ivec2(ceil((vec2(2, 1) - Grid_LB) / Grid_dp));
@@ -508,6 +557,13 @@ void WindowCreate(int _W, int _H) {
 	//presetScenes::Scene_random(500, 0.02, vec2(1, 0));
 	//presetScenes::Scene_left(0.025);
 	presetScenes::Scene_left(0.01);
+
+	if (0) {
+		SPH::h = 1.;
+		for (double x = -2; x < 2; x += 0.01) printf("(%lg,%lf),", x, SPH::W(x));
+		//for (double x = -2; x < 2; x += 0.01) printf("(%lg,%lf),", x, SPH::W_grad(vec2(x, 0)).x);
+		exit(0);
+	}
 
 	vec2 Center = SPH::Grid_LB + 0.5*vec2(SPH::Grid_N)*SPH::Grid_dp;
 	Unit = 0.9 * min(_WIN_W / (SPH::Grid_N.x*SPH::Grid_dp.x), _WIN_H / (SPH::Grid_N.y*SPH::Grid_dp.y));
