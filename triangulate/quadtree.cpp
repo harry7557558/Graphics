@@ -103,16 +103,32 @@ NTime::time_point _Global_Timer = NTime::now();
 
 
 
-namespace combined_function {
-	double sdLine(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0., 1.)); }
-	double u(vec2 p, double t) { return min(min(p.x - 0.16, sdLine(p, vec2(0.), vec2(1.22, 0.))), min(sdLine(vec2(p.x, abs(p.y)), vec2(0.45, 0.), vec2(0.45 + 0.42*cos(t), 0.42*sin(t))), sdLine(vec2(p.x, abs(p.y)), vec2(0.8, 0.), vec2(0.8 + 0.35*cos(t), 0.35*sin(t))))); }
-	double fun(vec2 p, double t) { double a = abs(fmod(atan2(p.y, p.x) + .5*t, PI / 3.)) - PI / 6.; return u(vec2(cos(a), sin(a))*length(p)*(1.0 + 0.3*cos(t)), 0.9 - 0.3*cos(t)) - 0.05; }
+double sdLine(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0., 1.)); }
+double snowflake(vec2 p, double t) {
+	double a = abs(fmod(atan2(p.y, p.x) + .5*t, PI / 3.)) - PI / 6.;
+	p = cossin(a)*length(p)*(1.0 + 0.3*cos(t)), t = 0.9 - 0.3*cos(t);
+	return min(min(p.x - 0.16, sdLine(p, vec2(0.), vec2(1.22, 0.))),
+		min(sdLine(vec2(p.x, abs(p.y)), vec2(0.45, 0.), vec2(0.45 + 0.42*cos(t), 0.42*sin(t))),
+			sdLine(vec2(p.x, abs(p.y)), vec2(0.8, 0.), vec2(0.8 + 0.35*cos(t), 0.35*sin(t)))
+		));
 }
+double snowflake_b(vec2 p, double t) {
+	return abs(snowflake(p, t) - 0.04) - 0.01;
+}
+double snowflake_o(vec2 p, double t) {
+	return sin(20.*PI*(snowflake(p, t) - 0.05)) + 0.5*p.sqr();
+}
+
+#define RECORD_SAMPLES 0
+#include <vector>
+#include <algorithm>
+std::vector<vec2> recorded_samples;
 
 int evals;
 double fun(vec2 p) {
 	double x = p.x, y = p.y;
 	evals++;
+	if (RECORD_SAMPLES) recorded_samples.push_back(p);
 	//return x * x + y * y - 1;  // 3.141593
 	//return hypot(x, y) - 1;  // 3.141593
 	//return x * x*x*(x - 2) + y * y*y*(y - 2) + x;  // 5.215079
@@ -122,7 +138,9 @@ double fun(vec2 p) {
 	//return max(abs(x) - abs(y) - 1, x*x + y * y - 2);  // 5.968039
 	//return max(.5 - abs(x*y), x*x + 2 * y*y - 3);  // 1.813026
 	//return max(sin(10*x) + cos(10*y) + 1., x*x + y * y - 1.);  // 0.57[3-4]
-	return combined_function::fun(vec2(x, y), 1.7);  // 1.787337
+	return snowflake(vec2(x, y), 1.7) - 0.05;  // 1.787337
+	//return snowflake_b(vec2(x, y), 1.7);
+	//return snowflake_o(vec2(x, y), 1.7);
 }
 
 
@@ -138,7 +156,6 @@ void drawDot(vec2 p, double r, COLORREF col);
 
 
 // global array to store marched segments
-#include <vector>
 struct segment {
 	vec2 p[2];
 	vec2& operator[](int d) { return p[d]; }
@@ -165,6 +182,7 @@ const static ivec2 EDGE_DIR[4] = {
 	ivec2(0,-1), ivec2(1,0), ivec2(0,1), ivec2(-1,0)
 };
 
+// for reconstruction
 // indicate segments connecting edges from bitwise compressed vertice signs
 // max 2 segments, distinct vertices
 const static int SEGMENT_TABLE[16][4] = {
@@ -205,8 +223,13 @@ vec2 getInterpolation(vec2 pos[4], double val[4], int i) {
 
 
 vec2 p0, p1;  // search bounds
+#if 1
 const ivec2 SEARCH_DIF = ivec2(16, 10);
 const int PLOT_DPS = 4;
+#else
+const ivec2 SEARCH_DIF = 6 * ivec2(16, 10);
+const int PLOT_DPS = 4;
+#endif
 const int PLOT_SIZE = 1 << PLOT_DPS;
 const ivec2 GRID_SIZE = SEARCH_DIF * PLOT_SIZE;  // define grid id
 vec2 i2f(ivec2 p) {  // position ID to position
@@ -223,9 +246,10 @@ public:
 	ivec2 p[4]; // point IDs
 	double v[4]; // only the first one really matter
 	int size;  // top right: p+ivec2(size)
-	quadtree_node *parent;  // parent node
+	int index;  // calculated according to signs of v for table lookup
 	quadtree_node *c[4];  // child nodes
 	bool hasSignChange[4];  // indicate whether there is a sign change at each edge
+	bool edge_checked[4];  // used in looking for missed samples, indicate whether the edge is already checked
 	quadtree_node(int size = 0, ivec2 p = ivec2(-1)) {
 		this->p[0] = this->p[1] = this->p[2] = this->p[3] = p;
 		if (p != ivec2(-1)) {
@@ -234,9 +258,10 @@ public:
 		}
 		v[0] = v[1] = v[2] = v[3] = NAN;
 		this->size = size;
-		parent = nullptr;
+		this->index = -1;
 		c[0] = c[1] = c[2] = c[3] = nullptr;
 		hasSignChange[0] = hasSignChange[1] = hasSignChange[2] = hasSignChange[3] = false;
+		edge_checked[0] = edge_checked[1] = edge_checked[2] = edge_checked[3] = false;
 	}
 	~quadtree_node() {
 		for (int i = 0; i < 4; i++) if (c[i]) {
@@ -246,7 +271,10 @@ public:
 	double getSample(ivec2 q) {
 		if (q == p[0]) {
 			if (isnan(v[0])) {
-				v[0] = fun(i2f(p[0]));
+				if (c[0]) {
+					v[0] = c[0]->getSample(q);
+				}
+				else v[0] = fun(i2f(p[0]));
 			}
 			return v[0];
 		}
@@ -260,7 +288,7 @@ public:
 	quadtree_node* getGrid(ivec2 q, int sz) {
 		if (q == p[0] && sz == size) {
 			if (isnan(v[0])) {
-				v[0] = fun(i2f(p[0]));
+				v[0] = getSample_global(p[0]);
 			}
 			for (int i = 1; i < 4; i++) if (isnan(v[i])) {
 				v[i] = getSample_global(p[i]);
@@ -278,6 +306,11 @@ public:
 		}
 		return c[i]->getGrid(q, sz);
 	}
+	int calcIndex() {
+		if (isnan(v[0] + v[1] + v[2] + v[3])) return (index = 0);
+		return (index = int(v[0] < 0) | (int(v[1] < 0) << 1) | (int(v[2] < 0) << 2) | (int(v[3] < 0) << 3));
+	}
+	void subdivide();
 };
 quadtree_node** quadtree = 0;  // a grid [x][y]
 void create_quadtree() {  // sample tree initialization
@@ -309,14 +342,71 @@ quadtree_node* getGrid_global(ivec2 p, int size) {
 std::vector<quadtree_node*> cells;
 
 
+// grid subdivision
+void quadtree_node::subdivide() {
+	// assume v[0]-v[4] are already initialized
+	for (int u = 0; u < 4; u++) if (!c[u])
+		c[u] = new quadtree_node(size / 2, p[0] + VERTICE_LIST[u] * (size / 2));
+	// LB, B, RB, R, TR, T, TL, L, C
+	double samples[9] = { NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN };
+	const static bool SEGMENT_TABLE[16][9] = {
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 0000, force subdivide
+		{ 1, 1, 1, 0, 1, 0, 1, 1, 1 }, // 1000
+		{ 1, 1, 1, 1, 1, 0, 1, 0, 1 }, // 0100
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 1100
+		{ 1, 0, 1, 1, 1, 1, 1, 0, 1 }, // 0010
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 1010
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 0110
+		{ 1, 0, 1, 0, 1, 1, 1, 1, 1 }, // 1110
+		{ 1, 0, 1, 0, 1, 1, 1, 1, 1 }, // 0001
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 1001
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 0101
+		{ 1, 0, 1, 1, 1, 1, 1, 0, 1 }, // 1101
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 0011
+		{ 1, 1, 1, 1, 1, 0, 1, 0, 1 }, // 1011
+		{ 1, 1, 1, 0, 1, 0, 1, 1, 1 }, // 0111
+		{ 1, 1, 1, 1, 1, 1, 1, 1, 1 }, // 1111, force subdivide
+	};
+	auto s = SEGMENT_TABLE[calcIndex()];
+	// SKIP: has potential to save 20% samples
+	// most cells missed here should not matter since there is a check later
+	// in rare case, this causes problems
+	// check the sign of the sample in the center may solve this problem
+	const int DISABLE_SKIP = true;
+	if (DISABLE_SKIP || s[0]) samples[0] = v[0];
+	if (DISABLE_SKIP || s[2]) samples[2] = v[1];
+	if (DISABLE_SKIP || s[4]) samples[4] = v[2];
+	if (DISABLE_SKIP || s[6]) samples[6] = v[3];
+	if (DISABLE_SKIP || s[1]) samples[1] = isnan(c[1]->v[0]) ? fun(i2f(c[1]->p[0])) : c[1]->v[0];
+	if (DISABLE_SKIP || s[3]) samples[3] = getSample_global(c[1]->p[2]);
+	if (DISABLE_SKIP || s[5]) samples[5] = getSample_global(c[3]->p[2]);
+	if (DISABLE_SKIP || s[7]) samples[7] = isnan(c[3]->v[0]) ? fun(i2f(c[3]->p[0])) : c[3]->v[0];
+	if (DISABLE_SKIP || s[8]) samples[8] = fun(i2f(c[2]->p[0]));  // must be used
+	const static int SUBDIV_LOOKUP[4][4] = {
+		{0,1,8,7}, {1,2,3,8}, {8,3,4,5}, {7,8,5,6}
+	};
+	for (int u = 0; u < 4; u++) for (int v = 0; v < 4; v++)
+		c[u]->v[v] = samples[SUBDIV_LOOKUP[u][v]];
+}
+
+
 void marchSquare(vec2 _p0, vec2 _p1) {
 	p0 = _p0, p1 = _p1;
 
-	// initialize quadtree
+	// initialize quadtree root
 	create_quadtree();
+	for (int x = 0; x <= SEARCH_DIF.x; x++) {
+		for (int y = 0; y <= SEARCH_DIF.y; y++) {
+			quadtree[x][y].v[0] = fun(i2f(quadtree[x][y].p[0] = ivec2(x, y)*PLOT_SIZE));
+		}
+	}
 	for (int x = 0; x < SEARCH_DIF.x; x++) {
 		for (int y = 0; y < SEARCH_DIF.y; y++) {
-			quadtree[x][y].getGrid(ivec2(x, y)*PLOT_SIZE, PLOT_SIZE);
+			for (int u = 1; u < 4; u++) {
+				ivec2 p = ivec2(x, y) + VERTICE_LIST[u];
+				quadtree[x][y].p[u] = quadtree[p.x][p.y].p[0];
+				quadtree[x][y].v[u] = quadtree[p.x][p.y].v[0];
+			}
 		}
 	}
 
@@ -325,8 +415,7 @@ void marchSquare(vec2 _p0, vec2 _p1) {
 	for (int x = 0; x < SEARCH_DIF.x; x++) {
 		for (int y = 0; y < SEARCH_DIF.y; y++) {
 			quadtree_node *n = &quadtree[x][y];
-			int index = calcIndex(n->v);
-			if (SEGMENT_TABLE[index][0] != -1) {
+			if (SEGMENT_TABLE[n->calcIndex()][0] != -1) {
 				cells.push_back(n);
 			}
 		}
@@ -341,36 +430,13 @@ void marchSquare(vec2 _p0, vec2 _p1) {
 		int s2 = size / 2;
 		for (int i = 0, cn = cells.size(); i < cn; i++) {
 			quadtree_node* ci = cells[i];
-#if 0
+			ci->subdivide();
 			for (int u = 0; u < 4; u++) {
-				ci->getGrid(ci->p[0] + s2 * VERTICE_LIST[u], s2);
-			}
-#else
-			// not identical?? seems like there are duplicated samples
-			for (int u = 0; u < 4; u++) if (!ci->c[u])
-				ci->c[u] = new quadtree_node(ci->size / 2, ci->p[0] + VERTICE_LIST[u] * (ci->size / 2));
-			ci->c[0]->p[0] = ci->p[0], ci->c[0]->v[0] = ci->v[0];
-			ci->c[1]->p[1] = ci->p[1], ci->c[1]->v[1] = ci->v[1];
-			ci->c[2]->p[2] = ci->p[2], ci->c[2]->v[2] = ci->v[2];
-			ci->c[3]->p[3] = ci->p[3], ci->c[3]->v[3] = ci->v[3];
-			ci->c[0]->p[2] = ci->c[1]->p[3] = ci->c[3]->p[1] = ci->c[2]->p[0];
-			ci->c[0]->v[2] = ci->c[1]->v[3] = ci->c[3]->v[1] = ci->c[2]->v[0] = fun(i2f(ci->c[2]->p[0]));
-			ci->c[0]->p[1] = ci->c[1]->p[0];
-			ci->c[0]->v[1] = ci->c[1]->v[0] = (isnan(ci->c[1]->v[0]) ? fun(i2f(ci->c[1]->p[0])) : ci->c[1]->v[0]);
-			ci->c[0]->p[3] = ci->c[3]->p[0];
-			ci->c[0]->v[3] = ci->c[3]->v[0] = (isnan(ci->c[3]->v[0]) ? fun(i2f(ci->c[3]->p[0])) : ci->c[3]->v[0]);
-			ci->c[1]->p[2] = ci->c[2]->p[1] = ci->p[0] + ivec2(2, 1)*(ci->size / 2);
-			ci->c[1]->v[2] = ci->c[2]->v[1] = getSample_global(ci->c[1]->p[2]);
-			ci->c[2]->p[3] = ci->c[3]->p[2] = ci->p[0] + ivec2(1, 2)*(ci->size / 2);
-			ci->c[2]->v[3] = ci->c[3]->v[2] = getSample_global(ci->c[3]->p[2]);
-#endif
-			for (int u = 0; u < 4; u++) {
-				int index = calcIndex(ci->c[u]->v);
-				if (SEGMENT_TABLE[index][0] != -1) {
+				if (SEGMENT_TABLE[ci->c[u]->calcIndex()][0] != -1) {
 					new_cells.push_back(ci->c[u]);
 				}
 			}
-			}
+		}
 		cells = new_cells;
 		// debug visualization
 		for (int i = 0, cn = cells.size(); i < cn; i++)
@@ -385,7 +451,7 @@ void marchSquare(vec2 _p0, vec2 _p1) {
 		}
 		for (int i = 0; i < (int)cells.size(); i++) {
 			quadtree_node* ci = cells[i];
-			for (int u = 0; u < 4; u++) if (ci->hasSignChange[u]) {
+			for (int u = 0; u < 4; u++) if (ci->hasSignChange[u] && !ci->edge_checked[u]) {
 				ivec2 nb_p = ci->p[0] + EDGE_DIR[u] * ci->size;
 				if (nb_p.x >= 0 && nb_p.y >= 0 && nb_p.x < GRID_SIZE.x && nb_p.y < GRID_SIZE.y) {
 					quadtree_node* nb = getGrid_global(nb_p, ci->size);
@@ -395,17 +461,18 @@ void marchSquare(vec2 _p0, vec2 _p1) {
 						drawBoxF(i2f(nb->p[0]), i2f(nb->p[2]), 0x606000);  // debug visualization
 						cells.push_back(nb);
 					}
+					nb->edge_checked[(u + 2) % 4] = true;
 				}
+				ci->edge_checked[u] = true;
 			}
 		}
-		}
+	}
 
 	// reconstruct segments
 	for (int i = 0, cn = cells.size(); i < cn; i++) {
 		vec2 p[4];
 		for (int j = 0; j < 4; j++) p[j] = i2f(cells[i]->p[j]);
-		int index = calcIndex(cells[i]->v);
-		const auto Si = SEGMENT_TABLE[index];
+		const auto Si = SEGMENT_TABLE[cells[i]->calcIndex()];
 		for (int u = 0; u < 4 && Si[u] != -1; u += 2) {
 			vec2 a = getInterpolation(p, cells[i]->v, Si[u]);
 			vec2 b = getInterpolation(p, cells[i]->v, Si[u + 1]);
@@ -416,8 +483,9 @@ void marchSquare(vec2 _p0, vec2 _p1) {
 	}
 
 	// clean up
+	cells.clear();
 	destroy_quadtree();
-	}
+}
 
 
 
@@ -454,6 +522,7 @@ void drawLine(vec2 p, vec2 q, COLORREF col) {
 	}
 };
 void drawBox(vec2 p0, vec2 p1, COLORREF col) {
+	//return;
 	drawLine(vec2(p0.x, p0.y), vec2(p1.x, p0.y), col);
 	drawLine(vec2(p0.x, p1.y), vec2(p1.x, p1.y), col);
 	drawLine(vec2(p0.x, p0.y), vec2(p0.x, p1.y), col);
@@ -475,6 +544,7 @@ void remarch() {
 	if (0) p0 = vec2(-2.5), p1 = vec2(2.5);
 	evals = 0;
 	Segments.clear();
+	recorded_samples.clear();
 	marchSquare(p0, p1);
 }
 
@@ -514,6 +584,22 @@ void render() {
 	remarch();
 	int SN = Segments.size();
 
+	// debug duplicate samples
+	if (RECORD_SAMPLES) {
+		std::sort(recorded_samples.begin(), recorded_samples.end(), [](vec2 a, vec2 b) { return a.x == b.x ? a.y < b.y : a.x < b.x; });
+		for (int i = 0; i < (int)recorded_samples.size(); i++) {
+			drawDotF(recorded_samples[i], 1, 0xFFFFFF);
+		}
+		int duplicate_count = 0;
+		for (int i = 1; i < (int)recorded_samples.size(); i++) {
+			if (recorded_samples[i] == recorded_samples[i - 1]) {
+				duplicate_count++;
+				drawDotF(recorded_samples[i], 2, 0x80FF00);
+			}
+		}
+		if (duplicate_count) printf("%d duplicate samples\n", duplicate_count);
+	}
+
 	// rendering
 	for (int i = 0; i < SN; i++) {
 		vec2 a = Segments[i][0], b = Segments[i][1], c = (a + b)*0.5;
@@ -531,7 +617,7 @@ void render() {
 	vec2 cursor = fromInt(Cursor);
 	sprintf(text, "(%.2f,%.2f)  %d evals, %d segments, Area=%lf", cursor.x, cursor.y, evals, SN, Area);
 	SetWindowTextA(_HWND, text);
-	}
+}
 
 
 // ============================================== User ==============================================
