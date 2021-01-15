@@ -51,9 +51,16 @@ struct ivec2 {
 	ivec2(int a) :x(a), y(a) {}
 	ivec2(int x, int y) :x(x), y(y) {}
 	ivec2(vec2 p);
+	bool operator == (const ivec2 &v) const { return x == v.x && y == v.y; }
+	bool operator != (const ivec2 &v) const { return x != v.x || y != v.y; }
 	ivec2 operator - () const { return ivec2(-x, -y); }
 	ivec2 operator + (const ivec2 &v) const { return ivec2(x + v.x, y + v.y); }
 	ivec2 operator - (const ivec2 &v) const { return ivec2(x - v.x, y - v.y); }
+	ivec2 operator * (const ivec2 &v) const { return ivec2(x * v.x, y * v.y); }
+	ivec2 operator * (const int &a) const { return ivec2(x*a, y*a); }
+	friend ivec2 operator * (const int &a, const ivec2 &v) { return ivec2(a*v.x, a*v.y); }
+	ivec2 operator / (const int &a) const { return ivec2(x / a, y / a); }
+	ivec2 operator % (const int &a) const { return ivec2(x % a, y % a); }
 };
 
 struct vec2 {

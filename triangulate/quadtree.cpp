@@ -70,9 +70,6 @@ int main() {
 	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
 }
 
-// debug
-#define dbgprint(format, ...) { wchar_t buf[0x4FFF]; swprintf(buf, 0x4FFF, _T(format), ##__VA_ARGS__); OutputDebugStringW(buf); }
-
 #pragma endregion
 
 
@@ -113,7 +110,8 @@ namespace combined_function {
 }
 
 int evals;
-double fun(double x, double y) {
+double fun(vec2 p) {
+	double x = p.x, y = p.y;
 	evals++;
 	//return x * x + y * y - 1;  // 3.141593
 	//return hypot(x, y) - 1;  // 3.141593
@@ -127,385 +125,301 @@ double fun(double x, double y) {
 	return combined_function::fun(vec2(x, y), 1.7);  // 1.787337
 }
 
-// ============================================ Marching ============================================
-
 
 // forward declarations of rendering functions
 void drawLine(vec2 p, vec2 q, COLORREF col);
-void drawBox(double x0, double x1, double y0, double y1, COLORREF col);
+void drawBox(vec2 p0, vec2 p1, COLORREF col);
 void drawDot(vec2 p, double r, COLORREF col);
 #define drawLineF(p,q,col) drawLine(fromFloat(p),fromFloat(q),col)
+#define drawBoxF(p0,p1,col) drawBox(fromFloat(p0),fromFloat(p1),col)
 #define drawDotF(p,r,col) drawDot(fromFloat(p),r,col)
+
+// ============================================ Marching ============================================
 
 
 // global array to store marched segments
 #include <vector>
 struct segment {
-	vec2 a, b;
-	segment(vec2 a, vec2 b, bool swap = false) {  // swap: make sure the negative region is on the left
-		if (swap) this->a = b, this->b = a;
-		else this->a = a, this->b = b;
-	}
-	void swap() { std::swap(a, b); }
+	vec2 p[2];
+	vec2& operator[](int d) { return p[d]; }
+	segment() {}
+	segment(vec2 a, vec2 b) { p[0] = a, p[1] = b; }
 };
 std::vector<segment> Segments;
 
 
-namespace MARCH_LOOKUP_TABLES {
-
-	// list of vertice on a unit square
-	const static ivec2 VERTICE_LIST[4] = {
-		ivec2(0,0), ivec2(1,0), ivec2(1,1), ivec2(0,1)  // bottom-left, bottom-right, top-right, top-left
-	};
-	// list of edges connecting two vertices on a unit square
-	const static ivec2 EDGE_LIST[4] = {
-		ivec2(0,1), ivec2(1,2), ivec2(2,3), ivec2(3,0)  // bottom, right, top, left
-	};
-
-	// indicate segments connecting edges from bitwise compressed vertice signs
-	// max 2 segments, distinct vertices
-	const static int SEGMENT_TABLE[16][4] = {
-		{ -1, }, // 0000
-		{ 0, 3, -1 }, // 1000
-		{ 1, 0, -1 }, // 0100
-		{ 1, 3, -1 }, // 1100
-		{ 2, 1, -1 }, // 0010
-		{ 0, 3, 2, 1 }, // 1010
-		{ 2, 0, -1 }, // 0110
-		{ 2, 3, -1 }, // 1110
-		{ 3, 2, -1 }, // 0001
-		{ 0, 2, -1 }, // 1001
-		{ 1, 0, 3, 2 }, // 0101
-		{ 1, 2, -1 }, // 1101
-		{ 3, 1, -1 }, // 0011
-		{ 0, 1, -1 }, // 1011
-		{ 3, 0, -1 }, // 0111
-		{ -1 }, // 1111
-	};
-
-	// convert sample values to index for table lookup
-	uint16_t calcIndex(const double val[4]) {
-		return uint16_t(val[0] < 0) | (uint16_t(val[1] < 0) << 1) | (uint16_t(val[2] < 0) << 2) | (uint16_t(val[3] < 0) << 3);
-	}
-
-	// linear interpolation on an edge
-	vec2 getInterpolation(vec2 pos[4], double val[4], int i) {
-		double v0 = val[EDGE_LIST[i].x];
-		double v1 = val[EDGE_LIST[i].y];
-		vec2 p0 = pos[EDGE_LIST[i].x];
-		vec2 p1 = pos[EDGE_LIST[i].y];
-		return p0 + (v0 / (v0 - v1))*(p1 - p0);
-	};
-
-	// used in quadtree subdivision, which edge to which edge
-	const static int TREE_EDGES[4][4][2] = {
-		{{-1,-1},{1,3},{3,0},{-1,-1}},
-		{{-1,-1},{-1,-1},{2,0},{0,1}},
-		{{1,2},{-1,-1},{-1,-1},{3,1}},
-		{{0,2},{2,3},{-1,-1},{-1,-1}}
-	};
-	// "inner" and "outer" edges when merging subtrees
-	const static int TREE_INNER_EDGES[4][2][2] = {
-		{{0,1},{1,3}},
-		{{1,2},{2,0}},
-		{{2,3},{3,1}},
-		{{3,0},{0,2}}
-	};
-	const static int TREE_OUTER_EDGES[4][2][2] = {
-		{{0,0},{1,0}},
-		{{1,1},{2,1}},
-		{{2,2},{3,2}},
-		{{3,3},{0,3}}
-	};
-
-	const vec2 NAV = vec2(NAN);
-}
 
 
-struct quadtree_node {
-	vec2 pos[4];
-	double val[4];
-	quadtree_node* children[4] = { 0,0,0,0 };
-	~quadtree_node() {
-		for (int i = 0; i < 4; i++) if (children[i]) {
-			delete children[i]; children[i] = 0;
-		}
-	}
+// list of vertice on a unit square
+const static ivec2 VERTICE_LIST[4] = {
+	ivec2(0,0), ivec2(1,0), ivec2(1,1), ivec2(0,1)  // bottom-left, bottom-right, top-right, top-left
+};
+const static int VERTICE_LIST_INV[2][2] = {  // reverse search of VERTICE_LIST
+	{0, 3}, {1, 2},
+};
+// list of edges connecting two vertices on a unit square
+const static ivec2 EDGE_LIST[4] = {
+	ivec2(0,1), ivec2(1,2), ivec2(2,3), ivec2(3,0)  // bottom, right, top, left; opposite: (+2)%4
+};
+const static ivec2 EDGE_DIR[4] = {
+	ivec2(0,-1), ivec2(1,0), ivec2(0,1), ivec2(-1,0)
 };
 
-#include <algorithm>
-#include <map>
-#include <functional>
-void quadtree_recurse(quadtree_node* R, std::map<vec2, double, std::function<bool(vec2, vec2)>> &samples, std::vector<vec2> edgepoints[4], std::vector<vec2> findlist, int recurse_remain);
+// indicate segments connecting edges from bitwise compressed vertice signs
+// max 2 segments, distinct vertices
+const static int SEGMENT_TABLE[16][4] = {
+	{ -1, }, // 0000
+	{ 0, 3, -1 }, // 1000
+	{ 1, 0, -1 }, // 0100
+	{ 1, 3, -1 }, // 1100
+	{ 2, 1, -1 }, // 0010
+	{ 0, 3, 2, 1 }, // 1010
+	{ 2, 0, -1 }, // 0110
+	{ 2, 3, -1 }, // 1110
+	{ 3, 2, -1 }, // 0001
+	{ 0, 2, -1 }, // 1001
+	{ 1, 0, 3, 2 }, // 0101
+	{ 1, 2, -1 }, // 1101
+	{ 3, 1, -1 }, // 0011
+	{ 0, 1, -1 }, // 1011
+	{ 3, 0, -1 }, // 0111
+	{ -1 }, // 1111
+};
 
-void marchSquare(vec2 p0, vec2 p1, const ivec2 SEARCH_DIF, const int PLOT_DPS) {
-	using namespace MARCH_LOOKUP_TABLES;
-	vec2 dp = (p1 - p0) / vec2(SEARCH_DIF);
-	double epsilon = 1e-5*min(dp.x, dp.y)*exp2(-PLOT_DPS);
-
-	// initial samples
-	std::function<bool(vec2, vec2)> vec2_compare = [](vec2 a, vec2 b) { return a.x<b.x ? true : a.x>b.x ? false : a.y < b.y; };
-	std::map<vec2, double, std::function<bool(vec2, vec2)>> samples(vec2_compare);
-	double *val = new double[(SEARCH_DIF.x + 1)*(SEARCH_DIF.y + 1)];
-	for (int i = 0; i <= SEARCH_DIF.x; i++) {
-		for (int j = 0; j <= SEARCH_DIF.y; j++) {
-			vec2 p = p0 + vec2(i, j)*dp;
-			double v = fun(p.x, p.y);
-			val[i*(SEARCH_DIF.y + 1) + j] = v;
-			samples.insert(std::pair<vec2, double>(p, v));
-		}
-	}
-	auto getVal = [&](ivec2 ij)->double { return val[ij.x*(SEARCH_DIF.y + 1) + ij.y]; };
-
-	// sample squares
-	const int GRID_SIZE = SEARCH_DIF.x*SEARCH_DIF.y;
-	quadtree_node *sqrs = new quadtree_node[GRID_SIZE];
-	auto getSquare = [&](int x, int y)->quadtree_node* { return &sqrs[x*(SEARCH_DIF.y) + y]; };
-	for (int i = 0; i < SEARCH_DIF.x; i++) {
-		for (int j = 0; j < SEARCH_DIF.y; j++) {
-			quadtree_node* qt = getSquare(i, j);
-			for (int u = 0; u < 4; u++) {
-				ivec2 ips = ivec2(i, j) + VERTICE_LIST[u];
-				qt->pos[u] = p0 + vec2(ips)*dp;
-				qt->val[u] = getVal(ips);
-			}
-		}
-	}
-
-	// grid to store "edge points" for identifying missed samples
-	std::vector<vec2> *edge_points_pnt = 0, *contained_points_pnt = 0;
-	if (PLOT_DPS > 0) {
-		edge_points_pnt = new std::vector<vec2>[4 * GRID_SIZE];
-		contained_points_pnt = new std::vector<vec2>[GRID_SIZE];
-	}
-	auto getEdgePoints = [&](int x, int y)->std::vector<vec2>* { return &edge_points_pnt[4 * (x*(SEARCH_DIF.y) + y)]; };
-	auto getContainedPoints = [&](int x, int y)->std::vector<vec2>* { return &contained_points_pnt[x*(SEARCH_DIF.y) + y]; };
-
-	// march squares
-	for (int xi = 0; xi < SEARCH_DIF.x; xi++) {
-		for (int yi = 0; yi < SEARCH_DIF.y; yi++) {
-
-			// get signs and calculate index
-			quadtree_node* qt = getSquare(xi, yi);
-			vec2 pos[4]; double val[4];
-			for (int u = 0; u < 4; u++) {
-				pos[u] = qt->pos[u];
-				val[u] = qt->val[u];
-			}
-			uint16_t index = calcIndex(val);
-
-			// quadtree (recursive)
-			if (PLOT_DPS > 0 && SEGMENT_TABLE[index][0] != -1) {
-				std::vector<vec2> *edgepoints = getEdgePoints(xi, yi);
-				quadtree_recurse(qt, samples, edgepoints, std::vector<vec2>(), PLOT_DPS);
-			}
-
-			// add segments (standard marching square)
-			else for (int u = 0; u < 4; u += 2) {
-				int d0 = SEGMENT_TABLE[index][u];
-				int d1 = SEGMENT_TABLE[index][u + 1];
-				if (d0 == -1) break;
-				Segments.push_back(segment(getInterpolation(pos, val, d0), getInterpolation(pos, val, d1)));
-			}
-
-			// visualize for debug
-			if (SEGMENT_TABLE[index][0] != -1) drawBox(pos[0].x, pos[2].x, pos[0].y, pos[2].y, 0xFF0000);
-		}
-	}
-
-	// check missed samples
-	if (edge_points_pnt) {
-		bool *march_needed_pnt = new bool[GRID_SIZE];
-		auto march_needed = [&](ivec2 ij)->bool { return march_needed_pnt[ij.x*(SEARCH_DIF.y) + ij.y]; };
-		bool foundMissed = false;
-		do {
-			for (int i = 0; i < GRID_SIZE; i++) march_needed_pnt[i] = false;
-			foundMissed = false;
-
-			// update contained points
-			for (int xi = 0; xi < SEARCH_DIF.x; xi++) {
-				for (int yi = 0; yi < SEARCH_DIF.y; yi++) {
-					std::vector<vec2> *edgepoints = getEdgePoints(xi, yi);
-					if (yi != 0) getContainedPoints(xi, yi - 1)->insert(getContainedPoints(xi, yi - 1)->begin(), edgepoints[0].begin(), edgepoints[0].end());
-					if (xi + 1 != SEARCH_DIF.x) getContainedPoints(xi + 1, yi)->insert(getContainedPoints(xi + 1, yi)->begin(), edgepoints[1].begin(), edgepoints[1].end());
-					if (yi + 1 != SEARCH_DIF.y) getContainedPoints(xi, yi + 1)->insert(getContainedPoints(xi, yi + 1)->begin(), edgepoints[2].begin(), edgepoints[2].end());
-					if (xi != 0) getContainedPoints(xi - 1, yi)->insert(getContainedPoints(xi - 1, yi)->begin(), edgepoints[3].begin(), edgepoints[3].end());
-				}
-			}
-
-			for (int xi = 0; xi < SEARCH_DIF.x; xi++) {
-				for (int yi = 0; yi < SEARCH_DIF.y; yi++) {
-					// find points that are connected but not contained
-					std::vector<vec2> ep, *epp = getEdgePoints(xi, yi);
-					for (int i = 0; i < 4; i++) ep.insert(ep.end(), epp[i].begin(), epp[i].end());
-					std::vector<vec2> cp = *getContainedPoints(xi, yi); getContainedPoints(xi, yi)->clear();
-					int cpn = cp.size(), epn = ep.size();
-					std::vector<vec2> miss_list;
-					for (int i = 0; i < cpn; i++) {
-						vec2 p = cp[i];
-						bool has = false;
-						for (int j = 0; j < epn; j++)
-							if ((p - ep[j]).sqr() < epsilon*epsilon) { has = true; break; }
-						if (!has) miss_list.push_back(p);
-					}
-					// re-sample these points
-					if (!miss_list.empty()) {
-						foundMissed = true;
-						quadtree_node* sqr = getSquare(xi, yi);
-						quadtree_recurse(sqr, samples, epp, miss_list, PLOT_DPS);
-						drawBox(sqr->pos[0].x, sqr->pos[2].x, sqr->pos[0].y, sqr->pos[2].y, 0xFF8000);
-						// debug visualization
-						for (int i = 0, n = miss_list.size(); i < n; i++) drawDotF(miss_list[i], 3, 0xFFFFFF);
-					}
-				}
-			}
-
-		} while (foundMissed);
-		delete march_needed_pnt;
-	}
-
-	delete val;
-	delete[] sqrs;
-	if (PLOT_DPS > 0) {
-		delete[] edge_points_pnt;
-		delete[] contained_points_pnt;
-	}
+// convert sample values to index for table lookup
+uint16_t calcIndex(const double val[4]) {
+	return uint16_t(val[0] < 0) | (uint16_t(val[1] < 0) << 1) | (uint16_t(val[2] < 0) << 2) | (uint16_t(val[3] < 0) << 3);
 }
 
-void quadtree_recurse(quadtree_node* R, std::map<vec2, double, std::function<bool(vec2, vec2)>> &samples,
-	std::vector<vec2> edgepoints[4], std::vector<vec2> findlist, int recurse_remain) {
-	using namespace MARCH_LOOKUP_TABLES;
-	vec2 p0 = R->pos[0], dp = R->pos[2] - R->pos[0];
-	double epsilon = 1e-5*min(dp.x, dp.y)*exp2(-recurse_remain);
+// linear interpolation on an edge
+vec2 getInterpolation(vec2 pos[4], double val[4], int i) {
+	double v0 = val[EDGE_LIST[i].x];
+	double v1 = val[EDGE_LIST[i].y];
+	vec2 p0 = pos[EDGE_LIST[i].x];
+	vec2 p1 = pos[EDGE_LIST[i].y];
+	return p0 + (v0 / (v0 - v1))*(p1 - p0);
+};
 
-	if (recurse_remain > 0) {
-		drawBox(R->pos[0].x, R->pos[2].x, R->pos[0].y, R->pos[2].y, findlist.empty() ? 0x4040FF : 0xFF4040);
 
-		// initialize child nodes
-		bool alreadyMarched[4] = { false, false, false, false };
-		for (int i = 0; i < 4; i++) {
-			if (!R->children[i]) R->children[i] = new quadtree_node;
-			else alreadyMarched[i] = true;
-			quadtree_node *qt = R->children[i];
-			for (int u = 0; u < 4; u++) {
-				qt->pos[u] = p0 + (0.5*vec2(VERTICE_LIST[i] + VERTICE_LIST[u]))*dp;
+
+
+
+vec2 p0, p1;  // search bounds
+const ivec2 SEARCH_DIF = ivec2(16, 10);
+const int PLOT_DPS = 4;
+const int PLOT_SIZE = 1 << PLOT_DPS;
+const ivec2 GRID_SIZE = SEARCH_DIF * PLOT_SIZE;  // define grid id
+vec2 i2f(ivec2 p) {  // position ID to position
+	vec2 d = vec2(p) / vec2(GRID_SIZE);
+	return p0 * (vec2(1.) - d) + p1 * d;
+}
+
+
+// quadtree
+// all integer coordinates are absolute
+double getSample_global(ivec2 p);
+class quadtree_node {
+public:
+	ivec2 p[4]; // point IDs
+	double v[4]; // only the first one really matter
+	int size;  // top right: p+ivec2(size)
+	quadtree_node *parent;  // parent node
+	quadtree_node *c[4];  // child nodes
+	bool hasSignChange[4];  // indicate whether there is a sign change at each edge
+	quadtree_node(int size = 0, ivec2 p = ivec2(-1)) {
+		this->p[0] = this->p[1] = this->p[2] = this->p[3] = p;
+		if (p != ivec2(-1)) {
+			for (int i = 1; i < 4; i++)
+				this->p[i] = p + VERTICE_LIST[i] * size;
+		}
+		v[0] = v[1] = v[2] = v[3] = NAN;
+		this->size = size;
+		parent = nullptr;
+		c[0] = c[1] = c[2] = c[3] = nullptr;
+		hasSignChange[0] = hasSignChange[1] = hasSignChange[2] = hasSignChange[3] = false;
+	}
+	~quadtree_node() {
+		for (int i = 0; i < 4; i++) if (c[i]) {
+			delete c[i]; c[i] = 0;
+		}
+	}
+	double getSample(ivec2 q) {
+		if (q == p[0]) {
+			if (isnan(v[0])) {
+				v[0] = fun(i2f(p[0]));
 			}
-			for (int u = 0; u < 4; u++) {
-				// function sample - u sure this is faster?!
+			return v[0];
+		}
+		ivec2 d = (q - p[0]) / (size >> 1);
+		int i = VERTICE_LIST_INV[d.x][d.y];
+		if (!c[i]) {
+			c[i] = new quadtree_node(size / 2, p[0] + d * (size / 2));
+		}
+		return c[i]->getSample(q);
+	}
+	quadtree_node* getGrid(ivec2 q, int sz) {
+		if (q == p[0] && sz == size) {
+			if (isnan(v[0])) {
+				v[0] = fun(i2f(p[0]));
+			}
+			for (int i = 1; i < 4; i++) if (isnan(v[i])) {
+				v[i] = getSample_global(p[i]);
+			}
+			return this;
+		}
 #ifdef _DEBUG
-				qt->val[u] = fun(qt->pos[u].x, qt->pos[u].y);
-#else
-				auto sp = samples.find(qt->pos[u]);
-				if (sp != samples.end())  qt->val[u] = sp->second;
-				else samples[qt->pos[u]] = qt->val[u] = fun(qt->pos[u].x, qt->pos[u].y);
+		if (q % sz != ivec2(0)) throw(__LINE__);
+		if (sz > size) throw(__LINE__);
 #endif
-			}
+		ivec2 d = (q - p[0]) / (size >> 1);
+		int i = VERTICE_LIST_INV[d.x][d.y];
+		if (!c[i]) {
+			c[i] = new quadtree_node(size / 2, p[0] + d * (size / 2));
 		}
-
-		// decide whether to "sub"-march or not
-		int index[4];
-		for (int i = 0; i < 4; i++) index[i] = calcIndex(R->children[i]->val);
-		std::vector<vec2> findl[4];
-		for (int i = 0; i < 4; i++) {
-			vec2 q0 = p0 + 0.5*vec2(VERTICE_LIST[i])*dp;
-			vec2 q1 = q0 + 0.5*dp + vec2(epsilon); q0 -= vec2(epsilon);
-			for (int d = 0, n = findlist.size(); d < n; d++) {
-				vec2 q = findlist[d];
-				if (q.x > q0.x && q.x<q1.x && q.y>q0.y && q.y < q1.y) findl[i].push_back(q);
-			}
-		}
-		bool toMarch[4] = { false, false, false, false };
-		for (int i = 0; i < 4; i++) {
-			toMarch[i] = (SEGMENT_TABLE[index[i]][0] != -1 && !alreadyMarched[i]) || !findl[i].empty();
-		}
-		// recursive march
-		std::vector<vec2> edgepoints_s[4][4];
-		for (int i = 0; i < 4; i++) if (toMarch[i]) {
-			quadtree_recurse(R->children[i], samples, edgepoints_s[i], findl[i], recurse_remain - 1);
-		}
-
-		// check the inner edges to see if there are missed parts
-		bool hasMissed;
-		do {
-			hasMissed = false;
-			std::vector<vec2> missed[4];  // index is assigned to squares
-			for (int c = 0; c < 4; c++) {
-				int sqr0 = TREE_INNER_EDGES[c][0][0], sqr1 = TREE_INNER_EDGES[c][1][0];
-				std::vector<vec2> e0 = edgepoints_s[sqr0][TREE_INNER_EDGES[c][0][1]];
-				std::vector<vec2> e1 = edgepoints_s[sqr1][TREE_INNER_EDGES[c][1][1]];
-				struct vec2s { vec2 p; int sqr; };
-				std::vector<vec2s> et;
-				for (int i = 0, n0 = e0.size(); i < n0; i++)
-					et.push_back(vec2s{ e0[i], sqr1 });
-				for (int i = 0, n1 = e1.size(); i < n1; i++)
-					et.push_back(vec2s{ e1[i],sqr0 });
-				std::sort(et.begin(), et.end(), [](vec2s a, vec2s b) { return a.p.x + a.p.y < b.p.x + b.p.y; });
-				for (int i = 0, etl = et.size(); i < etl;) {
-					if (i + 1 == etl) {
-						missed[et[i].sqr].push_back(et[i].p);  // remain 1
-						break;
-					}
-					if ((et[i].p - et[i + 1].p).sqr() < epsilon*epsilon) {
-						if (et[i].sqr == et[i + 1].sqr) throw(__LINE__);  // should never happen
-						i += 2;  // duplicate, pass
-					}
-					else {
-						missed[et[i].sqr].push_back(et[i].p);  // missed
-						i++;
-					}
-				}
-			}
-			// fix missed samples
-			for (int c = 0; c < 4; c++) {
-				if (!missed[c].empty()) {
-					quadtree_recurse(R->children[c], samples, edgepoints_s[c], missed[c], recurse_remain - 1);
-					hasMissed = true;
-				}
-			}
-		} while (hasMissed);
-
-		// merge outer edges to be accessed by the call function
-		for (int c = 0; c < 4; c++) {
-			std::vector<vec2> e = edgepoints_s[TREE_OUTER_EDGES[c][0][0]][TREE_OUTER_EDGES[c][0][1]];
-			std::vector<vec2> e1 = edgepoints_s[TREE_OUTER_EDGES[c][1][0]][TREE_OUTER_EDGES[c][1][1]];
-			e.insert(e.end(), e1.begin(), e1.end());
-			for (int i = 0, en = e.size(); i < en; i++) {
-				vec2 p = e[i];
-				bool isDuplicate = false;
-				for (int j = 0, ecn = edgepoints[c].size(); j < ecn; j++) {
-					if ((edgepoints[c][j] - p).sqr() < epsilon*epsilon) { isDuplicate = true; break; }
-				}
-				if (!isDuplicate) edgepoints[c].push_back(p);
-			}
-		}
-
+		return c[i]->getGrid(q, sz);
 	}
-
-	// search limit exceeded, create segments
-	else {
-		int index = calcIndex(R->val);
-		for (int u = 0; u < 4; u += 2) {
-			int d0 = SEGMENT_TABLE[index][u];
-			int d1 = SEGMENT_TABLE[index][u + 1];
-			if (d0 == -1) break;
-			vec2 p0 = getInterpolation(R->pos, R->val, d0);
-			vec2 p1 = getInterpolation(R->pos, R->val, d1);
-
-			// need to check if the point is already added
-			bool alreadyHas = false;
-			for (int i = 0, n = edgepoints[d0].size(); i < n; i++)
-				if ((edgepoints[d0][i] - p0).sqr() < epsilon*epsilon) { alreadyHas = true; break; }
-			if (!alreadyHas) for (int i = 0, n = edgepoints[d1].size(); i < n; i++)
-				if ((edgepoints[d1][i] - p0).sqr() < epsilon*epsilon) { alreadyHas = true; break; }
-			if (!alreadyHas) {
-				edgepoints[d0].push_back(p0), edgepoints[d1].push_back(p1);
-			}
-
-			Segments.push_back(segment(edgepoints[d0].back(), edgepoints[d1].back()));
+};
+quadtree_node** quadtree = 0;  // a grid [x][y]
+void create_quadtree() {  // sample tree initialization
+	quadtree = new quadtree_node*[SEARCH_DIF.x + 1];
+	for (int x = 0; x <= SEARCH_DIF.x; x++) {
+		quadtree[x] = new quadtree_node[SEARCH_DIF.y + 1];
+		for (int y = 0; y <= SEARCH_DIF.y; y++) {
+			quadtree[x][y] = quadtree_node(PLOT_SIZE, ivec2(x, y)*PLOT_SIZE);
 		}
-		drawBox(R->pos[0].x, R->pos[2].x, R->pos[0].y, R->pos[2].y, 0x00FF00);
 	}
 }
+void destroy_quadtree() {  // sample tree destruction
+	for (int x = 0; x <= SEARCH_DIF.x; x++)
+		delete[] quadtree[x];
+	delete quadtree;
+	quadtree = 0;
+}
+double getSample_global(ivec2 p) {  // access a sample on the sample tree
+	ivec2 pi = p / PLOT_SIZE;
+	return quadtree[pi.x][pi.y].getSample(p);
+}
+quadtree_node* getGrid_global(ivec2 p, int size) {
+	ivec2 pi = p / PLOT_SIZE;
+	return quadtree[pi.x][pi.y].getGrid(p, size);
+}
+
+
+// marching cells
+std::vector<quadtree_node*> cells;
+
+
+void marchSquare(vec2 _p0, vec2 _p1) {
+	p0 = _p0, p1 = _p1;
+
+	// initialize quadtree
+	create_quadtree();
+	for (int x = 0; x < SEARCH_DIF.x; x++) {
+		for (int y = 0; y < SEARCH_DIF.y; y++) {
+			quadtree[x][y].getGrid(ivec2(x, y)*PLOT_SIZE, PLOT_SIZE);
+		}
+	}
+
+	// initial sample cells
+	cells.clear();
+	for (int x = 0; x < SEARCH_DIF.x; x++) {
+		for (int y = 0; y < SEARCH_DIF.y; y++) {
+			quadtree_node *n = &quadtree[x][y];
+			int index = calcIndex(n->v);
+			if (SEGMENT_TABLE[index][0] != -1) {
+				cells.push_back(n);
+			}
+		}
+	}
+	// debug visualization
+	for (int i = 0, cn = cells.size(); i < cn; i++)
+		drawBoxF(i2f(cells[i]->p[0]), i2f(cells[i]->p[2]), 0x800000);
+
+	// subdivide grid cells
+	for (int size = PLOT_SIZE; size > 1; size >>= 1) {
+		std::vector<quadtree_node*> new_cells;
+		int s2 = size / 2;
+		for (int i = 0, cn = cells.size(); i < cn; i++) {
+			quadtree_node* ci = cells[i];
+#if 0
+			for (int u = 0; u < 4; u++) {
+				ci->getGrid(ci->p[0] + s2 * VERTICE_LIST[u], s2);
+			}
+#else
+			// not identical?? seems like there are duplicated samples
+			for (int u = 0; u < 4; u++) if (!ci->c[u])
+				ci->c[u] = new quadtree_node(ci->size / 2, ci->p[0] + VERTICE_LIST[u] * (ci->size / 2));
+			ci->c[0]->p[0] = ci->p[0], ci->c[0]->v[0] = ci->v[0];
+			ci->c[1]->p[1] = ci->p[1], ci->c[1]->v[1] = ci->v[1];
+			ci->c[2]->p[2] = ci->p[2], ci->c[2]->v[2] = ci->v[2];
+			ci->c[3]->p[3] = ci->p[3], ci->c[3]->v[3] = ci->v[3];
+			ci->c[0]->p[2] = ci->c[1]->p[3] = ci->c[3]->p[1] = ci->c[2]->p[0];
+			ci->c[0]->v[2] = ci->c[1]->v[3] = ci->c[3]->v[1] = ci->c[2]->v[0] = fun(i2f(ci->c[2]->p[0]));
+			ci->c[0]->p[1] = ci->c[1]->p[0];
+			ci->c[0]->v[1] = ci->c[1]->v[0] = (isnan(ci->c[1]->v[0]) ? fun(i2f(ci->c[1]->p[0])) : ci->c[1]->v[0]);
+			ci->c[0]->p[3] = ci->c[3]->p[0];
+			ci->c[0]->v[3] = ci->c[3]->v[0] = (isnan(ci->c[3]->v[0]) ? fun(i2f(ci->c[3]->p[0])) : ci->c[3]->v[0]);
+			ci->c[1]->p[2] = ci->c[2]->p[1] = ci->p[0] + ivec2(2, 1)*(ci->size / 2);
+			ci->c[1]->v[2] = ci->c[2]->v[1] = getSample_global(ci->c[1]->p[2]);
+			ci->c[2]->p[3] = ci->c[3]->p[2] = ci->p[0] + ivec2(1, 2)*(ci->size / 2);
+			ci->c[2]->v[3] = ci->c[3]->v[2] = getSample_global(ci->c[3]->p[2]);
+#endif
+			for (int u = 0; u < 4; u++) {
+				int index = calcIndex(ci->c[u]->v);
+				if (SEGMENT_TABLE[index][0] != -1) {
+					new_cells.push_back(ci->c[u]);
+				}
+			}
+			}
+		cells = new_cells;
+		// debug visualization
+		for (int i = 0, cn = cells.size(); i < cn; i++)
+			drawBoxF(i2f(cells[i]->p[0]), i2f(cells[i]->p[2]), 0x600060);
+
+		// try to add missed samples
+		for (int i = 0; i < (int)cells.size(); i++) {
+			quadtree_node* ci = cells[i];
+			for (int u = 0; u < 4; u++) {
+				ci->hasSignChange[u] = signbit(ci->v[EDGE_LIST[u].x]) ^ signbit(ci->v[EDGE_LIST[u].y]);
+			}
+		}
+		for (int i = 0; i < (int)cells.size(); i++) {
+			quadtree_node* ci = cells[i];
+			for (int u = 0; u < 4; u++) if (ci->hasSignChange[u]) {
+				ivec2 nb_p = ci->p[0] + EDGE_DIR[u] * ci->size;
+				if (nb_p.x >= 0 && nb_p.y >= 0 && nb_p.x < GRID_SIZE.x && nb_p.y < GRID_SIZE.y) {
+					quadtree_node* nb = getGrid_global(nb_p, ci->size);
+					if (!nb->hasSignChange[(u + 2) % 4]) {
+						for (int u = 0; u < 4; u++)
+							nb->hasSignChange[u] = signbit(nb->v[EDGE_LIST[u].x]) ^ signbit(nb->v[EDGE_LIST[u].y]);
+						drawBoxF(i2f(nb->p[0]), i2f(nb->p[2]), 0x606000);  // debug visualization
+						cells.push_back(nb);
+					}
+				}
+			}
+		}
+		}
+
+	// reconstruct segments
+	for (int i = 0, cn = cells.size(); i < cn; i++) {
+		vec2 p[4];
+		for (int j = 0; j < 4; j++) p[j] = i2f(cells[i]->p[j]);
+		int index = calcIndex(cells[i]->v);
+		const auto Si = SEGMENT_TABLE[index];
+		for (int u = 0; u < 4 && Si[u] != -1; u += 2) {
+			vec2 a = getInterpolation(p, cells[i]->v, Si[u]);
+			vec2 b = getInterpolation(p, cells[i]->v, Si[u + 1]);
+			Segments.push_back(segment(a, b));
+		}
+		// debug visualization
+		drawBoxF(i2f(cells[i]->p[0]), i2f(cells[i]->p[2]), 0x0000FF);
+	}
+
+	// clean up
+	destroy_quadtree();
+	}
+
+
 
 
 // ============================================ Rendering ============================================
@@ -539,11 +453,11 @@ void drawLine(vec2 p, vec2 q, COLORREF col) {
 		}
 	}
 };
-void drawBox(double x0, double x1, double y0, double y1, COLORREF col) {
-	drawLineF(vec2(x0, y0), vec2(x1, y0), col);
-	drawLineF(vec2(x0, y1), vec2(x1, y1), col);
-	drawLineF(vec2(x0, y0), vec2(x0, y1), col);
-	drawLineF(vec2(x1, y0), vec2(x1, y1), col);
+void drawBox(vec2 p0, vec2 p1, COLORREF col) {
+	drawLine(vec2(p0.x, p0.y), vec2(p1.x, p0.y), col);
+	drawLine(vec2(p0.x, p1.y), vec2(p1.x, p1.y), col);
+	drawLine(vec2(p0.x, p0.y), vec2(p0.x, p1.y), col);
+	drawLine(vec2(p1.x, p0.y), vec2(p1.x, p1.y), col);
 };
 void drawDot(vec2 p, double r, COLORREF col) {
 	int x0 = max((int)(p.x - r), 0), x1 = min((int)(p.x + r + 1), _WIN_W - 1);
@@ -561,14 +475,14 @@ void remarch() {
 	if (0) p0 = vec2(-2.5), p1 = vec2(2.5);
 	evals = 0;
 	Segments.clear();
-	marchSquare(p0, p1, ivec2(16, 10), 4);
+	marchSquare(p0, p1);
 }
 
 void render() {
 	// debug
 	auto t1 = NTime::now();
 	double dt = std::chrono::duration<double>(t1 - t0).count();
-	dbgprint("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
+	printf("[%d×%d] time elapsed: %.1fms (%.1ffps)\n", _WIN_W, _WIN_H, 1000.0*dt, 1. / dt);
 	t0 = t1;
 
 	// initialize window
@@ -583,7 +497,7 @@ void render() {
 		double v = V[i][j] / length(vec2(dx, dy));
 		COLORREF col = (byte)(50.*clamp(5.0 - abs(v), 0, 1));
 		_WINIMG[j*_WIN_W + i] = col | (col << 8) | (col) << 16;
-}
+	}
 #endif
 
 	// axis and grid
@@ -602,39 +516,22 @@ void render() {
 
 	// rendering
 	for (int i = 0; i < SN; i++) {
-		vec2 a = Segments[i].a, b = Segments[i].b, c = (a + b)*0.5;
+		vec2 a = Segments[i][0], b = Segments[i][1], c = (a + b)*0.5;
 		drawLineF(a, b, 0xFFFFFF);
 		drawLineF(c, c + (b - a).rot(), 0xFFFF00);
 	}
 
-	// check if there are duplicated segments
-	std::vector<uint64_t> Hashs; Hashs.reserve(SN);
-	for (int i = 0; i < SN; i++) {
-		auto hashv2 = [](vec2 p)->uint64_t {
-			char *c = (char*)&p; uint64_t h = 0;
-			for (int i = 0; i < sizeof(p); i++) h = 1664525u * h + 1013904223u * (uint64_t)c[i];
-			return h;
-		};
-		Hashs.push_back(hashv2(Segments[i].a) ^ hashv2(Segments[i].b));
-	}
-	std::sort(Hashs.begin(), Hashs.end());
-	int collisionCount = 0;
-	for (int i = 1; i < SN; i++) {
-		if (Hashs[i - 1] == Hashs[i]) collisionCount++;
-	}
-	printf("%d duplicated segments\n", collisionCount);  // non-zero: bug
-
 	// calculate area
 	double Area = 0;
 	for (int i = 0; i < SN; i++) {
-		Area += det(Segments[i].a, Segments[i].b);
+		Area += det(Segments[i][0], Segments[i][1]);
 	}
 	Area *= 0.5;
 
 	vec2 cursor = fromInt(Cursor);
 	sprintf(text, "(%.2f,%.2f)  %d evals, %d segments, Area=%lf", cursor.x, cursor.y, evals, SN, Area);
 	SetWindowTextA(_HWND, text);
-}
+	}
 
 
 // ============================================== User ==============================================
