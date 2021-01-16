@@ -174,6 +174,16 @@ struct ivec3 {
 	explicit ivec3(int a) :x(a), y(a), z(a) {}
 	explicit ivec3(int x, int y, int z) : x(x), y(y), z(z) {}
 	explicit ivec3(vec3 p);
+	bool operator == (const ivec3 &v) const { return x == v.x && y == v.y && z == v.z; }
+	bool operator != (const ivec3 &v) const { return x != v.x || y != v.y || z != v.z; }
+	ivec3 operator - () const { return ivec3(-x, -y, -z); }
+	ivec3 operator + (const ivec3 &v) const { return ivec3(x + v.x, y + v.y, z + v.z); }
+	ivec3 operator - (const ivec3 &v) const { return ivec3(x - v.x, y - v.y, z - v.z); }
+	ivec3 operator * (const ivec3 &v) const { return ivec3(x * v.x, y * v.y, z * v.z); }
+	ivec3 operator * (const int &a) const { return ivec3(x*a, y*a, z*a); }
+	friend ivec3 operator * (const int &a, const ivec3 &v) { return ivec3(a*v.x, a*v.y, a*v.z); }
+	ivec3 operator / (const int &a) const { return ivec3(x / a, y / a, z / a); }
+	ivec3 operator % (const int &a) const { return ivec3(x % a, y % a, z % a); }
 };
 
 struct vec3 {
