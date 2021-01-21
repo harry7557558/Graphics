@@ -190,6 +190,15 @@ void readBinarySTL(const char* filename, BVH_Triangle* &STL, int &N) {
 	}
 	fclose(fp);
 }
+BVH_Triangle* readBinarySTL(const char* filename, std::vector<BVH_Triangle*> &STL) {
+	BVH_Triangle* R; int N;
+	readBinarySTL(filename, R, N);
+	STL.reserve(STL.size() + N);
+	for (int i = 0; i < N; i++) {
+		STL.push_back(&R[i]);
+	}
+	return R;
+}
 
 void BVH_BoundingBox(BVH_Triangle *P, int N, vec3 &p0, vec3 &p1) {
 	p0 = vec3(INFINITY), p1 = vec3(-INFINITY);
