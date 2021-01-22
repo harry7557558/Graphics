@@ -5,7 +5,28 @@
 #include <vector>
 
 
+double getMemoryUsage();  // in MB
+
+
 // scalar field
+double test_fun_1(vec3 p) {
+	p *= 2.;
+	for (int i = 0; i < 6; i++) {
+		p.x = abs(p.x) - .8;
+		p = rotationMatrix_z(PI / 6.)*p;
+		p = p.yzx();
+	}
+	return max(abs(p.x) - 1., length(p.yz()) - .5);
+}
+double test_fun_2(vec3 p) {
+	vec3 w = p;
+	for (int i = 0; i < 6; i++) {
+		double x = w.x, y = w.y, z = w.z;
+		w = vec3(x*x - y * y - z * z, 2.*x*z, 2.*x*y) + p;
+	}
+	return length(w) - 1.;
+}
+
 int evals;
 double fun(vec3 p) {
 	double x = p.x, y = p.y, z = p.z;
@@ -18,14 +39,15 @@ double fun(vec3 p) {
 	//return 4.0*pow(x*x + 2.*y*y + z*z - 1., 2.) - z*(5.*x*x*x*x - 10.*x*x*z*z + z*z*z*z) - 1.;
 	//return pow(x*x + 2.25*y*y + z * z - 1, 3.) - (x*x + 0.1125*y*y)*z*z*z;
 	//return 2 * y*(y*y - 3 * x*x)*(1 - z * z) + (x*x + y * y)*(x*x + y * y) - (9 * z*z - 1)*(1 - z * z);
-	return exp(10 * (4 * p.xy().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.xz().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.yz().sqr() - pow(p.sqr() + 0.96, 2))) - 1.;;
+	//return exp(10 * (4 * p.xy().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.xz().sqr() - pow(p.sqr() + 0.96, 2))) + exp(10 * (4 * p.yz().sqr() - pow(p.sqr() + 0.96, 2))) - 1.;
+	return test_fun_1(p);
 }
 
 
 // triangles
 std::vector<stl_triangle> Trigs;
 void addBox(vec3 p0, vec3 p1, vec3 col) {
-	//return;
+	return;
 	const vec3 trig[12][3] = {
 		{vec3(1,0,0), vec3(0,0,0), vec3(0,1,0)}, {vec3(0,1,0), vec3(1,1,0), vec3(1,0,0)},
 		{vec3(0,0,1), vec3(0,0,0), vec3(1,0,0)}, {vec3(1,0,0), vec3(1,0,1), vec3(0,0,1)},
@@ -93,9 +115,9 @@ const static int TRIG_TABLE[256][16] = {
 
 
 // linear interpolation on an edge
-vec3 getInterpolation(vec3 pos[8], double val[8], int i) {
-	double v0 = val[EDGE_LIST[i].x];
-	double v1 = val[EDGE_LIST[i].y];
+vec3 getInterpolation(vec3 pos[8], float val[8], int i) {
+	float v0 = val[EDGE_LIST[i].x];
+	float v1 = val[EDGE_LIST[i].y];
 	vec3 p0 = pos[EDGE_LIST[i].x];
 	vec3 p1 = pos[EDGE_LIST[i].y];
 	return p0 + (v0 / (v0 - v1))*(p1 - p0);
@@ -105,8 +127,8 @@ vec3 getInterpolation(vec3 pos[8], double val[8], int i) {
 
 
 vec3 p0 = vec3(-2), p1 = vec3(2);
-const ivec3 SEARCH_DIF = ivec3(10, 10, 10);
-const int PLOT_DPS = 2;
+const ivec3 SEARCH_DIF = ivec3(20);
+const int PLOT_DPS = 4;
 const int PLOT_SIZE = 1 << PLOT_DPS;
 const ivec3 GRID_SIZE = SEARCH_DIF * PLOT_SIZE;
 vec3 i2f(ivec3 p) {  // position ID to position
@@ -118,22 +140,20 @@ vec3 i2f(ivec3 p) {  // position ID to position
 
 // octatree
 // all integer coordinates are absolute
-double getSample_global(ivec3 p);
+float getSample_global(ivec3 p);
 class octatree_node {
 public:
-	ivec3 p[8]; // vertice IDs
-	double v[8]; // only the first one really matter
-	int size;  // top right: p+ivec3(size)
-	int index;  // calculated according to signs of v for table lookup
-	octatree_node *c[8];  // child nodes
-	bool hasSignChange[6];  // indicate whether there is a sign change at each face
-	bool edge_checked[6];  // used in looking for missed samples, indicate whether the face is already checked
+	// total: 96 or 128 bytes
+	float v[8]; // 32 bytes, only the first one really matter
+	octatree_node *c[8];  // 32 or 64 bytes, child nodes
+	ivec3 _p; // 12 bytes, vertice IDs
+	ivec3 p(int i) { return _p + VERTICE_LIST[i] * size; }
+	int size;  // 4 bytes, top right: p+ivec3(size)
+	int index;  // 4 bytes, calculated according to signs of v for table lookup
+	bool hasSignChange[6];  // 6 bytes, indicate whether there is a sign change at each face
+	bool edge_checked[6];  // 6 bytes, used in looking for missed samples, indicate whether the face is already checked
 	octatree_node(int size = 0, ivec3 p = ivec3(-1)) {
-		for (int i = 0; i < 8; i++) this->p[i] = p;
-		if (p != ivec3(-1)) {
-			for (int i = 1; i < 8; i++)
-				this->p[i] = p + VERTICE_LIST[i] * size;
-		}
+		for (int i = 0; i < 8; i++) this->_p = p;
 		for (int i = 0; i < 8; i++) v[i] = NAN;
 		this->size = size;
 		this->index = -1;
@@ -145,30 +165,30 @@ public:
 			delete c[i]; c[i] = 0;
 		}
 	}
-	double getSample(ivec3 q) {
-		if (q == p[0]) {
+	float getSample(ivec3 q) {
+		if (q == _p) {
 			if (isnan(v[0])) {
 				if (c[0]) {
 					v[0] = c[0]->getSample(q);
 				}
-				else v[0] = fun(i2f(p[0]));
+				else v[0] = (float)fun(i2f(_p));
 			}
 			return v[0];
 		}
-		ivec3 d = (q - p[0]) / (size >> 1);
+		ivec3 d = (q - _p) / (size >> 1);
 		int i = VERTICE_LIST_INV[d.x][d.y][d.z];
 		if (!c[i]) {
-			c[i] = new octatree_node(size / 2, p[0] + d * (size / 2));
+			c[i] = new octatree_node(size / 2, _p + d * (size / 2));
 		}
 		return c[i]->getSample(q);
 	}
 	octatree_node* getGrid(ivec3 q, int sz) {
-		if (q == p[0] && sz == size) {
+		if (q == _p && sz == size) {
 			if (isnan(v[0])) {
-				v[0] = getSample_global(p[0]);
+				v[0] = getSample_global(_p);
 			}
 			for (int i = 1; i < 8; i++) if (isnan(v[i])) {
-				v[i] = getSample_global(p[i]);
+				v[i] = getSample_global(p(i));
 			}
 			return this;
 		}
@@ -176,10 +196,10 @@ public:
 		if (q % sz != ivec3(0)) throw(__LINE__);
 		if (sz > size) throw(__LINE__);
 #endif
-		ivec3 d = (q - p[0]) / (size >> 1);
+		ivec3 d = (q - _p) / (size >> 1);
 		int i = VERTICE_LIST_INV[d.x][d.y][d.z];
 		if (!c[i]) {
-			c[i] = new octatree_node(size / 2, p[0] + d * (size / 2));
+			c[i] = new octatree_node(size / 2, _p + d * (size / 2));
 		}
 		return c[i]->getGrid(q, sz);
 	}
@@ -218,7 +238,7 @@ void destroy_octatree() {  // sample tree destruction
 	delete octatree;
 	octatree = 0;
 }
-double getSample_global(ivec3 p) {  // access a sample on the sample tree
+float getSample_global(ivec3 p) {  // access a sample on the sample tree
 	ivec3 pi = p / PLOT_SIZE;
 	return octatree[pi.x][pi.y][pi.z].getSample(p);
 }
@@ -235,10 +255,56 @@ std::vector<octatree_node*> cells;
 // grid subdivision
 void octatree_node::subdivide() {
 	for (int u = 0; u < 8; u++) if (!c[u])
-		c[u] = new octatree_node(size / 2, p[0] + VERTICE_LIST[u] * (size / 2));
+		c[u] = new octatree_node(size / 2, _p + VERTICE_LIST[u] * (size / 2));
+
+#if 0
 	for (int u = 0; u < 8; u++) {
 		for (int v = 0; v < 8; v++) c[u]->v[v] = getSample_global(c[u]->p[v]);
 	}
+#else
+	float samples[27];
+	samples[0] = v[0];
+	samples[2] = v[1];
+	samples[4] = v[2];
+	samples[6] = v[3];
+	samples[18] = v[4];
+	samples[20] = v[5];
+	samples[22] = v[6];
+	samples[24] = v[7];
+	samples[1] = isnan(c[1]->v[0]) ? (float)fun(i2f(c[1]->_p)) : c[1]->v[0];
+	samples[3] = getSample_global(c[1]->p(2));
+	samples[5] = getSample_global(c[3]->p(2));
+	samples[7] = isnan(c[3]->v[0]) ? (float)fun(i2f(c[3]->_p)) : c[3]->v[0];
+	samples[8] = isnan(c[2]->v[0]) ? (float)fun(i2f(c[2]->_p)) : c[2]->v[0];
+	samples[9] = isnan(c[4]->v[0]) ? (float)fun(i2f(c[4]->_p)) : c[4]->v[0];
+	samples[10] = isnan(c[5]->v[0]) ? (float)fun(i2f(c[5]->_p)) : c[5]->v[0];
+	samples[11] = getSample_global(c[5]->p(1));
+	samples[12] = getSample_global(c[5]->p(2));
+	samples[13] = getSample_global(c[6]->p(2));
+	samples[14] = getSample_global(c[7]->p(2));
+	samples[15] = getSample_global(c[7]->p(3));
+	samples[16] = isnan(c[7]->v[0]) ? (float)fun(i2f(c[7]->_p)) : c[7]->v[0];
+	samples[17] = isnan(c[6]->v[0]) ? (float)fun(i2f(c[6]->_p)) : c[6]->v[0];
+	samples[19] = getSample_global(c[4]->p(5));
+	samples[21] = getSample_global(c[5]->p(6));
+	samples[23] = getSample_global(c[7]->p(6));
+	samples[25] = getSample_global(c[4]->p(7));
+	samples[26] = getSample_global(c[4]->p(6));
+	const static int SUBDIV_LOOKUP[8][8] = {
+		{0, 1, 8, 7, 9, 10, 17, 16},
+		{1, 2, 3, 8, 10, 11, 12, 17},
+		{8, 3, 4, 5, 17, 12, 13, 14},
+		{7, 8, 5, 6, 16, 17, 14, 15},
+		{9, 10, 17, 16, 18, 19, 26, 25},
+		{10, 11, 12, 17, 19, 20, 21, 26},
+		{17, 12, 13, 14, 26, 21, 22, 23},
+		{16, 17, 14, 15, 25, 26, 23, 24}
+	};
+	for (int u = 0; u < 8; u++) for (int v = 0; v < 8; v++)
+		c[u]->v[v] = samples[SUBDIV_LOOKUP[u][v]];
+
+#endif
+
 	return;
 }
 
@@ -250,7 +316,7 @@ void triangulate() {
 	for (int x = 0; x <= SEARCH_DIF.x; x++) {
 		for (int y = 0; y <= SEARCH_DIF.y; y++) {
 			for (int z = 0; z <= SEARCH_DIF.z; z++) {
-				octatree[x][y][z].v[0] = fun(i2f(octatree[x][y][z].p[0] = ivec3(x, y, z)*PLOT_SIZE));
+				octatree[x][y][z].v[0] = (float)fun(i2f(octatree[x][y][z]._p = ivec3(x, y, z)*PLOT_SIZE));
 			}
 		}
 	}
@@ -259,7 +325,6 @@ void triangulate() {
 			for (int z = 0; z < SEARCH_DIF.z; z++) {
 				for (int u = 1; u < 8; u++) {
 					ivec3 p = ivec3(x, y, z) + VERTICE_LIST[u];
-					octatree[x][y][z].p[u] = octatree[p.x][p.y][p.z].p[0];
 					octatree[x][y][z].v[u] = octatree[p.x][p.y][p.z].v[0];
 				}
 			}
@@ -280,7 +345,7 @@ void triangulate() {
 	}
 	// debug visualization
 	for (int i = 0, cn = cells.size(); i < cn; i++)
-		addBox(i2f(cells[i]->p[0]), i2f(cells[i]->p[6]), vec3(0.5, 0, 0));
+		addBox(i2f(cells[i]->p(0)), i2f(cells[i]->p(6)), vec3(0.5, 0, 0));
 
 	// subdivide grid cells
 	for (int size = PLOT_SIZE; size > 1; size >>= 1) {
@@ -298,7 +363,7 @@ void triangulate() {
 		cells = new_cells;
 		// debug visualization
 		for (int i = 0, cn = cells.size(); i < cn; i++)
-			addBox(i2f(cells[i]->p[0]), i2f(cells[i]->p[6]), vec3(0.2, 0, 0.2));
+			addBox(i2f(cells[i]->p(0)), i2f(cells[i]->p(6)), vec3(0.2, 0, 0.2));
 
 		// try to add missed samples
 		for (int i = 0; i < (int)cells.size(); i++) {
@@ -310,13 +375,13 @@ void triangulate() {
 		for (int i = 0; i < (int)cells.size(); i++) {
 			octatree_node* ci = cells[i];
 			for (int u = 0; u < 6; u++) if (ci->hasSignChange[u] && !ci->edge_checked[u]) {
-				ivec3 nb_p = ci->p[0] + FACE_DIR[u] * ci->size;
+				ivec3 nb_p = ci->p(0) + FACE_DIR[u] * ci->size;
 				if (nb_p.x >= 0 && nb_p.y >= 0 && nb_p.z >= 0 && nb_p.x < GRID_SIZE.x && nb_p.y < GRID_SIZE.y && nb_p.z < GRID_SIZE.z) {
 					octatree_node* nb = getGrid_global(nb_p, ci->size);
 					if (!nb->hasSignChange[(u + 3) % 6]) {
 						for (int u = 0; u < 6; u++)
 							nb->hasSignChange[u] = ((int)signbit(nb->v[FACE_LIST[u][0]]) + (int)signbit(nb->v[FACE_LIST[u][1]]) + (int)signbit(nb->v[FACE_LIST[u][2]]) + (int)signbit(nb->v[FACE_LIST[u][3]])) % 4 != 0;
-						addBox(i2f(nb->p[0]), i2f(nb->p[6]), vec3(0.4, 0.4, 0));  // debug visualization
+						addBox(i2f(nb->p(0)), i2f(nb->p(6)), vec3(0.4, 0.4, 0));  // debug visualization
 						cells.push_back(nb);
 					}
 					nb->edge_checked[(u + 3) % 6] = true;
@@ -329,7 +394,7 @@ void triangulate() {
 	// reconstruct segments
 	for (int i = 0, cn = cells.size(); i < cn; i++) {
 		vec3 p[8];
-		for (int j = 0; j < 8; j++) p[j] = i2f(cells[i]->p[j]);
+		for (int j = 0; j < 8; j++) p[j] = i2f(cells[i]->p(j));
 		const auto Si = TRIG_TABLE[cells[i]->calcIndex()];
 		for (int u = 0; Si[u] != -1; u += 3) {
 			vec3 a = getInterpolation(p, cells[i]->v, Si[u]);
@@ -338,10 +403,12 @@ void triangulate() {
 			Trigs.push_back(stl_triangle(a, b, c, vec3(1.)));
 		}
 		// debug visualization
-		addBox(i2f(cells[i]->p[0]), i2f(cells[i]->p[6]), vec3(0, 0, 1));
+		addBox(i2f(cells[i]->p(0)), i2f(cells[i]->p(6)), vec3(0, 0, 1));
 	}
 
+
 	// clean up
+	printf("%.2lf MB\n\n", getMemoryUsage());
 	cells.clear();
 	destroy_octatree();
 }
@@ -350,7 +417,16 @@ void triangulate() {
 
 #include <chrono>
 
+#include <Windows.h>
+#include <psapi.h>
+double getMemoryUsage() {
+	PROCESS_MEMORY_COUNTERS statex;
+	GetProcessMemoryInfo(GetCurrentProcess(), &statex, sizeof(statex));
+	return statex.WorkingSetSize / 1048576.0;  // in MB
+}
+
 int main(int argc, char* argv[]) {
+	printf("%d byte node\n", sizeof(octatree_node));
 
 	auto t0 = std::chrono::high_resolution_clock::now();
 	triangulate();

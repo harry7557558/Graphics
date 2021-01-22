@@ -281,9 +281,19 @@ public:
 	friend mat3 operator * (double a, const mat3 &m) { mat3 r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = a * (&m.v[0][0])[i]; return r; }
 	friend double determinant(const mat3 &m) { return m.v[0][0] * (m.v[1][1] * m.v[2][2] - m.v[1][2] * m.v[2][1]) - m.v[0][1] * (m.v[1][0] * m.v[2][2] - m.v[1][2] * m.v[2][0]) + m.v[0][2] * (m.v[1][0] * m.v[2][1] - m.v[1][1] * m.v[2][0]); }
 	mat3 transpose() const { mat3 r; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) r.v[i][j] = v[j][i]; return r; }
+	friend mat3 transpose(const mat3 &m) { return mat3(m.v[0][0], m.v[0][1], m.v[0][2], m.v[1][0], m.v[1][1], m.v[1][2], m.v[2][0], m.v[2][1], m.v[2][2]); }
 	friend double trace(const mat3 &m) { return m.v[0][0] + m.v[1][1] + m.v[2][2]; }
 	friend double sumsqr(const mat3 &m) { double r = 0; for (int i = 0; i < 9; i++) r += (&m.v[0][0])[i] * (&m.v[0][0])[i]; return r; }  // sum of square of elements
 
+
+	mat3 operator * (const mat3 &A) const {
+		mat3 R;
+		for (int m = 0; m < 3; m++) for (int n = 0; n < 3; n++) {
+			R.v[m][n] = 0;
+			for (int i = 0; i < 3; i++) R.v[m][n] += v[m][i] * A.v[i][n];
+		}
+		return R;
+	}
 	vec3 operator * (const vec3 &a) const { return vec3(v[0][0] * a.x + v[0][1] * a.y + v[0][2] * a.z, v[1][0] * a.x + v[1][1] * a.y + v[1][2] * a.z, v[2][0] * a.x + v[2][1] * a.y + v[2][2] * a.z); }
 };
 
