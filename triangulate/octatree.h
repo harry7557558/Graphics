@@ -561,14 +561,19 @@ namespace ScalarFieldTriangulator_octatree {
 			return fun(r * cos(theta) * i + r * sin(theta) * j + h * k);
 		}, vec3(r0, theta0, h0), vec3(r1, theta1, h1), ivec3(r_N, theta_N, h_N), plot_depth);
 
+		std::vector<triangle_3d> res;
+		res.reserve(Trigs.size());
 		for (int u = 0; u < (int)Trigs.size(); u++) {
+			triangle_3d T = Trigs[u];
 			for (int v = 0; v < 3; v++) {
-				vec3 p = Trigs[u][v];
+				vec3 p = T[v];
 				double r = p.x, theta = p.y, h = p.z;
-				Trigs[u][v] = r * cos(theta) * i + r * sin(theta) * j + h * k;
+				T[v] = r * cos(theta) * i + r * sin(theta) * j + h * k;
 			}
+			if (T[0] != T[1] && T[0] != T[2] && T[1] != T[2])
+				res.push_back(T);
 		}
-		return Trigs;
+		return res;
 	}
 
 	template<typename Fun> std::vector<triangle_3d> octatree_cylindrical(Fun fun, double r1, double h0, double h1, int rN, int thetaN, int hN, int plot_depth) {
