@@ -48,7 +48,7 @@ struct stl_triangle {
 		this->setColor(col);
 	}
 	void setColor(vec3 p) {
-		if (isnan(p.sqr())) col = 0;
+		if (isnan(p.sqr())) { col = 0; return; }
 		uint16_t r = (uint16_t)(31.99 * clamp(p.x, 0., 1.));
 		uint16_t g = (uint16_t)(31.99 * clamp(p.y, 0., 1.));
 		uint16_t b = (uint16_t)(31.99 * clamp(p.z, 0., 1.));
