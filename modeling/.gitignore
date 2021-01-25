@@ -195,3 +195,5 @@ plots/sickfun12.stl
 plots/sickfun13.stl
 plots/sickfun14.stl
 plots/sickfun15.stl
+reconstruction/ct_head/iso.50.stl
+reconstruction/mri/mri.stl
