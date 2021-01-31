@@ -1,4 +1,3 @@
-#pragma once
 
 #ifndef __INC_GEOMETRY_H
 #include "numerical/geometry.h"
@@ -112,8 +111,21 @@ namespace ScalarFieldTriangulator_octatree {
 		{9,10,8,10,11,8,-1}, {3,0,9,3,9,11,11,9,10,-1}, {0,1,10,0,10,8,8,10,11,-1}, {3,1,10,11,3,10,-1}, {1,2,11,1,11,9,9,11,8,-1}, {3,0,9,3,9,11,1,2,9,2,11,9,-1}, {0,2,11,8,0,11,-1}, {3,2,11,-1}, {2,3,8,2,8,10,10,8,9,-1}, {9,10,2,0,9,2,-1}, {2,3,8,2,8,10,0,1,8,1,10,8,-1}, {1,10,2,-1}, {1,3,8,9,1,8,-1}, {0,9,1,-1}, {0,3,8,-1}, {-1}
 	};
 
+	// calculate index for table lookup, be careful about the uppercase function name
+	int CalcIndex(const float v[8]) {
+		if (isnan(v[0] + v[1] + v[2] + v[3] + v[4] + v[5] + v[6] + v[7])) return 0;
+		return int(v[0] < 0) |
+			(int(v[1] < 0) << 1) |
+			(int(v[2] < 0) << 2) |
+			(int(v[3] < 0) << 3) |
+			(int(v[4] < 0) << 4) |
+			(int(v[5] < 0) << 5) |
+			(int(v[6] < 0) << 6) |
+			(int(v[7] < 0) << 7);
+	}
+
 	// linear interpolation on an edge
-	vec3 getInterpolation(vec3 pos[8], float val[8], int i) {
+	vec3 getInterpolation(const vec3 pos[8], const float val[8], int i) {
 		float v0 = val[EDGE_LIST[i].x];
 		float v1 = val[EDGE_LIST[i].y];
 		vec3 p0 = pos[EDGE_LIST[i].x];
@@ -206,15 +218,7 @@ namespace ScalarFieldTriangulator_octatree {
 			return c[i]->getGrid(q, sz);
 		}
 		int calcIndex() {
-			if (isnan(v[0] + v[1] + v[2] + v[3] + v[4] + v[5] + v[6] + v[7])) return (index = 0);
-			return (index = int(v[0] < 0) |
-				(int(v[1] < 0) << 1) |
-				(int(v[2] < 0) << 2) |
-				(int(v[3] < 0) << 3) |
-				(int(v[4] < 0) << 4) |
-				(int(v[5] < 0) << 5) |
-				(int(v[6] < 0) << 6) |
-				(int(v[7] < 0) << 7));
+			return (index = CalcIndex(v));
 		}
 
 		// grid subdivision
@@ -305,10 +309,25 @@ namespace ScalarFieldTriangulator_octatree {
 	}
 
 
+	// check lookup table to construct triangles from cell
+	int addTriangle(const vec3 p[8], const float v[8], std::vector<triangle_3d> &trigs) {
+		const auto Si = TRIG_TABLE[CalcIndex(v)];
+		for (int u = 0; ; u += 3) {
+			if (Si[u] == -1) return u / 3;
+			vec3 a = getInterpolation(p, v, Si[u]);
+			vec3 b = getInterpolation(p, v, Si[u + 1]);
+			vec3 c = getInterpolation(p, v, Si[u + 2]);
+			trigs.push_back(triangle_3d(a, b, c));
+		}
+	}
+
 
 	/* CALL FUNCTIONS */
 
-	void triangulate(std::vector<triangle_3d> &Trigs) {
+	std::vector<octatree_node*> cells;
+
+	// octatree main function, construct octatree and march cubes to @cells
+	void octatree_main() {
 
 		// initialize octatree root
 		create_octatree();
@@ -331,7 +350,7 @@ namespace ScalarFieldTriangulator_octatree {
 		}
 
 		// initial sample cells
-		std::vector<octatree_node*> cells;
+		cells.clear();
 		for (int x = 0; x < SEARCH_DIF.x; x++) {
 			for (int y = 0; y < SEARCH_DIF.y; y++) {
 				for (int z = 0; z < SEARCH_DIF.z; z++) {
@@ -383,31 +402,62 @@ namespace ScalarFieldTriangulator_octatree {
 			}
 		}
 
-		// reconstruct segments
+
+	}
+
+
+	void triangulate(std::vector<triangle_3d> &Trigs) {
+
+		octatree_main();
+
 		for (int i = 0, cn = cells.size(); i < cn; i++) {
 			vec3 p[8];
 			for (int j = 0; j < 8; j++) p[j] = i2f(cells[i]->p(j));
-			const auto Si = TRIG_TABLE[cells[i]->calcIndex()];
-			for (int u = 0; Si[u] != -1; u += 3) {
-				vec3 a = getInterpolation(p, cells[i]->v, Si[u]);
-				vec3 b = getInterpolation(p, cells[i]->v, Si[u + 1]);
-				vec3 c = getInterpolation(p, cells[i]->v, Si[u + 2]);
-				Trigs.push_back(triangle_3d(a, b, c));
+			addTriangle(p, cells[i]->v, Trigs);
+		}
+
+		destroy_octatree();
+	}
+
+	// construct triangles with gradient information, gradient is calculated at the center of the cell (poses)
+	struct triangle_3d_with_grad {
+		triangle_3d trig;  // triangle
+		vec3 p;  // where gradient is estimated
+		vec3 grad;  // estimated gradient
+	};
+	void triangulate_grad(std::vector<triangle_3d_with_grad> &Trigs) {
+
+		octatree_main();
+		int cn = cells.size();
+
+		std::vector<triangle_3d> trigs;
+		for (int i = 0; i < cn; i++) {
+			vec3 p[8];
+			for (int j = 0; j < 8; j++) p[j] = i2f(cells[i]->p(j));
+			trigs.clear();
+			int n = addTriangle(p, cells[i]->v, trigs);
+			// estimate gradient
+			vec3 grad = vec3(0);
+			for (int j = 0; j < 8; j++)
+				grad += cells[i]->v[j] * (vec3(-1.) + 2.*vec3(VERTICE_LIST[j]));
+			grad /= 4.*(p[6] - p[0]);
+			vec3 pos = 0.5*(p[0] + p[6]);
+			// add
+			for (int j = 0; j < n; j++) {
+				Trigs.push_back(triangle_3d_with_grad{ trigs[j], pos, grad });
 			}
 		}
 
-
-		// clean up
-		cells.clear();
 		destroy_octatree();
 	}
+
 
 	ScalarFieldTriangulator_octatree__PRIVATE;
 
 
 
 
-	// standard marching cube, independent to the major part of the namespace
+	// standard marching cube, independent to the quadtree part under the namespace
 	template<typename Fun>
 	std::vector<triangle_3d> marching_cube(Fun fun, vec3 p0, vec3 p1, ivec3 dif) {
 		std::vector<triangle_3d> Trigs;
@@ -510,6 +560,15 @@ namespace ScalarFieldTriangulator_octatree {
 		__private__::p0 = p0, __private__::p1 = p1, __private__::SEARCH_DIF = dif, __private__::PLOT_DPS = plot_depth;
 		__private__::calcParams();
 		__private__::triangulate(Trigs);
+		return Trigs;
+	}
+	template<typename Fun>
+	std::vector<__private__::triangle_3d_with_grad> octatree_with_grad(Fun fun, vec3 p0, vec3 p1, ivec3 dif, int plot_depth) {
+		__private__::fun = fun;
+		std::vector<__private__::triangle_3d_with_grad> Trigs;
+		__private__::p0 = p0, __private__::p1 = p1, __private__::SEARCH_DIF = dif, __private__::PLOT_DPS = plot_depth;
+		__private__::calcParams();
+		__private__::triangulate_grad(Trigs);
 		return Trigs;
 	}
 

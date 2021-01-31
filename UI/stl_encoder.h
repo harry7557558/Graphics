@@ -35,11 +35,7 @@ struct stl_triangle {
 	stl_vec3 n, a, b, c;
 	int16_t col = 0;
 	stl_triangle() {}
-	stl_triangle(triangle_3d T) {
-		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]);
-		n = vec3(0.);
-	}
-	stl_triangle(triangle_3d T, vec3 col) {
+	stl_triangle(triangle_3d T, vec3 col = vec3(NAN)) {
 		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]), n = vec3(0.);
 		this->setColor(col);
 	}
@@ -147,7 +143,15 @@ bool writeSTL_recolor(FILE* fp, const trig data[], unsigned N,
 	bool res = writeSTL(fp, T, N, header, correct_normal);
 	delete T; return res;
 }
+
 // convert triangle arrays
+void convertTriangles(std::vector<stl_triangle> &res, const triangle_3d src[], unsigned N) {
+	res.reserve(res.size() + N);
+	for (unsigned i = 0; i < N; i++) {
+		res.push_back(stl_triangle(src[i]));
+	}
+}
+
 template<typename ColorFunction>  // vec3 ColorFunction(vec3 position)
 void convertTriangles_color(std::vector<stl_triangle> &res, const triangle_3d src[], unsigned N, ColorFunction ColorF) {
 	res.reserve(res.size() + N);
