@@ -366,7 +366,7 @@ namespace ScalarFieldTriangulator_octatree {
 		for (int size = PLOT_SIZE; size > 1; size >>= 1) {
 			std::vector<octatree_node*> new_cells;
 			int s2 = size / 2;
-			for (int i = 0, cn = cells.size(); i < cn; i++) {
+			for (int i = 0, cn = (int)cells.size(); i < cn; i++) {
 				octatree_node* ci = cells[i];
 				ci->subdivide();
 				for (int u = 0; u < 8; u++) {
@@ -410,7 +410,7 @@ namespace ScalarFieldTriangulator_octatree {
 
 		octatree_main();
 
-		for (int i = 0, cn = cells.size(); i < cn; i++) {
+		for (int i = 0, cn = (int)cells.size(); i < cn; i++) {
 			vec3 p[8];
 			for (int j = 0; j < 8; j++) p[j] = i2f(cells[i]->p(j));
 			addTriangle(p, cells[i]->v, Trigs);
@@ -428,7 +428,7 @@ namespace ScalarFieldTriangulator_octatree {
 	void triangulate_grad(std::vector<triangle_3d_with_grad> &Trigs) {
 
 		octatree_main();
-		int cn = cells.size();
+		int cn = (int)cells.size();
 
 		std::vector<triangle_3d> trigs;
 		for (int i = 0; i < cn; i++) {
@@ -549,6 +549,64 @@ namespace ScalarFieldTriangulator_octatree {
 
 		delete xy0; delete xy1;
 		return Trigs;
+	}
+
+	template<typename Float, typename vec, typename Triangle>
+	std::vector<Triangle> marching_cube(Float ***data, Float iso, int NZ, int NY, int NX) {
+
+		std::vector<Triangle> Trigs;
+
+		auto VERTICE_LIST = __private__::VERTICE_LIST;
+		auto EDGE_LIST = __private__::EDGE_LIST;
+		auto EDGE_TABLE = __private__::EDGE_TABLE;
+		auto TRIG_TABLE = __private__::TRIG_TABLE;
+
+		for (int z = 0; z < NZ - 1; z++) {
+			for (int y = 0; y < NY - 1; y++) {
+				for (int x = 0; x < NX - 1; x++) {
+
+					// read values on the cube
+					Float cube[8];
+					for (int i = 0; i < 8; i++)
+						cube[i] = data[z + VERTICE_LIST[i].z][y + VERTICE_LIST[i].y][x + VERTICE_LIST[i].x] - iso;
+
+					// calculate cube index in the table
+					int cubeIndex = 0;
+					for (int i = 0; i < 8; i++)
+						cubeIndex |= (int(cube[i] <= 0.) << i);
+
+					// check table
+					if (cubeIndex != 0 && cubeIndex != 0xff) {  // this line may be unnecessary
+						vec intp[12];
+						for (int e = 0; e < 12; e++)
+							if ((1 << e) & EDGE_TABLE[cubeIndex]) {
+								// linear interpolation
+								vec p1 = vec(VERTICE_LIST[EDGE_LIST[e].x]);
+								vec p2 = vec(VERTICE_LIST[EDGE_LIST[e].y]);
+								Float v1 = cube[EDGE_LIST[e].x];
+								Float v2 = cube[EDGE_LIST[e].y];
+								vec pd = p1 + (v1 / (v1 - v2))*(p2 - p1);
+								intp[e] = vec(x, y, z) + pd;
+							}
+
+						// construct triangles
+						for (int t = 0; TRIG_TABLE[cubeIndex][t] != -1; t += 3) {
+							vec p[3] = {
+								intp[TRIG_TABLE[cubeIndex][t]],
+								intp[TRIG_TABLE[cubeIndex][t + 1]],
+								intp[TRIG_TABLE[cubeIndex][t + 2]]
+							};
+							if (p[0] != p[1] && p[0] != p[2] && p[1] != p[2])
+								Trigs.push_back(Triangle(p[0], p[1], p[2]));
+						}
+					}
+				}
+			}
+
+		}
+
+		return Trigs;
+
 	}
 
 

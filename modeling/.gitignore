@@ -195,5 +195,11 @@ plots/sickfun12.stl
 plots/sickfun13.stl
 plots/sickfun14.stl
 plots/sickfun15.stl
-reconstruction/ct_head/iso.50.stl
-reconstruction/mri/mri.stl
+volume/visible_female.raw
+volume/visible_female_skeleton.stl
+volume/visible_male.raw
+volume/visible_male_head.raw
+volume/ct_head/CTHead.raw
+volume/ct_head/iso.50.stl
+volume/mri/mri.raw
+volume/mri/mri.stl

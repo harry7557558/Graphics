@@ -16,7 +16,7 @@ def indexDirectory(_dir):
     dirs = [_dir+f for f in ls if os.path.isdir(_dir+f)]
     arr = []
     for fn in files:
-        if getExtension(fn) in ['stl','ply','blend']:
+        if getExtension(fn) in ['stl','ply','blend','raw']:
             arr.append(fn.replace(root,''))
     for path in dirs:
         arr += indexDirectory(path+'/')
