@@ -45,6 +45,8 @@ double invsqrt(double x) {
 // a sketchy planar vector template
 
 struct vec2;
+struct vec2f;
+
 struct ivec2 {
 	int x, y;
 	ivec2() {}
@@ -69,6 +71,7 @@ struct vec2 {
 	explicit vec2(const double &a) :x(a), y(a) {}
 	explicit vec2(const double &x, const double &y) :x(x), y(y) {}
 	explicit vec2(const ivec2 &p) :x(p.x), y(p.y) {}
+	explicit vec2(const vec2f &p);
 
 	vec2 operator - () const { return vec2(-x, -y); }
 	vec2 operator + (const vec2 &v) const { return vec2(x + v.x, y + v.y); }
@@ -113,7 +116,39 @@ struct vec2 {
 	friend vec2 log(const vec2 &a) { return vec2(log(a.x), log(a.y)); }
 };
 
+struct vec2f {
+	float x, y;
+	explicit vec2f() {}
+	explicit vec2f(const float &a) :x(a), y(a) {}
+	explicit vec2f(const float &x, const float &y) :x(x), y(y) {}
+	explicit vec2f(vec2 p) :x(p.x), y(p.y) {};
+
+	vec2f operator - () const { return vec2f(-x, -y); }
+	vec2f operator + (const vec2f &v) const { return vec2f(x + v.x, y + v.y); }
+	vec2f operator - (const vec2f &v) const { return vec2f(x - v.x, y - v.y); }
+	vec2f operator * (const vec2f &v) const { return vec2f(x * v.x, y * v.y); }
+	vec2f operator * (const float &a) const { return vec2f(x*a, y*a); }
+	float sqr() const { return x * x + y * y; }
+	friend float length(const vec2f &v) { return sqrtf(v.x*v.x + v.y*v.y); }
+	friend vec2f normalize(const vec2f &v) { double m = 1. / sqrtf(v.x*v.x + v.y*v.y); return vec2f(v.x*m, v.y*m); }
+	friend float dot(const vec2f &u, const vec2f &v) { return u.x*v.x + u.y*v.y; }
+	friend float det(const vec2f &u, const vec2f &v) { return u.x*v.y - u.y*v.x; }
+
+	void operator += (const vec2f &v) { x += v.x, y += v.y; }
+	void operator -= (const vec2f &v) { x -= v.x, y -= v.y; }
+	void operator *= (const vec2f &v) { x *= v.x, y *= v.y; }
+	friend vec2f operator * (const float &a, const vec2f &v) { return vec2f(a*v.x, a*v.y); }
+	void operator *= (const float &a) { x *= a, y *= a; }
+	vec2f operator / (const float &a) const { return vec2f(x / a, y / a); }
+	void operator /= (const float &a) { x /= a, y /= a; }
+
+	vec2f yx() const { return vec2f(y, x); }
+	vec2f rot() const { return vec2f(-y, x); }
+	vec2f rotr() const { return vec2f(y, -x); }
+};
+
 ivec2::ivec2(vec2 p) :x((int)p.x), y((int)p.y) {}
+vec2::vec2(const vec2f &p) : x((double)p.x), y((double)p.y) {}
 
 vec2 sincos(double a) { return vec2(sin(a), cos(a)); }
 vec2 cossin(double a) { return vec2(cos(a), sin(a)); }
@@ -167,6 +202,7 @@ mat2 rotationMatrix2d(double a) {
 // a more sketchy 3d vector template
 
 struct vec3;
+struct vec3f;
 
 struct ivec3 {
 	int x, y, z;
@@ -193,6 +229,7 @@ struct vec3 {
 	explicit vec3(double x, double y, double z) :x(x), y(y), z(z) {}
 	explicit vec3(vec2 p, double z = 0) :x(p.x), y(p.y), z(z) {}
 	explicit vec3(ivec3 p) :x(p.x), y(p.y), z(p.z) {}
+	explicit vec3(vec3f p);
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
@@ -244,7 +281,46 @@ struct vec3 {
 	vec3 rx270() const { return vec3(x, z, -y); }
 };
 
+struct vec3f {
+	float x, y, z;
+	vec3f() {}
+	explicit vec3f(float a) :x(a), y(a), z(a) {}
+	explicit vec3f(float x, float y, float z) :x(x), y(y), z(z) {}
+	explicit vec3f(vec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
+
+	vec3f operator - () const { return vec3f(-x, -y, -z); }
+	vec3f operator + (const vec3f &v) const { return vec3f(x + v.x, y + v.y, z + v.z); }
+	vec3f operator - (const vec3f &v) const { return vec3f(x - v.x, y - v.y, z - v.z); }
+	vec3f operator * (const vec3f &v) const { return vec3f(x*v.x, y*v.y, z*v.z); }  // element wise
+	vec3f operator * (const float &k) const { return vec3f(k * x, k * y, k * z); }
+	float sqr() const { return x * x + y * y + z * z; }
+	friend float length(vec3f v) { return sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); }
+	friend vec3f normalize(vec3f v) { double m = 1.0f / sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); return vec3f(v.x*m, v.y*m, v.z*m); }
+	friend float dot(vec3f u, vec3f v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
+	friend vec3f cross(vec3f u, vec3f v) { return vec3f(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
+
+	void operator += (const vec3f &v) { x += v.x, y += v.y, z += v.z; }
+	void operator -= (const vec3f &v) { x -= v.x, y -= v.y, z -= v.z; }
+	void operator *= (const vec3f &v) { x *= v.x, y *= v.y, z *= v.z; }
+	vec3f operator / (const vec3f &v) const { return vec3f(x / v.x, y / v.y, z / v.z); }
+	void operator /= (const vec3f &v) { x /= v.x, y /= v.y, z /= v.z; }
+	friend vec3f operator * (const float &a, const vec3f &v) { return vec3f(a*v.x, a*v.y, a*v.z); }
+	void operator *= (const float &a) { x *= a, y *= a, z *= a; }
+	vec3f operator / (const float &a) const { return vec3f(x / a, y / a, z / a); }
+	void operator /= (const float &a) { x /= a, y /= a, z /= a; }
+
+	bool operator == (const vec3f &v) const { return x == v.x && y == v.y && z == v.z; }
+	bool operator != (const vec3f &v) const { return x != v.x || y != v.y || z != v.z; }
+	friend vec3f pMax(const vec3f &a, const vec3f &b) { return vec3f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
+	friend vec3f pMin(const vec3f &a, const vec3f &b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+
+	vec2f xy() const { return vec2f(x, y); }
+	vec2f xz() const { return vec2f(x, z); }
+	vec2f yz() const { return vec2f(y, z); }
+};
+
 ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
+vec3::vec3(vec3f p) : x((double)p.x), y((double)p.y), z((double)p.z) {}
 
 
 class mat3 {
@@ -269,6 +345,8 @@ public:
 	explicit mat3(double _00, double _10, double _20, double _01, double _11, double _21, double _02, double _12, double _22) {  // ordered in column-wise
 		v[0][0] = _00, v[0][1] = _01, v[0][2] = _02, v[1][0] = _10, v[1][1] = _11, v[1][2] = _12, v[2][0] = _20, v[2][1] = _21, v[2][2] = _22;
 	}
+	double* operator[] (int d) { return &v[d][0]; }
+	const double* operator[] (int d) const { return &v[d][0]; }
 	vec3 row(int i) const { return vec3(v[i][0], v[i][1], v[i][2]); }
 	vec3 column(int i) const { return vec3(v[0][i], v[1][i], v[2][i]); }
 	vec3 diag() const { return vec3(v[0][0], v[1][1], v[2][2]); }

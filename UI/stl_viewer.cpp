@@ -203,17 +203,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #include "numerical\geometry.h"  // vec2, vec3, mat3
 #include "numerical\eigensystem.h"  // EigenPairs_Jacobi
-typedef struct { vec3 n, a, b, c; } stl_triangle;
+typedef struct { vec3f n, a, b, c; } stl_triangle;
 typedef int16_t stl_color;
 
 // convert stl_color to vec3
 // https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
-vec3 stlColor2vec3(stl_color c) {
-	if (c >= 0) return vec3(1.);  // otherwise, max 31/32=0.97
-	double r = ((uint32_t)c & (uint32_t)0b111110000000000) >> 10;
-	double g = ((uint32_t)c & (uint32_t)0b000001111100000) >> 5;
-	double b = ((uint32_t)c & (uint32_t)0b000000000011111);
-	return vec3(r, g, b) * (1. / 32.);
+vec3f stlColor2vec3(stl_color c) {
+	if (c >= 0) return vec3f(1.);  // otherwise, max 31/32=0.97
+	float r = ((uint32_t)c & (uint32_t)0b111110000000000) >> 10;
+	float g = ((uint32_t)c & (uint32_t)0b000001111100000) >> 5;
+	float b = ((uint32_t)c & (uint32_t)0b000000000011111);
+	return vec3f(r, g, b) * 0.03125f;
 }
 
 
@@ -244,13 +244,13 @@ Affine operator * (const Affine &A, const Affine &B) {
 }
 
 // intersection function
-double intTriangle(vec3 v0, vec3 v1, vec3 v2, vec3 ro, vec3 rd) {
-	vec3 v1v0 = v1 - v0, v2v0 = v2 - v0, rov0 = ro - v0;
-	vec3 n = cross(v1v0, v2v0);
-	vec3 q = cross(rov0, rd);
-	double d = 1.0 / dot(rd, n);
-	double u = d * dot(-q, v2v0); if (u<0. || u>1.) return NAN;
-	double v = d * dot(q, v1v0); if (v<0. || (u + v)>1.) return NAN;
+float intTriangle(vec3f v0, vec3f v1, vec3f v2, vec3f ro, vec3f rd) {
+	vec3f v1v0 = v1 - v0, v2v0 = v2 - v0, rov0 = ro - v0;
+	vec3f n = cross(v1v0, v2v0);
+	vec3f q = cross(rov0, rd);
+	float d = 1.0 / dot(rd, n);
+	float u = d * dot(-q, v2v0); if (u<0. || u>1.) return NAN;
+	float v = d * dot(q, v1v0); if (v<0. || (u + v)>1.) return NAN;
 	return d * dot(-n, rov0);
 }
 
@@ -323,16 +323,17 @@ bool DarkBackground = false;
 
 WCHAR filename[MAX_PATH] = L"";
 int N; stl_triangle *T = 0, *T_transformed = 0;  // triangles
-vec3 *T_Color = 0; bool hasInvalidColor = false;  // color
-vec3 BMin, BMax;  // bounding box
+vec3f *T_Color = 0; bool hasInvalidColor = false;  // color
+vec3f BMin, BMax;  // bounding box
 double Volume; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
 
 void calcBoundingBox() {
-	BMin = vec3(INFINITY), BMax = -BMin;
+	BMin = vec3f(INFINITY), BMax = -BMin;
 	for (int i = 0; i < N; i++) {
-		BMin = pMin(pMin(BMin, T[i].a), pMin(T[i].b, T[i].c));
-		BMax = pMax(pMax(BMax, T[i].a), pMax(T[i].b, T[i].c));
+		if (!isnan(dot(T[i].a, vec3f(1.f)))) BMin = pMin(BMin, T[i].a), BMax = pMax(BMax, T[i].a);
+		if (!isnan(dot(T[i].b, vec3f(1.f)))) BMin = pMin(BMin, T[i].b), BMax = pMax(BMax, T[i].b);
+		if (!isnan(dot(T[i].c, vec3f(1.f)))) BMin = pMin(BMin, T[i].c), BMax = pMax(BMax, T[i].c);
 	}
 }
 // physics, requires the surface to be closed with outward normals
@@ -341,7 +342,7 @@ void calcVolumeCenterInertia() {
 	Volume = 0; COM = vec3(0.0); Inertia = mat3(0.0);
 	for (int i = 0; i < N; i++) {
 		// I may have a bug
-		vec3 a = T[i].a, b = T[i].b, c = T[i].c;
+		vec3 a = vec3(T[i].a), b = vec3(T[i].b), c = vec3(T[i].c);
 		if (TreatAsSolid) {
 			double dV = det(a, b, c) / 6.;
 			Volume += dV;
@@ -366,17 +367,19 @@ void calcVolumeCenterInertia() {
 
 // ray intersection with shape, use for selection
 // return the distance
-double rayIntersect(vec3 ro, vec3 rd) {
-	double mt = INFINITY;
+double rayIntersect(vec3f ro, vec3f rd) {
+	float mt = INFINITY;
 	for (int i = 0; i < N; i++) {
-		double t = intTriangle(T[i].a, T[i].b, T[i].c, ro, rd);
+		vec3f a = vec3f(T[i].a), b = vec3f(T[i].b), c = vec3f(T[i].c);
+		float t = intTriangle(a, b, c, ro, rd);
 		if (t > 0 && t < mt) {
+			vec3f p = vec3f(Tr.p); float s = Tr.s;
 			if (use_orthographic ||
-				(dot(Tr.p, T[i].a) + Tr.s > 0 && dot(Tr.p, T[i].b) + Tr.s > 0 && dot(Tr.p, T[i].c) + Tr.s > 0))
+				(dot(p, a) + s > 0 && dot(p, b) + s > 0 && dot(p, c) + s > 0))
 				mt = t;
 		}
 	}
-	return mt;
+	return (double)mt;
 }
 
 
@@ -388,19 +391,18 @@ double rayIntersect(vec3 ro, vec3 rd) {
 #pragma region Rasterization functions
 
 int BUF_ALLOC = 0;
-double *_DEPTHBUF = 0;
-vec3 *_COLORBUF = 0;
+float *_DEPTHBUF = 0;
+vec3f *_COLORBUF = 0;
 #define depthbuf(x,y) _DEPTHBUF[(y)*_WIN_W+(x)]
 #define colorbuf(x,y) _COLORBUF[(y)*_WIN_W+(x)]
 
-#include "ui/colors/ColorFunctions.h"
 
 typedef unsigned char byte;
-COLORREF toCOLORREF(vec3 c) {
+COLORREF toCOLORREF(vec3f c) {
 	COLORREF r = 0; byte *k = (byte*)&r;
-	k[0] = byte(255 * clamp(c.z, 0, 1));
-	k[1] = byte(255 * clamp(c.y, 0, 1));
-	k[2] = byte(255 * clamp(c.x, 0, 1));
+	k[0] = byte(255.99f * clamp(c.z, 0.f, 1.f));
+	k[1] = byte(255.99f * clamp(c.y, 0.f, 1.f));
+	k[2] = byte(255.99f * clamp(c.x, 0.f, 1.f));
 	return r;
 }
 
@@ -455,8 +457,9 @@ void drawCircle(vec2 c, double r, COLORREF Color) {
 }
 
 
-vec3 calcShadeFromID(int i);
+vec3f calcShadeFromID(int i);
 
+// accept double-precision parameters
 void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
 	if (u < 0 || v < 0) {
@@ -491,19 +494,20 @@ void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
 	}
 }
 
-void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1, COLORREF point = -1) {
+// accept single-precision parameters
+void drawTriangle_ZB(vec3f A, vec3f B, vec3f C, COLORREF fill, COLORREF stroke = -1, COLORREF point = -1) {
 	// must be already transformed (due to performance concerns)
 	//A = Tr * A, B = Tr * B, C = Tr * C;
 	//if (isnan(A.x + B.x + C.x)) return;
 
-	vec2 a = A.xy(), b = B.xy(), c = C.xy();
-	vec3 ab = B - A, bc = C - B, ca = A - C, n = cross(ab, ca);
-	double k = 1.0 / det(ca.xy(), ab.xy());
-	double dz = k * n.x;
+	vec2f a = A.xy(), b = B.xy(), c = C.xy();
+	vec3f ab = B - A, bc = C - B, ca = A - C, n = cross(ab, ca);
+	float k = 1.0 / det(ca.xy(), ab.xy());
+	float dz = k * n.x;
 
 	if (fill != -1) {
-		int x0 = max((int)min(min(a.x, b.x), c.x) + 1, 0), x1 = min((int)max(max(a.x, b.x), c.x) + 1, _WIN_W);
-		int y0 = max((int)min(min(a.y, b.y), c.y) + 1, 0), y1 = min((int)max(max(a.y, b.y), c.y) + 1, _WIN_H);
+		int x0 = max((int)(min(min(a.x, b.x), c.x) + 1), 0), x1 = min((int)(max(max(a.x, b.x), c.x) + 1), _WIN_W);
+		int y0 = max((int)(min(min(a.y, b.y), c.y) + 1), 0), y1 = min((int)(max(max(a.y, b.y), c.y) + 1), _WIN_H);
 		// choose which rasterization method to use based on the size of the triangle
 		// creates branches so keep using one method may be faster for well-conditioned scenes
 		int size = (x1 - x0 + 1)*(y1 - y0);  // probably not the best guess
@@ -511,10 +515,10 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 			// pixelwise in/out test
 			for (int i = y0; i < y1; i++) {
 				for (int j = x0; j < x1; j++) {
-					vec2 p(j, i);
-					vec2 ap = p - a, bp = p - b, cp = p - c;
+					vec2f p(j, i);
+					vec2f ap = p - a, bp = p - b, cp = p - c;
 					if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0) {
-						double z = k * dot(n, vec3(p) - A);
+						float z = k * dot(n, vec3f(p.x, p.y, 0.) - A);
 						if (z < depthbuf(j, i)) {
 							Canvas(j, i) = fill;
 							depthbuf(j, i) = z;
@@ -526,12 +530,12 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 		}
 		else if (size < 1024) {
 			// incremental edge functions, more initialization cost but less per-pixel cost
-			vec2 ab2 = ab.xy().rot(), bc2 = bc.xy().rot(), ca2 = ca.xy().rot();
-			double abm = dot(a, ab2), bcm = dot(b, bc2), cam = dot(c, ca2);
+			vec2f ab2 = ab.xy().rot(), bc2 = bc.xy().rot(), ca2 = ca.xy().rot();
+			float abm = dot(a, ab2), bcm = dot(b, bc2), cam = dot(c, ca2);
 			for (int i = y0; i < y1; i++) {
-				vec2 p(x0, i);
-				double pab = dot(p, ab2) - abm, pbc = dot(p, bc2) - bcm, pca = dot(p, ca2) - cam;
-				double z = k * dot(n, vec3(p) - A);
+				vec2f p(x0, i);
+				float pab = dot(p, ab2) - abm, pbc = dot(p, bc2) - bcm, pca = dot(p, ca2) - cam;
+				float z = k * dot(n, vec3f(p.x, p.y, 0.) - A);
 				for (int j = x0; j < x1; j++) {
 					if (((pab < 0.) + (pbc < 0.) + (pca < 0.)) % 3 == 0) {
 						if (z < depthbuf(j, i)) {
@@ -548,14 +552,14 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 		}
 		else {
 			// scan-line algorithm
-			auto fillTrapezoid = [&](int y0, int y1, double m0, double b0, double m1, double b1) {
+			auto fillTrapezoid = [&](int y0, int y1, float m0, float b0, float m1, float b1) {
 				// fill the area from x=m0*y+b0 to x=m1*y+b1
 				for (int y = y0; y < y1; y++) {
-					double xs0 = m0 * y + b0, xs1 = m1 * y + b1;
+					float xs0 = m0 * y + b0, xs1 = m1 * y + b1;
 					if (xs0 > xs1) std::swap(xs0, xs1);
 					int x0 = max((int)xs0 + 1, 0);
 					int x1 = min((int)xs1 + 1, _WIN_W);
-					double z = k * dot(n, vec3(x0, y, 0) - A);
+					float z = k * dot(n, vec3f(x0, y, 0.) - A);
 					for (int x = x0; x < x1; x++) {
 						if (z < depthbuf(x, y)) {
 							Canvas(x, y) = fill;
@@ -566,10 +570,10 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 					}
 				}
 			};
-			vec3 P[3] = { A, B, C };
+			vec3f P[3] = { A, B, C };
 			std::swap(P[P[0].y > P[1].y && P[0].y > P[2].y ? 0 : P[1].y > P[2].y ? 1 : 2], P[2]);
-			double m0 = (P[0].x - P[2].x) / (P[0].y - P[2].y);
-			double m1 = (P[1].x - P[2].x) / (P[1].y - P[2].y);
+			float m0 = (P[0].x - P[2].x) / (P[0].y - P[2].y);
+			float m1 = (P[1].x - P[2].x) / (P[1].y - P[2].y);
 			fillTrapezoid(max(int(max(P[0].y, P[1].y)) + 1, 0), y1, m0, P[2].x - m0 * P[2].y, m1, P[2].x - m1 * P[2].y);
 			if (P[0].y > P[1].y) std::swap(P[0], P[1]);
 			m0 = (P[1].x - P[0].x) / (P[1].y - P[0].y);
@@ -584,23 +588,23 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 			k * dot(n, vec3(B.xy(), 0) - A),
 			k * dot(n, vec3(C.xy(), 0) - A) });*/
 			// WHY I HAVE THE SAME CODE COPY-PASTED THREE TIMES??
-		auto drawLine = [&](vec3 p, vec3 q) {
-			vec3 d = q - p; double d2 = d.xy().sqr();
-			double slope = d.y / d.x;
+		auto drawLine = [&](vec3f p, vec3f q) {
+			vec3f d = q - p; float d2 = d.xy().sqr();
+			float slope = d.y / d.x;
 			if (abs(slope) <= 1.0) {
 				if (p.x > q.x) std::swap(p, q);
 				int x0 = max(0, int(p.x)), x1 = min(_WIN_W - 1, int(q.x)), y;
-				double yf = p.y + slope * (x0 - p.x);
+				float yf = p.y + slope * (x0 - p.x);
 				for (int x = x0; x <= x1; x++, yf += slope) {
-					y = (int)(yf + 0.5);
+					y = (int)(yf + 0.5f);
 					if (y >= 0 && y < _WIN_H) {
 						if (0) {  // an unsuccessful attempt to fix the stroking bug
-							vec2 p(x, y);
-							vec2 ap = p - a, bp = p - b, cp = p - c;
+							vec2f p(x, y);
+							vec2f ap = p - a, bp = p - b, cp = p - c;
 							if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0);
 							else continue;
 						}
-						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
+						float z = k * dot(n, vec3f(x, y, 0) - A) - 1e-5f;
 						if (z <= depthbuf(x, y)) {
 							Canvas(x, y) = stroke;
 							depthbuf(x, y) = z;
@@ -612,19 +616,19 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 				slope = d.x / d.y;
 				if (p.y > q.y) std::swap(p, q);
 				int y0 = max(0, int(p.y)), y1 = min(_WIN_H - 1, int(q.y)), x;
-				double xf = p.x + slope * (y0 - p.y);
+				float xf = p.x + slope * (y0 - p.y);
 				for (int y = y0; y <= y1; y++, xf += slope) {
 					x = (int)(xf + 0.5);
 					if (x >= 0 && x < _WIN_W) {
 						// the stroking bug isn't trivial to fix (at least for me)
 						// (x,y) isn't always inside the triangle
 						if (0) {
-							vec2 p(x, y);
-							vec2 ap = p - a, bp = p - b, cp = p - c;
+							vec2f p(x, y);
+							vec2f ap = p - a, bp = p - b, cp = p - c;
 							if (((det(ap, bp) < 0) + (det(bp, cp) < 0) + (det(cp, ap) < 0)) % 3 == 0);
 							else continue;
 						}
-						double z = k * dot(n, vec3(x, y, 0) - A) - 1e-6;
+						float z = k * dot(n, vec3f(x, y, 0) - A) - 1e-5f;
 						if (z <= depthbuf(x, y)) {
 							Canvas(x, y) = stroke;
 							depthbuf(x, y) = z;
@@ -637,10 +641,10 @@ void drawTriangle_ZB(vec3 A, vec3 B, vec3 C, COLORREF fill, COLORREF stroke = -1
 	}
 
 	if (point != -1) {
-		auto drawDot = [&](vec3 p) {
+		auto drawDot = [&](vec3f p) {
 			int x = int(p.x + .5), y = int(p.y + .5);
 			if (x >= 0 && x < _WIN_W && y >= 0 && y < _WIN_H) {
-				double z = k * dot(n, vec3(x, y, 0) - A);
+				float z = k * dot(n, vec3f(x, y, 0) - A);
 				if (z < depthbuf(x, y)) Canvas(x, y) = point, depthbuf(x, y) = z;
 			}
 		};
@@ -657,45 +661,51 @@ std::chrono::steady_clock::time_point _iTimer = std::chrono::high_resolution_clo
 
 
 // a function that returns the color from triangle id
-vec3 light;
-vec3 calcShadeFromID(int i) {
-	vec3 A = T[i].a, B = T[i].b, C = T[i].c;
-	vec3 n = NormalMode == 0 ? T[i].n :
-		NormalMode == 1 ? ncross(B - A, C - A) :
-		NormalMode == 2 ? ncross(C - A, B - A) : vec3(0.);
-	vec3 c = T_Color[i];  // default: from file
+vec3f light;
+vec3f calcShadeFromID(int i) {
+	vec3f A = vec3f(T[i].a), B = vec3f(T[i].b), C = vec3f(T[i].c);
+	vec3f mid = (A + B + C) * 0.33333333f;
+	vec3f n = NormalMode == 0 ? vec3f(T[i].n) :
+		NormalMode == 1 ? normalize(cross(B - A, C - A)) :
+		NormalMode == 2 ? normalize(cross(C - A, B - A)) : vec3f(0.);
+	vec3f c = T_Color[i];  // default: from file
 	switch (ShadeMode) {
 	case 0: {  // phong
-		double k = dot(n, light);
-		vec3 d = normalize((A + B + C) / 3. - CamP);
-		double spc = dot(d - (2 * dot(d, n))*n, light);
-		spc = pow(max(spc, 0.), 20.0);
-		c = vec3(0.1, 0.05, 0.05) + (k > 0. ? vec3(0.8, 0.8, 0.7) : vec3(0.6, 0.7, 0.8))*abs(k) + vec3(0.15)*spc;
+		float k = dot(n, light);
+		vec3f d = normalize(mid - vec3f(CamP));
+		float spc = dot(d - (2 * dot(d, n))*n, light);
+		spc = powf(max(spc, 0.f), 20.0f);
+		c = vec3f(0.1f, 0.05f, 0.05f) + (k > 0.f ? vec3f(0.8f, 0.8f, 0.7f) : vec3f(0.6f, 0.7f, 0.8f))*abs(k) + vec3f(0.15f)*spc;
 		break;
 	}
 	case 1: {  // shade by normal
-		c = 0.5*(n + vec3(1.0));
+		c = 0.5*(n + vec3f(1.0));
 		break;
 	}
 	case 2: {  // height map, for visualization
-		double t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
-		if (!isnan(t)) c = ColorFunctions::Rainbow(t);
-		else c = 0.5*(n + vec3(1.0));  // otherwise: shade by normal
+		float t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
+		if (!isnan(t)) {
+			float r = (((((33.038589*t - 100.425221)*t + 116.136811)*t - 67.842553)*t + 23.470346)*t - 4.018730)*t + 0.498427;
+			float g = (((((39.767595*t - 128.776104)*t + 160.884144)*t - 98.285228)*t + 27.859936)*t - 1.455343)*t + 0.123248;
+			float b = (((((31.953017*t - 102.708635)*t + 118.024799)*t - 53.054309)*t + 3.232700)*t + 2.168052)*t + 0.513964;
+			c = vec3f(clamp(r, 0.f, 1.f), clamp(g, 0.f, 1.f), clamp(b, 0.f, 1.f));
+		}
+		else c = 0.5f*(n + vec3f(1.0f));  // otherwise: shade by normal
 		break;
 	}
 	case 3: {  // directly from file
 		break;  // nothing needs to be done here
 	}
 	case 4: {  // file + Phong
-		double k = min(abs(dot(n, light)), 1.);
-		vec3 d = normalize((A + B + C) / 3. - CamP);
-		double spc = dot(d - (2 * dot(d, n))*n, light);
-		spc = pow(max(spc, 0.), 20.0);
-		c *= 0.2 + 0.8*k + 0.2*spc;
+		float k = min(abs(dot(n, light)), 1.f);
+		vec3f d = normalize(mid - vec3f(CamP));
+		float spc = dot(d - (2.f * dot(d, n))*n, light);
+		spc = powf(max(spc, 0.f), 20.0f);
+		c *= 0.2f + 0.8f*k + 0.2f*spc;
 		break;
 	}
 	}
-	return TransparentShading ? c / abs(dot(n, normalize((1. / 3.)*(A + B + C) - CamP))) : c;
+	return TransparentShading ? c / abs(dot(n, normalize(mid - vec3f(CamP)))) : c;
 };
 
 
@@ -706,31 +716,31 @@ void render() {
 		if (_DEPTHBUF) { delete _DEPTHBUF; _DEPTHBUF = 0; }
 		if (_COLORBUF) { delete _COLORBUF; _COLORBUF = 0; }
 		BUF_ALLOC = N_PIXEL;
-		_DEPTHBUF = new double[BUF_ALLOC];
-		_COLORBUF = new vec3[BUF_ALLOC];
+		_DEPTHBUF = new float[BUF_ALLOC];
+		_COLORBUF = new vec3f[BUF_ALLOC];
 	}
 	for (int i = 0; i < N_PIXEL; i++) _DEPTHBUF[i] = INFINITY;
-	if (TransparentShading) for (int i = 0; i < N_PIXEL; i++) _COLORBUF[i] = vec3(0.);
+	if (TransparentShading) for (int i = 0; i < N_PIXEL; i++) _COLORBUF[i] = vec3f(0.);
 	calcMat();
 	getScreen(CamP, ScrO, ScrA, ScrB);
-	light = normalize(CamP - Center);
+	light = vec3f(normalize(CamP - Center));
 
 	// calculate projection
-	const double TM[4][4] = {
-		Tr.u.x, Tr.u.y, Tr.u.z, Tr.t.x,
-		Tr.v.x, Tr.v.y, Tr.v.z, Tr.t.y,
-		Tr.w.x, Tr.w.y, Tr.w.z, Tr.t.z,
-		Tr.p.x, Tr.p.y, Tr.p.z, Tr.s
+	const float TM[4][4] = {
+		(float)Tr.u.x, (float)Tr.u.y, (float)Tr.u.z, (float)Tr.t.x,
+		(float)Tr.v.x, (float)Tr.v.y, (float)Tr.v.z, (float)Tr.t.y,
+		(float)Tr.w.x, (float)Tr.w.y, (float)Tr.w.z, (float)Tr.t.z,
+		(float)Tr.p.x, (float)Tr.p.y, (float)Tr.p.z, (float)Tr.s
 	};
-	auto TF = [&](vec3 p) {
-		double x[4] = { p.x, p.y, p.z, 1. };
-		double y[4] = { 0., 0., 0., 0. };
+	auto TF = [&](vec3f p) {
+		float x[4] = { p.x, p.y, p.z, 1. };
+		float y[4] = { 0., 0., 0., 0. };
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				y[i] += TM[i][j] * x[j];
 			}
 		}
-		return (*(vec3*)&y[0]) * (y[3] < 0. ? NAN : 1. / y[3]);
+		return (*(vec3f*)&y[0]) * (y[3] < 0.f ? NAN : 1.f / y[3]);
 	};
 	for (int i = 0; i < N; i++) {
 		T_transformed[i].a = TF(T[i].a);
@@ -745,7 +755,7 @@ void render() {
 	// rasterize triangles, fill pixels using triangle ID
 	const COLORREF BORDER = 0xFFFFFFFE;
 	for (int i = 0; i < N; i++) {
-		vec3 At = T_transformed[i].a, Bt = T_transformed[i].b, Ct = T_transformed[i].c;
+		vec3f At = T_transformed[i].a, Bt = T_transformed[i].b, Ct = T_transformed[i].c;
 		if (!isnan(At.x + Bt.x + Ct.x)) {
 			switch (((RenderMode % 4 + 4) % 4) * int(!TransparentShading)) {
 			case 0: drawTriangle_ZB(At, Bt, Ct, i); break;
@@ -758,14 +768,15 @@ void render() {
 
 	// calculate color
 	if (TransparentShading) for (int px = 0; px < N_PIXEL; px++) {
-		_WINIMG[px] = toCOLORREF(vec3(1.) - exp(-0.1*_COLORBUF[px]));
+		vec3f cc = -0.1f*_COLORBUF[px];
+		_WINIMG[px] = toCOLORREF(vec3f(1.f) - vec3f(expf(cc.x), expf(cc.y), expf(cc.z)));
 	}
 	else for (int px = 0; px < N_PIXEL; px++) {
 		int i = _WINIMG[px];
 		if (i == BORDER) _WINIMG[px] = 0;
 		if (i == BACKGROUND) {
 			if (DarkBackground) _WINIMG[px] = 0;
-			else _WINIMG[px] = toCOLORREF(mix(vec3(0.95), vec3(0.65, 0.65, 1.00), double(px / _WIN_W) / double(_WIN_H)));
+			else _WINIMG[px] = toCOLORREF(mix(vec3f(0.95f), vec3f(0.65f, 0.65f, 1.00f), float(px / _WIN_W) / float(_WIN_H)));
 		}
 		if (i >= 0) _WINIMG[px] = toCOLORREF(calcShadeFromID(i));
 		//_WINIMG[px] = toCOLORREF(vec3(0.5 + 0.5*tanh(-0.005*(_DEPTHBUF[px % _WIN_W][px / _WIN_W] - (Tr*Center).z))));
@@ -881,14 +892,13 @@ bool readFile(const WCHAR* filename) {
 		if (T_Color) delete T_Color;
 		T = new stl_triangle[N];
 		T_transformed = new stl_triangle[N];
-		T_Color = new vec3[N];
+		T_Color = new vec3f[N];
 	} catch (...) { T = 0; T_transformed = 0; T_Color = 0; N = 0; return false; }
 	hasInvalidColor = false;
 	for (int i = 0; i < N; i++) {
 		float f[12];
 		if (fread(f, sizeof(float), 12, fp) != 12) return false;
-		double d[12]; for (int i = 0; i < 12; i++) d[i] = f[i];
-		T[i] = stl_triangle{ vec3(d[0], d[1], d[2]), vec3(d[3], d[4], d[5]), vec3(d[6], d[7], d[8]), vec3(d[9], d[10], d[11]) };
+		T[i] = stl_triangle{ vec3f(f[0], f[1], f[2]), vec3f(f[3], f[4], f[5]), vec3f(f[6], f[7], f[8]), vec3f(f[9], f[10], f[11]) };
 		stl_color col; if (fread(&col, 2, 1, fp) != 1) return false;
 		hasInvalidColor |= col >= 0;
 		T_Color[i] = stlColor2vec3(col);
@@ -909,16 +919,16 @@ bool saveFile(const WCHAR* filename) {
 	for (int i = 0; i < 80; i++) fputc(0, fp);
 	fwrite(&N, 4, 1, fp);
 	for (int i = 0; i < N; i++) {
-		auto writevec3 = [&](vec3 p) {
+		auto writevec3 = [&](vec3f p) {
 			float f = float(p.x); fwrite(&f, 4, 1, fp);
 			f = float(p.y); fwrite(&f, 4, 1, fp);
 			f = float(p.z); fwrite(&f, 4, 1, fp);
 		};
-		vec3 A = T[i].a, B = T[i].b, C = T[i].c;
+		vec3f A = T[i].a, B = T[i].b, C = T[i].c;
 		writevec3(
 			NormalMode == 0 ? T[i].n :
-			NormalMode == 1 ? ncross(B - A, C - A) :
-			NormalMode == 2 ? ncross(C - A, B - A) : vec3(0.)
+			NormalMode == 1 ? normalize(cross(B - A, C - A)) :
+			NormalMode == 2 ? normalize(cross(C - A, B - A)) : vec3f(0.)
 		);
 		writevec3(A); writevec3(B); writevec3(C);
 		fputc(0, fp); fputc(0, fp);
@@ -945,11 +955,11 @@ void setDefaultView() {
 	Center = vec3(0.0, 0.0, 0.0);
 	calcBoundingBox();
 	calcVolumeCenterInertia();
-	if (isnan(0.0*dot(BMax, BMin))) BMax = vec3(1.0), BMin = vec3(-1.0);
+	if (isnan(0.0*dot(BMax, BMin))) BMax = vec3f(1.0f), BMin = vec3f(-1.0f);
 	if (isnan(Volume*Center.sqr())) Center = vec3(0.0);
 	if (!(Volume != 0.0) || isnan(Volume)) Volume = 8.0;
-	Center = 0.5*(BMax + BMin);
-	vec3 Max = BMax - Center, Min = BMin - Center;
+	Center = 0.5*(vec3(BMax) + vec3(BMin));
+	vec3 Max = vec3(BMax) - Center, Min = vec3(BMin) - Center;
 	double s = max(max(max(Max.x, Max.y), Max.z), -min(min(Min.x, Min.y), Min.z));
 	s = 0.2*dot(Max - Min, vec3(1.));
 	if (_WIN_W*_WIN_H != 0.0) s /= sqrt(5e-6*_WIN_W*_WIN_H);
@@ -989,14 +999,14 @@ void MouseWheel(int _DELTA) {
 	if (Ctrl) Center.z += 0.1 * _DELTA / Unit;
 	else if (Alt) {  // modify object
 		double sc = exp(-0.001*_DELTA);
-		vec3 C = 0.5*(BMin + BMax);
+		vec3f C = 0.5*(BMin + BMax);
 		if (Shift) {
 			for (int i = 0; i < N; i++)
 				T[i].a.z *= sc, T[i].b.z *= sc, T[i].c.z *= sc;
 		}
 		else {
 			for (int i = 0; i < N; i++)
-				T[i].a = (T[i].a - C)*sc + C, T[i].b = (T[i].b - C)*sc + C, T[i].c = (T[i].c - C)*sc + C;
+				T[i].a = vec3f((T[i].a - C)*sc + C), T[i].b = vec3f((T[i].b - C)*sc + C), T[i].c = vec3f((T[i].c - C)*sc + C);
 		}
 		calcBoundingBox(); calcVolumeCenterInertia();
 	}
@@ -1005,8 +1015,6 @@ void MouseWheel(int _DELTA) {
 	}
 	else {
 		double s = exp(0.001*_DELTA);
-		double D = length(vec2(_WIN_W, _WIN_H)), Max = 1000.0*D, Min = 0.001*D;
-		if (Unit * s > Max) s = Max / Unit; else if (Unit * s < Min) s = Min / Unit;
 		Unit *= s, dist /= s;
 	}
 }
@@ -1050,7 +1058,7 @@ void MouseUpL(int _X, int _Y) {
 
 	if (Alt) {
 		vec3 rd = scrDir(Cursor);
-		double t = rayIntersect(CamP, rd);
+		double t = rayIntersect(vec3f(CamP), vec3f(rd));
 		if (t < 1e12) {
 			Center = CamP + t * rd;
 			double s = length(Center - CamP) / dist;
@@ -1068,7 +1076,7 @@ void MouseUpR(int _X, int _Y) {
 	// read values from the (graph?!)
 	{
 		vec3 rd = scrDir(Cursor);
-		double t = rayIntersect(CamP, rd);
+		double t = rayIntersect(vec3f(CamP), vec3f(rd));
 		readedValue = t < 1e12 ? CamP + rd * t : vec3(NAN);
 	}
 
@@ -1134,12 +1142,12 @@ void KeyUp(WPARAM _KEY) {
 		if (_KEY == 'I') calcVolumeCenterInertia(), showInertia ^= 1;
 		if (_KEY == 'B') DarkBackground ^= 1;
 		if (_KEY == 'P') TreatAsSolid ^= 1, calcVolumeCenterInertia();
-		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(BMax + BMin);
+		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(vec3(BMax) + vec3(BMin));
 
 		// WSAD, not recommended
 		if (dist*Unit < 1e5) {
 			vec3 scrdir = normalize(Center - CamP);
-			double sc = 0.08*dot(BMax - BMin, vec3(1.));
+			double sc = 0.08*dot(vec3(BMax) - vec3(BMin), vec3(1.));
 			if (_KEY == 'W') { vec3 d = sc * scrdir; Center += d; }
 			if (_KEY == 'S') { vec3 d = sc * scrdir; Center -= d; }
 			if (_KEY == 'A') { vec3 d = sc * normalize(cross(veck, scrdir)); Center += d; }
@@ -1155,7 +1163,8 @@ void KeyUp(WPARAM _KEY) {
 
 	if (Alt) {
 		// Shape modification
-		vec3 Center = 0.5*(BMin + BMax);
+		vec3 Center = 0.5*(vec3(BMin) + vec3(BMax));
+		vec3f center = vec3f(Center);
 		if (_KEY == VK_NUMPAD4 || _KEY == VK_NUMPAD6 || _KEY == VK_NUMPAD2 || _KEY == VK_NUMPAD8 || _KEY == VK_NUMPAD7 || _KEY == VK_NUMPAD9) {
 			mat3 M;
 			if (_KEY == VK_NUMPAD4) M = axis_angle(veck, -.025*PI);
@@ -1165,13 +1174,18 @@ void KeyUp(WPARAM _KEY) {
 			if (_KEY == VK_NUMPAD7) M = axis_angle(Center - CamP, -.025*PI);
 			if (_KEY == VK_NUMPAD9) M = axis_angle(Center - CamP, .025*PI);
 			for (int i = 0; i < N; i++) {
-				T[i] = stl_triangle{ M*T[i].n, M*(T[i].a - Center) + Center, M*(T[i].b - Center) + Center, M*(T[i].c - Center) + Center };
+				// do calculation in double precision
+				vec3 n = M * vec3(T[i].n);
+				vec3 a = M * (vec3(T[i].a) - Center) + Center;
+				vec3 b = M * (vec3(T[i].b) - Center) + Center;
+				vec3 c = M * (vec3(T[i].c) - Center) + Center;
+				T[i] = stl_triangle{ vec3f(n), vec3f(a), vec3f(b), vec3f(c) };
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_NUMPAD5) {
 			for (int i = 0; i < N; i++) {
-				T[i].a -= Center, T[i].b -= Center, T[i].c -= Center;
+				T[i].a -= center, T[i].b -= center, T[i].c -= center;
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
@@ -1181,24 +1195,25 @@ void KeyUp(WPARAM _KEY) {
 			if (_KEY == VK_DOWN) d = normalize(-ScrB);
 			if (_KEY == VK_LEFT) d = normalize(-ScrA);
 			if (_KEY == VK_RIGHT) d = normalize(ScrA);
-			d *= 0.01*dot(BMax - BMin, vec3(1.));
+			d *= 0.01*dot(vec3(BMax) - vec3(BMin), vec3(1.));
+			vec3f df(d);
 			for (int i = 0; i < N; i++) {
-				T[i].a += d, T[i].b += d, T[i].c += d;
+				T[i].a += df, T[i].b += df, T[i].c += df;
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_OEM_PLUS || _KEY == VK_ADD || _KEY == VK_OEM_MINUS || _KEY == VK_SUBTRACT) {
-			double s = (_KEY == VK_OEM_PLUS || _KEY == VK_ADD) ? exp(0.05) : exp(-0.05);
+			float s = float((_KEY == VK_OEM_PLUS || _KEY == VK_ADD) ? exp(0.05) : exp(-0.05));
 			if (Shift) for (int i = 0; i < N; i++) {
 				T[i].a.z *= s, T[i].b.z *= s, T[i].c.z *= s;
 			}
 			else for (int i = 0; i < N; i++) {
-				T[i].a = (T[i].a - Center)*s + Center, T[i].b = (T[i].b - Center)*s + Center, T[i].c = (T[i].c - Center)*s + Center;
+				T[i].a = (T[i].a - center)*s + center, T[i].b = (T[i].b - center)*s + center, T[i].c = (T[i].c - center)*s + center;
 			}
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_DECIMAL) {
-			vec3 d = vec3(0.5*(BMin + BMax).xy(), BMin.z);
+			vec3f d = vec3f(vec3(0.5*vec3(BMin + BMax).xy(), BMin.z));
 			for (int i = 0; i < N; i++) T[i].a -= d, T[i].b -= d, T[i].c -= d;
 			calcBoundingBox(); calcVolumeCenterInertia();
 		}
