@@ -121,7 +121,7 @@ struct vec2f {
 	explicit vec2f() {}
 	explicit vec2f(const float &a) :x(a), y(a) {}
 	explicit vec2f(const float &x, const float &y) :x(x), y(y) {}
-	explicit vec2f(vec2 p) :x(p.x), y(p.y) {};
+	explicit vec2f(vec2 p) :x((float)p.x), y((float)p.y) {};
 
 	vec2f operator - () const { return vec2f(-x, -y); }
 	vec2f operator + (const vec2f &v) const { return vec2f(x + v.x, y + v.y); }
@@ -130,7 +130,7 @@ struct vec2f {
 	vec2f operator * (const float &a) const { return vec2f(x*a, y*a); }
 	float sqr() const { return x * x + y * y; }
 	friend float length(const vec2f &v) { return sqrtf(v.x*v.x + v.y*v.y); }
-	friend vec2f normalize(const vec2f &v) { double m = 1. / sqrtf(v.x*v.x + v.y*v.y); return vec2f(v.x*m, v.y*m); }
+	friend vec2f normalize(const vec2f &v) { float m = 1.f / sqrtf(v.x*v.x + v.y*v.y); return vec2f(v.x*m, v.y*m); }
 	friend float dot(const vec2f &u, const vec2f &v) { return u.x*v.x + u.y*v.y; }
 	friend float det(const vec2f &u, const vec2f &v) { return u.x*v.y - u.y*v.x; }
 
@@ -295,7 +295,7 @@ struct vec3f {
 	vec3f operator * (const float &k) const { return vec3f(k * x, k * y, k * z); }
 	float sqr() const { return x * x + y * y + z * z; }
 	friend float length(vec3f v) { return sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); }
-	friend vec3f normalize(vec3f v) { double m = 1.0f / sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); return vec3f(v.x*m, v.y*m, v.z*m); }
+	friend vec3f normalize(vec3f v) { float m = 1.0f / sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); return vec3f(v.x*m, v.y*m, v.z*m); }
 	friend float dot(vec3f u, vec3f v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3f cross(vec3f u, vec3f v) { return vec3f(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
 

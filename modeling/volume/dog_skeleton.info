@@ -1,0 +1,14 @@
+1846 512 512
+16 4800 0
+0.79989624 0. 0. -700.
+0. 0. 1.617 -413.952
+0. -1.617 0. 500.
+
+
+https://www.embodi3d.com/files/file/39813-dogs-skeleton/
+
+## 3 Spine 1.0.nrrd
+
+OrderedDict([('type', 'short'), ('dimension', 3), ('space', 'left-posterior-superior'), ('sizes', array([ 512,  512, 1846])), ('space directions', array([[-1.617     ,  0.        ,  0.        ],
+       [ 0.        , -1.617     ,  0.        ],
+       [ 0.        ,  0.        ,  0.79989624]])), ('kinds', ['domain', 'domain', 'domain']), ('endian', 'little'), ('encoding', 'gzip'), ('space origin', array([414.0625, 414.0625, 424.5   ]))])

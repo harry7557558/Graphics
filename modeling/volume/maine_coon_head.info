@@ -1,0 +1,14 @@
+221 512 512
+16 2800 0
+-0.75 0. 0. 80.
+0. 0. -0.25976562 68.
+0. -0.25976562 0. 100.
+
+
+https://www.embodi3d.com/files/file/41904-maine-coon-ct-head-10-years-old/
+
+## maine_coon_head.nrrd
+
+OrderedDict([('type', 'short'), ('dimension', 3), ('space', 'left-posterior-superior'), ('sizes', array([512, 512, 221])), ('space directions', array([[ 0.25976562,  0.        ,  0.        ],
+       [ 0.        , -0.25976562,  0.        ],
+       [ 0.        ,  0.        , -0.75      ]])), ('kinds', ['domain', 'domain', 'domain']), ('endian', 'little'), ('encoding', 'gzip'), ('space origin', array([ -50.5, -113.5, -171.5]))])

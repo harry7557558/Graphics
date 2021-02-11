@@ -1,5 +1,7 @@
 512 512 245
 16 2500 0
-1.0 1.0 2.0
+1. 0. 0. -256.
+0. 1. 0. -256.
+0. 0. 1. 0.
 
 http://mri.radiology.uiowa.edu/VHDicom/VHMCT1mm/Head/thumbnails/Head.html

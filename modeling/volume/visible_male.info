@@ -1,5 +1,64 @@
 512 512 1245
 16 2500 0
-1.0 1.0 2.0
+1. 0. 0. -256.
+0. 1. 0. -256.
+0. 0. 1. 0.
+
 
 https://mri.radiology.uiowa.edu/visible_human_datasets.html
+
+## vhm.1.dcm
+
+Dataset.file_meta -------------------------------
+(0002, 0000) File Meta Information Group Length  UL: 194
+(0002, 0001) File Meta Information Version       OB: b'\x00\x01'
+(0002, 0002) Media Storage SOP Class UID         UI: CT Image Storage
+(0002, 0003) Media Storage SOP Instance UID      UI: 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610175534470
+(0002, 0010) Transfer Syntax UID                 UI: Explicit VR Little Endian
+(0002, 0012) Implementation Class UID            UI: Secondary Capture Image Storage
+(0002, 0016) Source Application Entity Title     AE: 'GDCM'
+-------------------------------------------------
+(0008, 0008) Image Type                          CS: ['ORIGINAL', 'PRIMARY', 'AXIAL']
+(0008, 0012) Instance Creation Date              DA: '20050726'
+(0008, 0013) Instance Creation Time              TM: '101754'
+(0008, 0016) SOP Class UID                       UI: CT Image Storage
+(0008, 0018) SOP Instance UID                    UI: 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610175534470
+(0008, 0020) Study Date                          DA: '20050101'
+(0008, 0030) Study Time                          TM: '010100.000000'
+(0008, 0050) Accession Number                    SH: '1'
+(0008, 0060) Modality                            CS: 'CT'
+(0008, 0070) Manufacturer                        LO: 'GDCM'
+(0008, 0080) Institution Name                    LO: 'National Library of Medicine'
+(0008, 0081) Institution Address                 ST: 'http://www-creatis.insa-lyon.fr/Public/Gdcm'
+(0008, 0090) Referring Physician's Name          PN: 'Unknown'
+(0008, 1030) Study Description                   LO: 'Visible Human Male'
+(0008, 103e) Series Description                  LO: 'Resampled to 1mm voxels'
+(0010, 0010) Patient's Name                      PN: 'Adam'
+(0010, 0020) Patient ID                          LO: '000-000-002'
+(0010, 0030) Patient's Birth Date                DA: '20050101'
+(0010, 0032) Patient's Birth Time                TM: '010100.000000'
+(0010, 0040) Patient's Sex                       CS: 'M'
+(0018, 0050) Slice Thickness                     DS: "1.0"
+(0018, 5100) Patient Position                    CS: 'HFS'
+(0020, 000d) Study Instance UID                  UI: 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610175534421
+(0020, 000e) Series Instance UID                 UI: 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610175534453
+(0020, 0010) Study ID                            SH: '1'
+(0020, 0011) Series Number                       IS: "1"
+(0020, 0013) Instance Number                     IS: "1"
+(0020, 0032) Image Position (Patient)            DS: [0, 0, 0]
+(0020, 0037) Image Orientation (Patient)         DS: [1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000]
+(0020, 0052) Frame of Reference UID              UI: 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610175534419
+(0020, 1040) Position Reference Indicator        LO: 'SN'
+(0028, 0002) Samples per Pixel                   US: 1
+(0028, 0004) Photometric Interpretation          CS: 'MONOCHROME2'
+(0028, 0010) Rows                                US: 512
+(0028, 0011) Columns                             US: 512
+(0028, 0030) Pixel Spacing                       DS: [1.000000, 1.000000]
+(0028, 0100) Bits Allocated                      US: 16
+(0028, 0101) Bits Stored                         US: 16
+(0028, 0102) High Bit                            US: 15
+(0028, 0103) Pixel Representation                US: 1
+(0028, 1052) Rescale Intercept                   DS: "-1024.0"
+(0028, 1053) Rescale Slope                       DS: "1.0"
+(7fe0, 0000) Group Length                        UL: 524300
+(7fe0, 0010) Pixel Data                          OW: Array of 524288 elements
