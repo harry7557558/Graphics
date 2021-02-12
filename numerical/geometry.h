@@ -438,6 +438,14 @@ struct triangle_3d {
 	void applyMatrix(mat3 M) { V[0] = M * V[0], V[1] = M * V[1], V[2] = M * V[2]; }
 	double area() const { return 0.5*length(cross(V[1] - V[0], V[2] - V[0])); }
 };
+struct triangle_3d_f {
+	vec3f V[3];
+	vec3f& operator[](int d) { return V[d]; }
+	const vec3f& operator[](int d) const { return V[d]; }
+	triangle_3d_f() {}
+	triangle_3d_f(vec3f v0, vec3f v1, vec3f v2) { V[0] = v0, V[1] = v1, V[2] = v2; }
+	triangle_3d_f(std::initializer_list<vec3f> s) { V[0] = *s.begin(), V[1] = *(s.begin() + 1), V[2] = *(s.begin() + 2); }
+};
 
 
 #endif // __INC_GEOMETRY_H
