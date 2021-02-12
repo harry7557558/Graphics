@@ -298,6 +298,7 @@ struct vec3f {
 	friend vec3f normalize(vec3f v) { float m = 1.0f / sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); return vec3f(v.x*m, v.y*m, v.z*m); }
 	friend float dot(vec3f u, vec3f v) { return u.x*v.x + u.y*v.y + u.z*v.z; }
 	friend vec3f cross(vec3f u, vec3f v) { return vec3f(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x); }
+	friend float det(vec3f a, vec3f b, vec3f c) { return dot(a, cross(b, c)); }
 
 	void operator += (const vec3f &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3f &v) { x -= v.x, y -= v.y, z -= v.z; }
