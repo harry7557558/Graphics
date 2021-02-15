@@ -42,12 +42,17 @@ struct stl_triangle {
 		this->setColor(vec3f(NAN));
 	}
 	template<typename _trig, typename _cvec3>
-	stl_triangle(_trig T, _cvec3 col = _cvec3(NAN)) {
+	stl_triangle(_trig T, _cvec3 col) {
 		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]), n = stl_vec3(0., 0., 0.);
 		this->setColor(col);
 	}
+	template<typename _vec3>
+	stl_triangle(_vec3 a, _vec3 b, _vec3 c) {
+		this->a = stl_vec3(a), this->b = stl_vec3(b), this->c = stl_vec3(c), n = stl_vec3(0., 0., 0.);
+		this->setColor(vec3f(NAN));
+	}
 	template<typename _vec3, typename _cvec3>
-	stl_triangle(_vec3 a, _vec3 b, _vec3 c, _cvec3 col = _cvec3(NAN)) {
+	stl_triangle(_vec3 a, _vec3 b, _vec3 c, _cvec3 col) {
 		this->a = stl_vec3(a), this->b = stl_vec3(b), this->c = stl_vec3(c), n = vec3(0.);
 		this->setColor(col);
 	}
@@ -114,12 +119,13 @@ bool writeSTL(FILE* fp, stl_triangle data[], unsigned N,
 	return true;
 }
 
-bool writeSTL(FILE* fp, const triangle_3d data[], unsigned N,
+template<typename triangle>
+bool writeSTL(FILE* fp, const triangle data[], unsigned N,
 	const char header[80] = nullptr, const uint8_t correct_normal = STL_CCW) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
-		T[i] = stl_triangle(data[i]);
+		T[i] = stl_triangle(data[i][0], data[i][1], data[i][2]);
 	bool res = writeSTL(fp, T, N, header, correct_normal);
 	delete T; return res;
 }
@@ -132,12 +138,14 @@ bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
 	fclose(fp);
 	return ok;
 }
-bool writeSTL(const char filename[], const triangle_3d data[], unsigned N,
+
+template<typename triangle>
+bool writeSTL(const char filename[], const triangle data[], unsigned N,
 	const char header[80] = nullptr, const uint8_t correct_normal = STL_CCW) {
 	stl_triangle* T = new stl_triangle[N];
 	if (!T) return false;
 	for (unsigned i = 0; i < N; i++)
-		T[i] = stl_triangle(data[i]);
+		T[i] = stl_triangle(data[i][0], data[i][1], data[i][2]);
 	bool res = writeSTL(filename, T, N, header, correct_normal);
 	delete T; return res;
 }

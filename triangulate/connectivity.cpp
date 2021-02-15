@@ -22,12 +22,10 @@ typedef std::chrono::duration<double> fsec;
 struct triangle_mesh {
 	struct edge {
 		int v[2] = { -1, -1 };  // vertices
-		//int f[2] = { -1, -1 };  // faces, more than 2 in certain situation
 	};
 	struct face {
 		int v[3] = { -1, -1, -1 };  // vertice
 		int e[3] = { -1, -1, -1 };  // edges
-		//int f[3] = { -1, -1, -1 };  // neighborhood faces
 	};
 
 	std::vector<vec3f> vertice;
@@ -35,7 +33,10 @@ struct triangle_mesh {
 	std::vector<face> faces;
 
 	void fromSTL(std::vector<triangle_3d_f> trigs);
+	void toSTL(std::vector<triangle_3d_f> &trigs);
+
 	std::vector<triangle_mesh> split_disconnected() const;
+	void loop_subdivide();
 
 	// based on divergence theorem, assume ccw outward normal
 	float calc_volume() const {
@@ -126,8 +127,17 @@ void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs) {
 		delete egs;
 	}
 
-	// To-do: restore edges.f and faces.f
+}
 
+
+// connected mesh to discrete STL model
+void triangle_mesh::toSTL(std::vector<triangle_3d_f> &trigs) {
+	int FN = (int)faces.size();
+	trigs.reserve(trigs.size() + FN);
+	for (int i = 0; i < FN; i++) {
+		face f = faces[i];
+		trigs.push_back(triangle_3d_f(vertice[f.v[0]], vertice[f.v[1]], vertice[f.v[2]]));
+	}
 }
 
 
@@ -273,6 +283,104 @@ void visualize_disconnected_stl(const char* filename, const std::vector<triangle
 
 
 
+// loop subdivision, non-standard version does not work well for non-closed surface
+void triangle_mesh::loop_subdivide() {
+
+	int VN = (int)vertice.size(), EN = (int)edges.size(), FN = (int)faces.size();
+
+	// compute even vertices
+	struct even_vertex {
+		int N = 0;  // number of neighbors
+		vec3f pos = vec3f(0.);  // sum of neighbor vertices OR final vertex position
+		void addNeighbor(vec3f p) { N++, pos += p; }
+	};
+	even_vertex *EVs = new even_vertex[VN];
+	for (edge e : edges) {
+		EVs[e.v[0]].addNeighbor(vertice[e.v[1]]);
+		EVs[e.v[1]].addNeighbor(vertice[e.v[0]]);
+	}
+	// calculate vertice positions
+	auto beta_f = [](int n) { return (0.625f - powf(0.375f + 0.25f*cosf(2.f*(float)PI / n), 2.f)) / n; };
+	const int BETA_N = 64; float beta_table[BETA_N];  // lookup table
+	for (int n = 2; n < BETA_N; n++) beta_table[n] = beta_f(n);
+	beta_table[0] = beta_table[1] = NAN;  // should be a bug
+	beta_table[2] = 0.125f;  // boundary??
+	for (int i = 0; i < VN; i++) {
+		int N = EVs[i].N;
+		float beta = N < BETA_N ? beta_table[N] : beta_f(N);
+		EVs[i].pos = vertice[i] * (1.f - N * beta) + EVs[i].pos * beta;
+	}
+
+	// compute odd vertices
+	struct odd_vertex {  // same as even_vertex
+		int N = 0;  // number of neighbouring faces, should be 1 or 2 but may be larger in certain cases
+		vec3f pos = vec3f(0.);  // sum of opposite face vertices OR final vertex position
+		void addNeighbor(vec3f p) { N++, pos += p; }
+	};
+	odd_vertex *OVs = new odd_vertex[EN];
+	for (face f : faces) {
+		OVs[f.e[0]].addNeighbor(vertice[f.v[2]]);
+		OVs[f.e[1]].addNeighbor(vertice[f.v[0]]);
+		OVs[f.e[2]].addNeighbor(vertice[f.v[1]]);
+	}
+	// calculate vertice positions
+	for (int i = 0; i < EN; i++) {
+		int N = OVs[i].N;
+#if 0
+		// doesn't really work because it does not correctly detect boundary
+		if (N == 1)
+			OVs[i].pos = 0.5f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]);
+		else if (N >= 2)
+			OVs[i].pos = 0.375f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]) + 0.25f*(OVs[i].pos / N);
+		else
+			OVs[i].pos = vec3f(NAN);  // should be a bug
+#else
+		OVs[i].pos = 0.375f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]) + 0.25f*(OVs[i].pos / N);
+#endif
+	}
+
+	// recreate mesh
+	for (int i = 0; i < VN; i++) vertice[i] = EVs[i].pos;
+	vertice.resize(VN + EN);
+	for (int i = 0; i < EN; i++) vertice[VN + i] = OVs[i].pos;
+	std::vector<edge> edges_new;
+	edges_new.resize(2 * EN + 3 * FN);
+	for (int i = 0; i < EN; i++) {
+		edge e;
+		e.v[0] = edges[i].v[0], e.v[1] = VN + i;
+		edges_new[2 * i] = e;
+		e.v[0] = edges[i].v[1];
+		edges_new[2 * i + 1] = e;
+	}
+	faces.resize(4 * FN);
+	for (int i = 0; i < FN; i++) {
+		edge e;
+		for (int u = 0; u < 3; u++) {
+			int u1 = (u + 1) % 3, u0 = (u + 2) % 3;
+			face *f = &faces[(u + 1)*FN + i];
+			f->v[0] = faces[i].v[u];
+			f->e[0] = 2 * faces[i].e[u];
+			if (edges_new[f->e[0]].v[0] != faces[i].v[u] && edges_new[f->e[0]].v[1] != faces[i].v[u]) f->e[0]++;
+			f->v[1] = VN + faces[i].e[u];
+			f->e[1] = 2 * EN + 3 * i + u0;
+			f->v[2] = VN + faces[i].e[u0];
+			f->e[2] = 2 * faces[i].e[u0];
+			if (edges_new[f->e[2]].v[0] != faces[i].v[u] && edges_new[f->e[2]].v[1] != faces[i].v[u]) f->e[2]++;
+
+		}
+		for (int u = 0; u < 3; u++) {
+			int u1 = (u + 1) % 3;
+			e.v[0] = VN + faces[i].e[u], e.v[1] = VN + faces[i].e[u1];
+			edges_new[2 * EN + 3 * i + u] = e;
+		}
+		for (int u = 0; u < 3; u++) {
+			faces[i].v[u] = VN + faces[i].e[u];
+			faces[i].e[u] = 2 * EN + 3 * i + u;
+		}
+	}
+	edges = edges_new;
+}
+
 
 int main(int argc, char* argv[]) {
 	std::vector<triangle_3d_f> trigs;
@@ -288,13 +396,33 @@ int main(int argc, char* argv[]) {
 	M.fromSTL(trigs);
 	printf("Restore connectivity: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
-	t0 = NTime::now();
-	std::vector<triangle_mesh> MS = M.split_disconnected();
-	printf("Disjoint set: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+	// find disconnected components
+	if (0) {
+		t0 = NTime::now();
+		std::vector<triangle_mesh> MS = M.split_disconnected();
+		printf("Disjoint set: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
-	t0 = NTime::now();
-	visualize_disconnected_stl("D:\\connect.stl", MS);
-	printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+		t0 = NTime::now();
+		visualize_disconnected_stl("D:\\disconnected.stl", MS);
+		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+	}
+
+	// loop subdivision
+	else {
+		std::vector<triangle_3d_f> trigs;
+
+		t0 = NTime::now();
+		for (int i = 0; i < 1; i++) {
+			//M.toSTL(trigs);
+			M.loop_subdivide();
+		}
+		printf("Loop subdivision: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+
+		t0 = NTime::now();
+		M.toSTL(trigs);
+		writeSTL("D:\\subdivide.stl", &trigs[0], (int)trigs.size(), nullptr, STL_CCW);
+		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+	}
 
 	printf("Total time elapsed: %.1lfms\n", 1000.*fsec(NTime::now() - time_start).count());
 
