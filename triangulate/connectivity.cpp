@@ -283,36 +283,13 @@ void visualize_disconnected_stl(const char* filename, const std::vector<triangle
 
 
 
-// loop subdivision, non-standard version does not work well for non-closed surface
+// loop subdivision
 void triangle_mesh::loop_subdivide() {
 
 	int VN = (int)vertice.size(), EN = (int)edges.size(), FN = (int)faces.size();
 
-	// compute even vertices
-	struct even_vertex {
-		int N = 0;  // number of neighbors
-		vec3f pos = vec3f(0.);  // sum of neighbor vertices OR final vertex position
-		void addNeighbor(vec3f p) { N++, pos += p; }
-	};
-	even_vertex *EVs = new even_vertex[VN];
-	for (edge e : edges) {
-		EVs[e.v[0]].addNeighbor(vertice[e.v[1]]);
-		EVs[e.v[1]].addNeighbor(vertice[e.v[0]]);
-	}
-	// calculate vertice positions
-	auto beta_f = [](int n) { return (0.625f - powf(0.375f + 0.25f*cosf(2.f*(float)PI / n), 2.f)) / n; };
-	const int BETA_N = 64; float beta_table[BETA_N];  // lookup table
-	for (int n = 2; n < BETA_N; n++) beta_table[n] = beta_f(n);
-	beta_table[0] = beta_table[1] = NAN;  // should be a bug
-	beta_table[2] = 0.125f;  // boundary??
-	for (int i = 0; i < VN; i++) {
-		int N = EVs[i].N;
-		float beta = N < BETA_N ? beta_table[N] : beta_f(N);
-		EVs[i].pos = vertice[i] * (1.f - N * beta) + EVs[i].pos * beta;
-	}
-
 	// compute odd vertices
-	struct odd_vertex {  // same as even_vertex
+	struct odd_vertex {
 		int N = 0;  // number of neighbouring faces, should be 1 or 2 but may be larger in certain cases
 		vec3f pos = vec3f(0.);  // sum of opposite face vertices OR final vertex position
 		void addNeighbor(vec3f p) { N++, pos += p; }
@@ -326,17 +303,49 @@ void triangle_mesh::loop_subdivide() {
 	// calculate vertice positions
 	for (int i = 0; i < EN; i++) {
 		int N = OVs[i].N;
-#if 0
-		// doesn't really work because it does not correctly detect boundary
 		if (N == 1)
 			OVs[i].pos = 0.5f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]);
 		else if (N >= 2)
-			OVs[i].pos = 0.375f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]) + 0.25f*(OVs[i].pos / N);
+			OVs[i].pos = 0.375f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]) + 0.25f*(OVs[i].pos / (float)N);
 		else
 			OVs[i].pos = vec3f(NAN);  // should be a bug
-#else
-		OVs[i].pos = 0.375f*(vertice[edges[i].v[0]] + vertice[edges[i].v[1]]) + 0.25f*(OVs[i].pos / N);
-#endif
+	}
+
+	// compute even vertices
+	struct even_vertex {
+		int N = 0;  // number of neighbors
+		bool isBoundary = false;
+		vec3f pos = vec3f(0.);  // sum of neighbor vertices OR final vertex position
+		void addNeighbor(vec3f p, bool isBoundary) {
+			if (isBoundary) {
+				if (!this->isBoundary) N = 1, pos = p;
+				else N++, pos += p;
+				this->isBoundary = true;
+			}
+			else {
+				if (!this->isBoundary) N++, pos += p;
+			}
+		}
+	};
+	even_vertex *EVs = new even_vertex[VN];
+	for (int i = 0; i < (int)edges.size(); i++) {
+		edge e = edges[i];
+		EVs[e.v[0]].addNeighbor(vertice[e.v[1]], OVs[i].N == 1);
+		EVs[e.v[1]].addNeighbor(vertice[e.v[0]], OVs[i].N == 1);
+	}
+	// calculate vertice positions
+	auto beta_f = [](int n) { return (0.625f - powf(0.375f + 0.25f*cosf(2.f*(float)PI / n), 2.f)) / n; };
+	const int BETA_N = 64; float beta_table[BETA_N] = { NAN, NAN };  // lookup table
+	for (int n = 2; n < BETA_N; n++) beta_table[n] = beta_f(n);
+	for (int i = 0; i < VN; i++) {
+		int N = EVs[i].N;
+		if (EVs[i].isBoundary) {
+			EVs[i].pos = 0.75f * vertice[i] + 0.25f * (EVs[i].pos / (float)N);
+		}
+		else {
+			float beta = N < BETA_N ? beta_table[N] : beta_f(N);
+			EVs[i].pos = vertice[i] * (1.f - N * beta) + EVs[i].pos * beta;
+		}
 	}
 
 	// recreate mesh
@@ -434,11 +443,12 @@ void readSTL(const char* filename, std::vector<triangle_3d_f> &trigs) {
 	FILE *fp = fopen(filename, "rb");
 	char header[80]; fread(header, 1, 80, fp);
 	int N; fread(&N, sizeof(int), 1, fp);
-	trigs.resize(N);
+	trigs.reserve(N);
 	for (int i = 0; i < N; i++) {
 		float f[12];
 		fread(f, sizeof(float), 12, fp);
-		trigs[i] = triangle_3d_f{ vec3f(f[3], f[4], f[5]), vec3f(f[6], f[7], f[8]), vec3f(f[9], f[10], f[11]) };
+		triangle_3d_f t = triangle_3d_f{ vec3f(f[3], f[4], f[5]), vec3f(f[6], f[7], f[8]), vec3f(f[9], f[10], f[11]) };
+		if (t[0] != t[1] && t[0] != t[2] && t[1] != t[2]) trigs.push_back(t);
 		uint16_t col; fread(&col, 2, 1, fp);
 	}
 }
