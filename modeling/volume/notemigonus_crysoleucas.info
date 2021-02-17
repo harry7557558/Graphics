@@ -1,0 +1,138 @@
+264 448 1544
+8 200 0
+1 0 0 -132
+0 0 -1 772
+0 1 0 0
+
+https://osf.io/8y6kx/
+
+Notemigonus crysoleucas_60um_1k__rec_Tra.log
+
+[System]
+Scanner=SkyScan1173
+Instrument S/N=15L05057
+Hardware version=A
+Software=Version 1. 6 (build 19)
+Home directory=C:\SkyScan1173
+Source Type=Hamamatsu 130/300
+Camera=FlatPanel Sensor
+Camera Pixel Size (um)=50.0
+CameraXYRatio=0.9790
+Incl.in lifting (um/mm)=-1.1000
+[Acquisition]
+Data directory=D:\Results\MattK\JustSomeFish2
+Filename Prefix=JustSomeFish2_60um_1k_
+Number of Files=  960
+Source Voltage (kV)=  60
+Source Current (uA)= 133
+Number of Rows= 1120
+Number of Columns= 1120
+Image crop origin X=   0
+Image crop origin Y=0
+Camera binning=2x2
+Image Rotation=-0.0570
+Gantry direction=CC
+Number of connected scans=3
+Number of lines to be reconstructed=761
+Image Pixel Size (um)=60.001788
+Scaled Image Pixel Size (um)=60.001788
+Object to Source (mm)=218.112
+Camera to Source (mm)=364.000
+Vertical Object Position (mm)=9.162
+Optical Axis (line)= 560
+Filter=Al 1.0mm
+Image Format=TIFF
+Depth (bits)=16
+Screen LUT=0
+Exposure (ms)=   330
+Rotation Step (deg)=0.250
+Frame Averaging=ON (5)
+Random Movement=ON (10)
+Use 360 Rotation=NO
+Partial width=100
+FF updating interval=481
+Geometrical Correction=OFF
+Camera Offset=OFF
+Median Filtering=OFF
+Flat Field Correction=ON
+Rotation Direction=CC
+Scanning Trajectory=ROUND
+Type Of Motion=STEP AND SHOOT
+Study Date and Time=Jan 29, 2017  20:18:33
+Scan duration=00:38:53
+Maximum vertical TS=5.0
+[Reconstruction]
+Reconstruction Program=NRecon
+Program Version=Version: 1.6.10.4
+Program Home Directory=C:\SkyScan1173
+Reconstruction engine=GPUReconServer
+Engine version=Version: 1.6.10
+Reconstruction from batch=Yes
+Postalignment=-3.00
+Connected Reconstruction (parts)=3
+Sub-scan post alignment [0]=-1.500000
+Sub-scan post alignment [1]=-3.000000
+Sub-scan post alignment [2]=-3.000000
+Sub-scan scan length [0]=750
+Sub-scan scan length [1]=749
+Sub-scan scan length [2]=761
+Reconstruction servers= UNIVWASHINGTON 
+Dataset Origin=SkyScan1173
+Dataset Prefix=JustSomeFish2_60um_1k_~02
+Dataset Directory=D:\Results\MattK\JustSomeFish2
+Output Directory=D:\Results\MattK\JustSomeFish2\JustSomeFish2_60um_1k_Rec
+Time and Date=Jan 31, 2017  11:29:05
+First Section=85
+Last Section=2496
+Reconstruction duration per slice (seconds)=0.210004
+Total reconstruction time (2419 slices) in seconds=508.000000
+Section to Section Step=1
+Sections Count=2412
+Result File Type=BMP
+Result File Header Length (bytes)=1134
+Result Image Width (pixels)=996
+Result Image Height (pixels)=996
+Pixel Size (um)=60.00179
+Reconstruction Angular Range (deg)=240.00
+Use 180+=OFF
+Angular Step (deg)=0.2500
+Smoothing=0
+Ring Artifact Correction=1
+Draw Scales=OFF
+Object Bigger than FOV=ON
+Reconstruction from ROI=ON
+ROI Top (pixels)=1115
+ROI Bottom (pixels)=118
+ROI Left (pixels)=56
+ROI Right (pixels)=1053
+ROI reference length=1120
+Filter cutoff relative to Nyquist frequency=100
+Filter type=0
+Filter type description=Hamming (Alpha=0.54)
+Undersampling factor=1
+Threshold for defect pixel mask (%)=0
+Beam Hardening Correction (%)=5
+CS Static Rotation (deg)=0.00
+Minimum for CS to Image Conversion=0.000000
+Maximum for CS to Image Conversion=0.017530
+HU Calibration=OFF
+BMP LUT=0
+Cone-beam Angle Horiz.(deg)=17.515577
+Cone-beam Angle Vert.(deg)=17.515577
+Automatic matching in Z=50
+Automatic matching in X/Y=0
+Automatic matching in rotation=0.000000
+Automatic fusion=1
+[File name convention]
+Filename Index Length=4
+Filename Prefix=Notemigonus crysoleucas_60um_1k__rec_Tra
+[CS image conversion 1]
+Converted by=Dataviewer (Version: 1.5.2)
+Conversion time=Jan 31, 2017  13:47:40
+Original configuration file=JustSomeFish2_60um_1k__rec.log
+Conversion description=...VOI(264,448,1544) @ (578,410,472). Rotated(deg): (291.377, 342.044, 244.172). 
+Image scale modified=1
+Image value inversion=1
+Minimum for CS to Image Conversion=0.000000
+Maximum for CS to Image Conversion=0.110144
+HU calibration modified=0

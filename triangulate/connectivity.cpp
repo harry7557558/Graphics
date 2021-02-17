@@ -262,6 +262,7 @@ void visualize_disconnected_stl(const char* filename, const std::vector<triangle
 		float V = MS[i].calc_volume();
 		maxV = max(maxV, V);
 		minV = min(minV, V);
+		//Vs.push_back(cbrt(V));
 		Vs.push_back(V);
 	}
 	std::vector<vec3f> cols;
@@ -406,7 +407,7 @@ int main(int argc, char* argv[]) {
 	printf("Restore connectivity: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
 	// find disconnected components
-	if (0) {
+	if (1) {
 		t0 = NTime::now();
 		std::vector<triangle_mesh> MS = M.split_disconnected();
 		printf("Disjoint set: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
