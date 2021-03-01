@@ -1,10 +1,9 @@
-1176 724 2580
-8 200 0
-1 0 0 0
-0 0 -1 0
-0 1 0 0
+588 362 1290
+8 0 200
+0 0 0.09 -58.05
+0 0.09 0 -16.29
+0.09 0 0 0
 
 https://osf.io/j44bk/
 
-Got std::bad_alloc for this one.
-
+Voxel size is reduced by half due to std::bad_alloc.
