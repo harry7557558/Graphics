@@ -131,7 +131,7 @@ bool writeSTL(FILE* fp, const triangle data[], unsigned N,
 }
 
 bool writeSTL(const char filename[], stl_triangle data[], unsigned N,
-	const char header[80] = nullptr, const uint8_t correct_normal = 0) {
+	const char header[80] = nullptr, const uint8_t correct_normal = STL_CCW) {
 	FILE* fp = fopen(filename, "wb");
 	if (!fp) return false;
 	bool ok = writeSTL(fp, data, N, header, correct_normal);

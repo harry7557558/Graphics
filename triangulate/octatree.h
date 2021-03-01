@@ -130,7 +130,9 @@ namespace ScalarFieldTriangulator_octatree {
 		float v1 = val[EDGE_LIST[i].y];
 		vec3 p0 = pos[EDGE_LIST[i].x];
 		vec3 p1 = pos[EDGE_LIST[i].y];
-		return p0 + (v0 / (v0 - v1))*(p1 - p0);
+		if (v0 > v1) std::swap(v0, v1), std::swap(p0, p1);  // make it consistant
+		float t = v0 / (v0 - v1);
+		return p0 * (1 - t) + p1 * t;
 	};
 
 
@@ -527,7 +529,8 @@ namespace ScalarFieldTriangulator_octatree {
 								vec3 p2 = vec3(VERTICE_LIST[EDGE_LIST[e].y]);
 								double v1 = cube[EDGE_LIST[e].x];
 								double v2 = cube[EDGE_LIST[e].y];
-								vec3 pd = p1 + (v1 / (v1 - v2))*(p2 - p1);
+								double t = v1 / (v1 - v2);
+								vec3 pd = p1 * (1 - t) + p2 * t;
 								intp[e] = p0 + (vec3(i, j, k) + pd)*dp;
 							}
 
@@ -585,7 +588,9 @@ namespace ScalarFieldTriangulator_octatree {
 								vec p2 = vec(VERTICE_LIST[EDGE_LIST[e].y]);
 								Float v1 = cube[EDGE_LIST[e].x];
 								Float v2 = cube[EDGE_LIST[e].y];
-								vec pd = p1 + (v1 / (v1 - v2))*(p2 - p1);
+								if (v1 > v2) std::swap(v1, v2), std::swap(p1, p2);
+								Float t = v1 / (v1 - v2);
+								vec pd = p1 * (1 - t) + p2 * t;
 								intp[e] = vec(x, y, z) + pd;
 							}
 
