@@ -174,6 +174,9 @@ namespace SPH {
 		int Ns[MAX_NEIGHBOR_P];  // index of neighbors
 	} *Neighbors = 0;
 
+	// simulation
+	void updateScene(double dt);
+
 };  // namespace SPH
 
 
@@ -211,16 +214,14 @@ void SPH::calcGrid() {
 	}
 }
 
-void updateScene(double dt) {
+void SPH::updateScene(double dt) {
 	// split large steps
-	double max_step = 0.0002;
+	double max_step = 0.0005;
 	if (dt > max_step) {
 		int N = (int)(dt / max_step + 1);
 		for (int i = 0; i < N; i++) updateScene(dt / N);
 		return;
 	}
-
-	using namespace SPH;
 
 	// find neighbors of each particle
 	calcGrid();
@@ -236,9 +237,9 @@ void updateScene(double dt) {
 			gridcell *g = getGrid(gi);
 			for (int ju = 0; ju < g->N; ju++) {
 				int j = g->Ps[ju];
-				if (j != i
-					&& length(Particles[j].p - Particles[i].p) < 2.*h
-					&& nb->N < MAX_NEIGHBOR_P) {
+				if (//j != i &&
+					length(Particles[j].p - Particles[i].p) < 2.*h &&
+					nb->N < MAX_NEIGHBOR_P) {
 					nb->Ns[nb->N++] = j;
 				}
 			}
@@ -271,21 +272,23 @@ void updateScene(double dt) {
 	if (!Accelerations) Accelerations = new vec2[N];
 	for (int i = 0; i < N; i++) {
 		Accelerations[i] = g + Boundary(Particles[i].p);
-		Accelerations[i] -= 0.5*Particles[i].v;
+		//Accelerations[i] -= 0.5*Particles[i].v;
 	}
 	for (int i = 0; i < N; i++) {
 		// estimate the gradient of pressure and the element-wise laplacian of velocity
 		vec2 grad_P(0.), lap_v(0.);
 		for (int u = 0; u < Neighbors[i].N; u++) {
 			int j = Neighbors[i].Ns[u];
-			vec2 xij = Particles[j].p - Particles[i].p, vij = Particles[j].v - Particles[i].v;
-			double rhoi = Particles[i].density, rhoj = Particles[j].density, pi = Particles[i].pressure, pj = Particles[j].pressure;
-			grad_P += rhoi * m * (pi / (rhoi*rhoi) + pj / (rhoj*rhoj)) * W_grad(xij);
-			lap_v += 2.*m / rhoj * vij + (xij*W_grad(xij)) / (xij.sqr() + 0.01*h*h);
+			vec2 xij = Particles[i].p - Particles[j].p, vij = Particles[i].v - Particles[j].v;
+			double rhoi = Particles[i].density, rhoj = Particles[j].density,
+				pi = Particles[i].pressure, pj = Particles[j].pressure;
+			vec2 W_grad_ij = W_grad(xij);
+			grad_P += rhoi * m * (pi / (rhoi*rhoi) + pj / (rhoj*rhoj)) * W_grad_ij;
+			lap_v += (2.*m / rhoj) * vij * (dot(xij, W_grad_ij) / (xij.sqr() + 0.01*h*h));
 		}
 		// add acceleration due to pressure difference
-		Accelerations[i] += grad_P / Particles[i].density;
-		//Accelerations[i] += viscosity * lap_v;
+		Accelerations[i] -= grad_P / Particles[i].density;
+		Accelerations[i] += viscosity * lap_v;
 	}
 
 	// update position and velocity of each particle
@@ -421,7 +424,7 @@ void render() {
 		for (int i = 0; i < SPH::N; i++) {
 			density += SPH::Particles[i].density / SPH::N;
 			//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
-			vec3 col = ColorFunctions::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
+			vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
 			drawDotF(SPH::Particles[i].p, SPH::h*Unit,
 				COLORREF(col.z * 255) | (COLORREF(col.y * 255) << 8) | (COLORREF(col.x * 255) << 16));
 			if (0) {
@@ -460,45 +463,43 @@ void render() {
 // preset scenes
 class presetScenes {
 
-private:  // boundary functions
+public:  // boundary functions
 
-	static vec2 box_21(vec2 p) {
-		return 10000.*vec2(
-			p.x<0. ? -p.x : p.x>2. ? -(p.x - 2.) : 0.,
-			p.y<0. ? -p.y : p.y>1. ? -(p.y - 1.) : 0.
-		);
-	}
-	static vec2 box_21_pad(vec2 p) {
-		return 1000.*vec2(
-			p.x<0. ? -p.x + 1. : p.x>2. ? -(p.x - 2.) - 1. : 0.,
-			p.y<0. ? -p.y + 1. : p.y>1. ? -(p.y - 1.) - 1. : 0.
-		);
-	}
-	static vec2 circular(vec2 p) {
-		return 10000.*max(length(p) - 1., 0.)*normalize(-p);
-	}
-	static vec2 box_block(vec2 p) {
-		auto E = [](double x, double y)->double {
-			return max(max(
-				max(abs(x - 1.5) - 1.5, abs(y - 1.) - 1.),  // room
-				-max(abs(x - 2.2) - 0.2, y - 0.2)  // block
-			), 0.);
-		};
-		const double eps = 0.01;
-		return -10000.*(vec2(E(p.x + eps, p.y), E(p.x, p.y + eps)) - vec2(E(p.x, p.y))) / eps;
-	}
+	struct boundary_functions {
 
-	// non-boundary force fields
-	static vec2 np_centric(vec2 p) {
-		return -50.*p;
-	}
-	static vec2 np_circular(vec2 p) {
-		return 4.5*p.rot() - 50.*p*(p.sqr() - 1.);
-	}
-	static vec2 np_rouded_quad(vec2 p) {
-		vec2 q = vec2(p.x - p.y, p.x + p.y);
-		return 4.5*p.rot() - 50.*p*(length(q*q) - 1.);
-	}
+		static vec2 box_21(vec2 p) {
+			return 1000.*vec2(
+				p.x<0. ? -p.x + 1. : p.x>2. ? -(p.x - 2.) - 1. : 0.,
+				p.y<0. ? -p.y + 1. : p.y>1. ? -(p.y - 1.) - 1. : 0.
+			);
+		}
+		static vec2 circular(vec2 p) {
+			return 10000.*max(length(p) - 1., 0.)*normalize(-p);
+		}
+		static vec2 box_block(vec2 p) {
+			auto E = [](double x, double y)->double {
+				return max(max(
+					max(abs(x - 1.5) - 1.5, abs(y - 1.) - 1.),  // room
+					-max(abs(x - 2.2) - 0.2, y - 0.2)  // block
+				), 0.);
+			};
+			const double eps = 0.01;
+			return -10000.*(vec2(E(p.x + eps, p.y), E(p.x, p.y + eps)) - vec2(E(p.x, p.y))) / eps;
+		}
+
+		// non-boundary force fields
+		static vec2 np_centric(vec2 p) {
+			return -50.*p;
+		}
+		static vec2 np_circular(vec2 p) {
+			return 4.5*p.rot() - 50.*p*(p.sqr() - 1.);
+		}
+		static vec2 np_rouded_quad(vec2 p) {
+			vec2 q = vec2(p.x - p.y, p.x + p.y);
+			return 4.5*p.rot() - 50.*p*(length(q*q) - 1.);
+		}
+
+	};
 
 public:  // preset scenes
 
@@ -518,7 +519,7 @@ public:  // preset scenes
 			if (j == i)
 				SPH::Particles[i] = SPH::particle{ p, v0 };
 		}
-		SPH::Boundary = box_21;
+		SPH::Boundary = boundary_functions::box_21;
 		SPH::Grid_LB = vec2(0, 0);
 		SPH::Grid_dp = vec2(2.*h);
 		SPH::Grid_N = ivec2(ceil((vec2(2, 1) - SPH::Grid_LB) / SPH::Grid_dp));
@@ -527,7 +528,7 @@ public:  // preset scenes
 	static void Scene_left(double dist) {
 		using namespace SPH;
 		h = dist;
-		m = density_0 / (4.*W(h) + 4.*W(1.414214*h));
+		m = density_0 / (4.*W(h) + 4.*W(1.414214*h) + W(0.));
 		int xN = (int)floor(0.4999 / dist);
 		int yN = (int)floor(0.9999 / dist);
 		Particles = new particle[xN*yN];
@@ -540,8 +541,8 @@ public:  // preset scenes
 				};
 			}
 		}
-		viscosity = 0.2;
-		Boundary = box_21_pad;
+		viscosity = 1e-4;
+		Boundary = boundary_functions::box_21;
 		//Boundary = box_block;
 		Grid_LB = vec2(0, 0);
 		Grid_dp = vec2(2.*h);
@@ -576,7 +577,8 @@ void WindowCreate(int _W, int _H) {
 		for (;;) {
 			double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			double time_next = ceil(time / frame_delay)*frame_delay;
-			updateScene(time_next - SPH::t);
+			SPH::updateScene(time_next - SPH::t);
+			//SPH::updateScene(0.0001);
 			double t_remain = time_next - std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
