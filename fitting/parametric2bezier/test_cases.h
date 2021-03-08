@@ -87,8 +87,8 @@ static uint32_t Parametric_callCount = 0;
 
 // Test equations - some from Wikipedia
 
-const int CSN = 184;  // number of test functions
-const int CS0 = 0, CS1 = 184;  // only test functions in this range when debugging
+const int CSN = 194;  // number of test functions
+const int CS0 = 0, CS1 = CSN;  // only test functions in this range when debugging
 
 // 0-41: Basic tests; 42-137: Singularity tests; 138-181: Performance tests;
 // Test case ID: __LINE__ - 100
@@ -117,6 +117,8 @@ ParametricCurveL([](double t) { _return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*
 ParametricCurveL([](double t) { _return vec2(cos(t) + .5*cos(2.*t), sin(t) - .5*sin(2.*t)); }, -.5*PI, 1.5*PI),
 ParametricCurveL([](double t) { _return vec2(cos(3.*t), sin(2.*t)); }, -PI + 1., PI + 1.),
 ParametricCurveL([](double t) { _return vec2(cos(5.*t + PI / 4.), sin(4.*t)); }, 1., 2.*PI + 1.),
+ParametricCurveL([](double t) { _return vec2(cos(t), sin(t) + 0.6*sin(3.*t)); }, -1., 2.*PI - 1.),
+ParametricCurveL([](double t) { _return vec2(cos(t) - 0.6*cos(3.*t), sin(t) + 0.6*sin(3.*t)); }, 1., 2.*PI + 1.),
 ParametricCurveL([](double a) { _return vec2(cos(a),sin(a)) * .8*(pow(cos(6.*a),2.) + .5); }, 0., 2.*PI),
 ParametricCurveL([](double a) { _return vec2(cos(2.*PI*a),sin(2.*PI*a)) * pow(abs(1.2*a),3.8) + vec2(-.7,0.); }, -1., 1.),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a)) * 0.08*a; }, 0, 6.*PI),
@@ -125,6 +127,8 @@ ParametricCurveL([](double t) { _return vec2(.1*t + .3*cos(t), sin(t)); }, -13.,
 ParametricCurveL([](double t) { _return 0.4*vec2(cos(1.5*t), sin(1.5*t)) + vec2(cos(t), -sin(t)); }, 0, 4.*PI),
 ParametricCurveL([](double a) { _return(sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 2.*PI),
 ParametricCurveL([](double a) { _return(sin(a) - cos(2.*a) + sin(3.*a))*vec2(cos(a), sin(a)); }, 0, 3.*PI),
+ParametricCurveL([](double t) { _return 0.8 * cossin(t) * (exp(cos(10.*t)) - 1.); }, 0., 2.*PI),
+ParametricCurveL([](double t) { _return 1.2 * cossin(t) * (cos(cos(10.*t) - 1.)); }, 0., 2.*PI),
 ParametricCurveL([](double a) { _return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, 0, 2.*PI),
 ParametricCurveL([](double a) { _return 0.5*(cos(a) + sin(a)*sin(a) + 1.)*vec2(cos(a), sin(a)); }, -1, 2.*PI - 1.),
 ParametricCurveL([](double x) { _return vec2(x, exp(sin(x)) - 1.5); }, -2, 2),
@@ -143,10 +147,14 @@ ParametricCurveL([](double x) { _return vec2(x, log(x + 1)); }, -1., 2.),
 ParametricCurveL([](double x) { _return vec2(x, pow(x + 1., -1.5) - 1.); }, -1., 2.),
 ParametricCurveL([](double x) { _return vec2(x, sqrt(1. - x * x)); }, -1., 1.),
 ParametricCurveL([](double x) { _return vec2(x, asin(x)*(2. / PI)); }, -1., 1.),
+ParametricCurveL([](double t) { int i = int(floor(t)); double x = 2 * (t - i) - 1.; _return vec2(x, i == 0 ? cos(0.5*asin(x)) : i == 1 ? sin(0.5*asin(x)) : i == 2 ? -cos(0.5*asin(x)) : -sin(0.5*asin(x))); }, 0., 4 - 1e-12),
+ParametricCurveL([](double t) { int i = int(floor(t)); double x = 2 * (t - i) - 1.; _return vec2(x, i == 0 ? tan(0.5*asin(x)) : i == 1 ? sin(0.5*acos(x)) : -cos(0.5*acos(x))); }, 0., 3 - 1e-12),
 ParametricCurveL([](double x) { _return vec2(x, sin(10.*sqrt(x + 2.))); }, -2, 2),
 ParametricCurveL([](double x) { _return vec2(x, sin(x - 1) / log(x + PI)) * 0.5; }, -PI, PI),
 ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 1.),
 ParametricCurveL([](double x) { _return vec2(x, (x > 0. ? asin(sqrt(x)) / sqrt(x) : asinh(sqrt(-x)) / sqrt(-x)) - 1.); }, -2., 2.),
+ParametricCurveL([](double x) { _return vec2(x, exp(-1. / pow(x,10.))); }, -2, 2),
+ParametricCurveL([](double x) { _return vec2(x, pow(x*x - x, 0.2)*cos(PI*x)); }, -2, 2),
 ParametricCurveL([](double x) { _return vec2(x, abs(x - 0.123) - 1.); }, -2, 2),
 ParametricCurveL([](double x) { _return vec2(x, .5*acos(cos(5.*x)) - .25*PI); }, -2, 2),
 ParametricCurveL([](double x) { _return vec2(x, x - floor(x)); }, -2, 2),
@@ -225,6 +233,8 @@ ParametricCurveL([](double x) { _return vec2(x, sin(5.*x)); }, -1.2345, INFINITY
 ParametricCurveL([](double x) { _return vec2(x, sin(5.*x)); }, -INFINITY, 1.2345),
 ParametricCurveL([](double x) { _return vec2(x, sin(5.*x)); }, -1234.5678, 2345.6789),
 ParametricCurveL([](double x) { _return vec2(x, sin(5.*x)); }, -123456.789, 234567.89),
+ParametricCurveL([](double t) { _return vec2(1.0 / tanh(t), tanh(t)); }, -INFINITY, INFINITY),
+ParametricCurveL([](double t) { _return vec2(asinh(asinh(asinh(t))), log(log(log(abs(t) + 1) + 1) + 0.2)); }, -10, 10),
 ParametricCurveL([](double t) { _return vec2(tanh(t)*.5) + vec2(sin(t*t), cos(t*t)) / t; }, -10, 10),
 ParametricCurveL([](double t) { _return vec2(tanh(t)*.5) + vec2(sin(t*t), cos(t*t)) / (abs(t) + 1.); }, -10, 10),
 ParametricCurveL([](double a) { _return vec2(cos(a), sin(a))*exp(0.1*a); }, -100, 100),

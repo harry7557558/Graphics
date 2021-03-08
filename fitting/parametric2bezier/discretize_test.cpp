@@ -29,8 +29,11 @@ struct segment_sample {
 
 // visualization functions
 void initSVG(const char* filename);
-void writeBlock(int id, const std::vector<segment_sample> &points);
+void writeBlock(int id, const std::vector<segment_sample> &segs);
 void endSVG();
+
+// write file
+void write_stdout(const std::vector<segment_sample> &segs);
 
 
 
@@ -381,7 +384,7 @@ divide2:
 		// attempt to fix missed samples [not quite successful]
 		if (1) do {
 			double l0 = length(pc - s0.p), l1 = length(s1.p - pc);
-			int n0 = app0.size(), n1 = app1.size();
+			int n0 = (int)app0.size(), n1 = (int)app1.size();
 			if (n0 && n1 && app0.back().q.t == app1.front().p.t) {
 				double m0 = l0 / n0, m1 = l1 / n1;
 				if ((max(n0 / n1, n1 / n0) > 4 && (
@@ -489,25 +492,27 @@ std::vector<std::vector<segment_sample>> discretizeParametricCurve_check(
 int main(int argc, char* argv[]) {
 	initSVG(argv[1]);
 
-	for (int i = 0; i < 184; i++) {
-		if (i >= 116 && i <= 119) continue;  // bad test cases
-
+	for (int i = 0; i < CSN; i++) {
 		Parametric_callCount = 0;
+
 		ParametricCurveL Curve = Cs[i];
 		std::function<vec2(double)> Fun = [&](double t) {
 			vec2 p = Curve.p(t);
 			return abs(p.x) < 2.5 && abs(p.y) < 2.5 ? p : vec2(NAN);
 		};
-		std::vector<segment_sample> points = discretizeParametricCurve(
+		std::vector<segment_sample> segs = discretizeParametricCurve(
 			Fun,
 			param_sample(Curve.t0, Curve.p(Curve.t0)), param_sample(Curve.t1, Curve.p(Curve.t1)),
 			96, 0.05, 0.001, 18);
 
-		writeBlock(i, points);
-		printf("%d\n", i);
+		writeBlock(i, segs);
+		write_stdout(segs);
+		fprintf(stderr, "%d\n", i);
 	}
 
 	endSVG();
+	printf("-1\n");
+
 	return 0;
 }
 
@@ -525,8 +530,8 @@ void initSVG(const char* filename) {
 	fprintf(fp, "<defs><clipPath id='viewbox'><rect x='%d' y='%d' width='%d' height='%d'/></clipPath></defs>\n", 0, 0, width, width);
 	fprintf(fp, "<style>text{font-family:Consolas;font-size:14px;}</style>\n");
 }
-void writeBlock(int id, const std::vector<segment_sample> &points) {
-	int vn = points.size();
+void writeBlock(int id, const std::vector<segment_sample> &segs) {
+	int vn = (int)segs.size();
 
 	fprintf(fp, "<g transform='translate(%d,%d)' clip-path='url(#viewbox)'>\n",
 		width*(blockCount%colspan), width*(blockCount / colspan));
@@ -536,10 +541,10 @@ void writeBlock(int id, const std::vector<segment_sample> &points) {
 	// calculate arc length average and standard deviation
 	double avrL = 0.;
 	for (int i = 0; i < vn; i++)
-		avrL += length(points[i].q.p - points[i].p.p) / vn;
+		avrL += length(segs[i].q.p - segs[i].p.p) / vn;
 	double stdL = 0.;
 	for (int i = 0; i < vn; i++)
-		stdL += pow(length(points[i].q.p - points[i].p.p) - avrL, 2.);
+		stdL += pow(length(segs[i].q.p - segs[i].p.p) - avrL, 2.);
 	stdL = sqrt(stdL / (vn - 1));
 	fprintf(fp, "<text x='10' y='40'>avrL=%lf, stdL=%lf</text>\n", avrL, stdL);
 
@@ -557,14 +562,14 @@ void writeBlock(int id, const std::vector<segment_sample> &points) {
 #else
 	fprintf(fp, "<g style='stroke-width:1'>");
 	if (vn) fprintf(fp, "<line x1='%lg' y1='%lg' x2='%lg' y2='%lg' stroke='green' vector-effect='non-scaling-stroke'/>",
-		points[0].p.p.x, points[0].p.p.y, points[0].q.p.x, points[0].q.p.y);
+		segs[0].p.p.x, segs[0].p.p.y, segs[0].q.p.x, segs[0].q.p.y);
 	fprintf(fp, "<path d='");
 	for (int i = 1; i < vn; i += 2) fprintf(fp, "M%lg,%lgL%lg,%lg",
-		points[i].p.p.x, points[i].p.p.y, points[i].q.p.x, points[i].q.p.y);
+		segs[i].p.p.x, segs[i].p.p.y, segs[i].q.p.x, segs[i].q.p.y);
 	fprintf(fp, "' stroke='red' fill='none' vector-effect='non-scaling-stroke'/>");
 	fprintf(fp, "<path d='");
 	for (int i = 2; i < vn; i += 2) fprintf(fp, "M%lg,%lgL%lg,%lg",
-		points[i].p.p.x, points[i].p.p.y, points[i].q.p.x, points[i].q.p.y);
+		segs[i].p.p.x, segs[i].p.p.y, segs[i].q.p.x, segs[i].q.p.y);
 	fprintf(fp, "' stroke='blue' fill='none' vector-effect='non-scaling-stroke'/>");
 	fprintf(fp, "</g>\n");
 #endif
@@ -572,10 +577,10 @@ void writeBlock(int id, const std::vector<segment_sample> &points) {
 	// starting points
 	vec2 p0(NAN);
 	for (int i = 0; i < vn; i++) {
-		if (points[i].p.p != p0)
+		if (segs[i].p.p != p0)
 			fprintf(fp, "<circle cx='%lf' cy='%lf' r='%lf' style='stroke:none;fill:black;opacity:0.3;'/>\n",
-				points[i].p.p.x, points[i].p.p.y, 3.0 / scale);
-		p0 = points[i].q.p;
+				segs[i].p.p.x, segs[i].p.p.y, 3.0 / scale);
+		p0 = segs[i].q.p;
 	}
 
 	fprintf(fp, "</g></g>");
@@ -588,7 +593,29 @@ void endSVG() {
 }
 
 
+void write_stdout(const std::vector<segment_sample> &segs) {
+	std::vector<std::vector<vec2>> points;
 
+	vec2 old_q = vec2(NAN);
+	for (int i = 0; i < (int)segs.size(); i++) {
+		if (segs[i].p.p != old_q) {
+			points.push_back(std::vector<vec2>());
+			points.back().push_back(segs[i].p.p);
+		}
+		points.back().push_back(segs[i].q.p);
+		old_q = segs[i].q.p;
+	}
+
+	printf("%d\n", (int)points.size());
+	for (int i = 0; i < (int)points.size(); i++) {
+		printf("%d\n", (int)points[i].size());
+		for (vec2 p : points[i]) {
+			printf("%.8lg %.8lg\n", p.x, p.y);
+		}
+	}
+	printf("\n");
+
+}
 
 
 
