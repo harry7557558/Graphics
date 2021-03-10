@@ -33,7 +33,7 @@ struct triangle_mesh {
 	std::vector<edge> edges;
 	std::vector<face> faces;
 
-	void fromSTL(std::vector<triangle_3d_f> trigs);
+	void fromSTL(std::vector<triangle_3d_f> trigs, float epsilon);
 	void toSTL(std::vector<triangle_3d_f> &trigs);
 
 	std::vector<triangle_mesh> split_disjoint() const;
@@ -51,6 +51,18 @@ struct triangle_mesh {
 		return V;
 	}
 
+	// for debug purpose
+	int count_duplicate_vertice() const {
+		std::vector<vec3f> v = vertice;
+		std::sort(v.begin(), v.end(), [](vec3f a, vec3f b) {
+			return a.z == b.z ? a.y == b.y ? a.x < b.x : a.y < b.y : a.z < b.z;
+		});
+		int dup_count = 0;
+		for (int i = 0; i + 1 < (int)v.size(); i++) {
+			if (v[i] == v[i + 1]) dup_count++;
+		}
+		return dup_count;
+	}
 };
 
 
@@ -60,9 +72,52 @@ struct triangle_mesh {
 
 /* ================ CONNECTIVITY RESTORATION ================ */
 
+// data structure for working with mesh connectivity
+class disjoint_set {
+	uint8_t *rank;
+public:
+	int *parent;
+	const int inf = 0x7fffffff;
+	disjoint_set(int N) {
+		parent = new int[N];
+		rank = new uint8_t[N];
+		for (int i = 0; i < N; i++) {
+			parent[i] = -inf;
+			rank[i] = 0;
+		}
+	}
+	~disjoint_set() {
+		delete parent; parent = 0;
+		delete rank; rank = 0;
+	}
+	int findRepresentative(int i) {
+		if (parent[i] < 0) return i;
+		else {
+			int ans = findRepresentative(parent[i]);
+			parent[i] = ans;
+			return ans;
+		}
+	}
+	int representative_ID(int i) {
+		while (parent[i] >= 0) i = parent[i];
+		return -1 - parent[i];
+	}
+	bool unionSet(int i, int j) {
+		int i_rep = findRepresentative(i);
+		int j_rep = findRepresentative(j);
+		if (i_rep == j_rep) return false;
+		if (rank[i_rep] < rank[j_rep])
+			parent[i_rep] = parent[i] = j_rep;
+		else if (rank[i_rep] > rank[j_rep])
+			parent[j_rep] = parent[j] = i_rep;
+		else parent[j_rep] = parent[j] = i_rep, rank[i_rep]++;
+		return true;
+	}
+};
+
 
 // restore the continuity of a discrete STL model
-void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs) {
+void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs, float epsilon = 0.) {
 
 	int FN = (int)trigs.size();
 	int VN = 0;
@@ -70,16 +125,19 @@ void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs) {
 	vertice.clear(), edges.clear(), faces.clear();
 
 	// restore vertice
-	{
-		struct vec3_id {
-			vec3f p;
-			int id;
-		};
-		vec3_id *vtx = new vec3_id[3 * FN];
-		for (int i = 0; i < FN; i++) {
-			for (int u = 0; u < 3; u++)
-				vtx[3 * i + u] = vec3_id{ trigs[i][u], 3 * i + u };
-		}
+	struct vec3_id {
+		vec3f p;
+		int id;
+	};
+	vec3_id *vtx = new vec3_id[3 * FN];
+	for (int i = 0; i < FN; i++) {
+		for (int u = 0; u < 3; u++)
+			vtx[3 * i + u] = vec3_id{ trigs[i][u], 3 * i + u };
+	}
+	vertice.clear();
+	faces.resize(FN);
+
+	if (!(epsilon > 0.)) {
 
 		auto t0 = NTime::now();
 		std::sort(vtx, vtx + 3 * FN, [](vec3_id a, vec3_id b) {
@@ -87,9 +145,6 @@ void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs) {
 		});
 		printf("Sort vertice: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
-
-		vertice.clear();
-		faces.resize(FN);
 		vec3f previous_p = vec3f(NAN);
 		for (int i = 0; i < 3 * FN; i++) {
 			if (vtx[i].p != previous_p) {
@@ -99,8 +154,75 @@ void triangle_mesh::fromSTL(std::vector<triangle_3d_f> trigs) {
 			}
 			faces[vtx[i].id / 3].v[vtx[i].id % 3] = VN - 1;
 		}
-		delete vtx;
 	}
+
+	else {
+		disjoint_set dsj(3 * FN);
+
+		// apply a random rotation to avoid worst case runtime
+		if (1) {
+			const mat3f R(
+				0.627040324915f, 0.170877213400f, 0.760014084653f,
+				-0.607716612443f, -0.503066180808f, 0.614495676705f,
+				0.487340691808f, -0.847186753714f, -0.211597860196f);
+			for (int i = 0; i < 3 * FN; i++) vtx[i].p = R * vtx[i].p;
+		}
+
+		// three level sorting
+		auto t0 = NTime::now();
+		std::sort(vtx, vtx + 3 * FN, [](vec3_id a, vec3_id b) { return a.p.z < b.p.z; });
+		printf("First level vertice sort: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+		t0 = NTime::now();
+		for (int i = 0; i < 3 * FN;) {
+			int j = i + 1;
+			while (j < 3 * FN && vtx[j].p.z - vtx[j - 1].p.z < epsilon) j++;
+			std::sort(vtx + i, vtx + j, [](vec3_id a, vec3_id b) { return a.p.y < b.p.y; });
+			for (int u = i; u < j;) {
+				int v = u + 1;
+				while (v < j && vtx[v].p.y - vtx[v - 1].p.y < epsilon) v++;
+				std::sort(vtx + u, vtx + v, [](vec3_id a, vec3_id b) { return a.p.x < b.p.x; });
+				for (int m = u; m < v;) {
+					int n = m + 1;
+					while (n < v && vtx[n].p.x - vtx[n - 1].p.x < epsilon) n++;
+					//printf("%d\n", n - m);  // mostly 6
+					if (0) {  // O(N)
+						for (int t = m; t + 1 < n; t++) dsj.unionSet(vtx[t].id, vtx[t + 1].id);
+					}
+					else {  // O(N²), more accurate and not much slower
+						for (int t1 = m; t1 < n; t1++) for (int t2 = m; t2 < t1; t2++) {
+							if ((vtx[t2].p - vtx[t1].p).sqr() < epsilon*epsilon) dsj.unionSet(vtx[t1].id, vtx[t2].id);
+							//int i1 = vtx[t1].id, i2 = vtx[t2].id;
+							//if ((trigs[i1 / 3][i1 % 3] - trigs[i2 / 3][i2 % 3]).sqr() < epsilon*epsilon) dsj.unionSet(i1, i2);
+						}
+					}
+					m = n;
+				}
+				u = v;
+			}
+			i = j;
+		}
+		printf("Further vertice sort: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+
+		// pull points out from the disjoint set
+		int unique_count = 0;
+		int *vertice_map = new int[3 * FN];
+		for (int i = 0; i < 3 * FN; i++)
+			if (dsj.findRepresentative(i) == i) {
+				vertice_map[i] = unique_count++;
+				vertice.push_back(trigs[i / 3][i % 3]);
+			}
+		for (int i = 0; i < 3 * FN; i++)
+			vertice_map[i] = vertice_map[dsj.findRepresentative(i)];
+		for (int i = 0; i < FN; i++) for (int u = 0; u < 3; u++) {
+			faces[i].v[u] = vertice_map[3 * i + u];
+		}
+		delete vertice_map;
+	}
+
+	// debug
+	//printf("%d\n", this->count_duplicate_vertice());
+
+	delete vtx;
 
 	// restore edges
 	{
@@ -157,48 +279,6 @@ void triangle_mesh::toSTL(std::vector<triangle_3d_f> &trigs) {
 
 /* ================ SPLIT DISJOINT COMPONENTS ================ */
 
-// data structure for working with mesh connectivity
-class disjoint_set {
-	uint8_t *rank;
-public:
-	int *parent;
-	const int inf = 0x3fffffff;
-	disjoint_set(int N) {
-		parent = new int[N];
-		rank = new uint8_t[N];
-		for (int i = 0; i < N; i++) {
-			parent[i] = -inf;
-			rank[i] = 0;
-		}
-	}
-	~disjoint_set() {
-		delete parent; parent = 0;
-		delete rank; rank = 0;
-	}
-	int findRepresentative(int i) {
-		if (parent[i] < 0) return i;
-		else {
-			int ans = findRepresentative(parent[i]);
-			parent[i] = ans;
-			return ans;
-		}
-	}
-	int representative_ID(int i) {
-		while (parent[i] >= 0) i = parent[i];
-		return -1 - parent[i];
-	}
-	bool unionSet(int i, int j) {
-		int i_rep = findRepresentative(i);
-		int j_rep = findRepresentative(j);
-		if (i_rep == j_rep) return false;
-		if (rank[i_rep] < rank[j_rep])
-			parent[i_rep] = parent[i] = j_rep;
-		else if (rank[i_rep] > rank[j_rep])
-			parent[j_rep] = parent[j] = i_rep;
-		else parent[j_rep] = parent[j] = i_rep, rank[i_rep]++;
-		return true;
-	}
-};
 
 // split the mesh into disjoint sub-meshes
 std::vector<triangle_mesh> triangle_mesh::split_disjoint() const {
@@ -443,7 +523,7 @@ void triangle_mesh::reduce_edge(float k) {
 		int pi = dsj.findRepresentative(i);
 		new_pos[pi] += vertice[i], sumcount[pi]++;
 	}
-	for (int i = 0; i < VN; i++) new_pos[i] /= sumcount[i];
+	for (int i = 0; i < VN; i++) new_pos[i] /= (float)sumcount[i];
 	delete sumcount;
 
 	// update vertice
@@ -459,6 +539,7 @@ void triangle_mesh::reduce_edge(float k) {
 		vertice_map[i] = vertice_map[dsj.findRepresentative(i)];
 	delete new_pos;
 	vertice = vertice_new;
+	//printf("%d\n", this->count_duplicate_vertice());
 	vertice_new.clear(); vertice_new.shrink_to_fit();  // release memory
 	for (int i = 0; i < EN; i++) {
 		edges[i].v[0] = vertice_map[edges[i].v[0]];
@@ -478,7 +559,7 @@ void triangle_mesh::reduce_edge(float k) {
 			faces_new.push_back(faces[i]);
 	faces = faces_new;
 	faces_new.clear(); faces_new.shrink_to_fit();
-	FN = faces.size();
+	FN = (int)faces.size();
 
 	// update edges (connectivity restoration)
 	struct edge_id {
@@ -528,7 +609,9 @@ void triangle_mesh::reduce_edge(float k) {
 	};
 	t0 = NTime::now();
 	std::sort(faces.begin(), faces.end(), [&](face a, face b) {
-		return hashFace(a) < hashFace(b);
+		return hashFace(a) < hashFace(b);  // faster
+		std::sort(a.v, a.v + 3); std::sort(b.v, b.v + 3);
+		return a.v[0] == b.v[0] ? a.v[1] == b.v[1] ? a.v[2] < b.v[2] : a.v[1] < b.v[1] : a.v[0] < b.v[0];
 	});
 	printf("Sort faces: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 	faces_new.clear(); faces_new.reserve(FN);
@@ -559,17 +642,26 @@ void triangle_mesh::reduce_edge(float k) {
 /* ================ MAIN ================ */
 
 int main(int argc, char* argv[]) {
-	std::vector<triangle_3d_f> trigs;
 
 	auto time_start = NTime::now();
 
+	// load file
 	auto t0 = NTime::now();
+	std::vector<triangle_3d_f> trigs;
 	readSTL(argv[1], trigs);
 	printf("Load file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
+	// calculate an appropriate epsilon
+	float sum_el = 0.;
+	for (int i = 0; i < (int)trigs.size(); i++) {
+		for (int u = 0; u < 3; u++) sum_el += length(trigs[i][(u + 1) % 3] - trigs[i][u]);
+	}
+	float epsilon = 1e-3 * sum_el / float(3 * trigs.size());
+
+	// restore mesh connectivity
 	t0 = NTime::now();
 	triangle_mesh M;
-	M.fromSTL(trigs);
+	M.fromSTL(trigs, epsilon);
 	printf("Restore connectivity: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
 	// find disconnected components
@@ -588,7 +680,7 @@ int main(int argc, char* argv[]) {
 		std::vector<triangle_3d_f> trigs;
 
 		t0 = NTime::now();
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 1; i++) {
 			//M.toSTL(trigs);
 			M.loop_subdivide();
 		}

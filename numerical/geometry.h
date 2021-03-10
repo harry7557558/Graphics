@@ -364,7 +364,6 @@ public:
 	friend double trace(const mat3 &m) { return m.v[0][0] + m.v[1][1] + m.v[2][2]; }
 	friend double sumsqr(const mat3 &m) { double r = 0; for (int i = 0; i < 9; i++) r += (&m.v[0][0])[i] * (&m.v[0][0])[i]; return r; }  // sum of square of elements
 
-
 	mat3 operator * (const mat3 &A) const {
 		mat3 R;
 		for (int m = 0; m < 3; m++) for (int n = 0; n < 3; n++) {
@@ -373,7 +372,12 @@ public:
 		}
 		return R;
 	}
-	vec3 operator * (const vec3 &a) const { return vec3(v[0][0] * a.x + v[0][1] * a.y + v[0][2] * a.z, v[1][0] * a.x + v[1][1] * a.y + v[1][2] * a.z, v[2][0] * a.x + v[2][1] * a.y + v[2][2] * a.z); }
+	vec3 operator * (const vec3 &a) const {
+		return vec3(
+			v[0][0] * a.x + v[0][1] * a.y + v[0][2] * a.z,
+			v[1][0] * a.x + v[1][1] * a.y + v[1][2] * a.z,
+			v[2][0] * a.x + v[2][1] * a.y + v[2][2] * a.z);
+	}
 };
 
 mat3 tensor(vec3 u, vec3 v) { return mat3(u*v.x, u*v.y, u*v.z); }
@@ -409,6 +413,56 @@ mat3 rotationMatrix_z(double a) {
 		0, 0, 1
 	);
 }
+
+
+
+class mat3f {
+public:
+	float v[3][3];
+	mat3f() {}
+	explicit mat3f(float k) {  // diagonal matrix
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+			v[i][j] = k * (i == j);
+	}
+	explicit mat3f(vec3f lambda) {  // diagonal matrix
+		for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++)
+			v[i][j] = i == j ? ((float*)&lambda)[i] : 0;
+	}
+	explicit mat3f(vec3f i, vec3f j, vec3f k) {  // matrix by column vectors
+		for (int u = 0; u < 3; u++) v[u][0] = ((float*)&i)[u], v[u][1] = ((float*)&j)[u], v[u][2] = ((float*)&k)[u];
+	}
+	explicit mat3f(float _00, float _10, float _20, float _01, float _11, float _21, float _02, float _12, float _22) {  // ordered in column-wise
+		v[0][0] = _00, v[0][1] = _01, v[0][2] = _02, v[1][0] = _10, v[1][1] = _11, v[1][2] = _12, v[2][0] = _20, v[2][1] = _21, v[2][2] = _22;
+	}
+	float* operator[] (int d) { return &v[d][0]; }
+	const float* operator[] (int d) const { return &v[d][0]; }
+	void operator += (const mat3f &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; }
+	void operator -= (const mat3f &m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; }
+	void operator *= (float m) { for (int i = 0; i < 9; i++) (&v[0][0])[i] *= m; }
+	mat3f operator + (const mat3f &m) const { mat3f r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] + (&m.v[0][0])[i]; return r; }
+	mat3f operator - (const mat3f &m) const { mat3f r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] - (&m.v[0][0])[i]; return r; }
+	mat3f operator * (float m) const { mat3f r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = (&v[0][0])[i] * m; return r; }
+	friend mat3f operator * (float a, const mat3f &m) { mat3f r; for (int i = 0; i < 9; i++) (&r.v[0][0])[i] = a * (&m.v[0][0])[i]; return r; }
+	friend float determinant(const mat3f &m) { return m.v[0][0] * (m.v[1][1] * m.v[2][2] - m.v[1][2] * m.v[2][1]) - m.v[0][1] * (m.v[1][0] * m.v[2][2] - m.v[1][2] * m.v[2][0]) + m.v[0][2] * (m.v[1][0] * m.v[2][1] - m.v[1][1] * m.v[2][0]); }
+	mat3f transpose() const { mat3f r; for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) r.v[i][j] = v[j][i]; return r; }
+	friend mat3f transpose(const mat3f &m) { return mat3f(m.v[0][0], m.v[0][1], m.v[0][2], m.v[1][0], m.v[1][1], m.v[1][2], m.v[2][0], m.v[2][1], m.v[2][2]); }
+	friend double trace(const mat3f &m) { return m.v[0][0] + m.v[1][1] + m.v[2][2]; }
+
+	mat3f operator * (const mat3f &A) const {
+		mat3f R;
+		for (int m = 0; m < 3; m++) for (int n = 0; n < 3; n++) {
+			R.v[m][n] = 0;
+			for (int i = 0; i < 3; i++) R.v[m][n] += v[m][i] * A.v[i][n];
+		}
+		return R;
+	}
+	vec3f operator * (const vec3f &a) const {
+		return vec3f(
+			v[0][0] * a.x + v[0][1] * a.y + v[0][2] * a.z,
+			v[1][0] * a.x + v[1][1] * a.y + v[1][2] * a.z,
+			v[2][0] * a.x + v[2][1] * a.y + v[2][2] * a.z);
+	}
+};
 
 
 
