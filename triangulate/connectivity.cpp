@@ -35,6 +35,7 @@ struct triangle_mesh {
 
 	void fromSTL(std::vector<triangle_3d_f> trigs, float epsilon);
 	void toSTL(std::vector<triangle_3d_f> &trigs);
+	bool writePLY(const char* filename);
 
 	std::vector<triangle_mesh> split_disjoint() const;
 	void loop_subdivide();
@@ -43,6 +44,7 @@ struct triangle_mesh {
 	void smooth_laplacian(float k);
 	void smooth_laplacian_weighted(float k, bool constrained);
 	void smooth_taubin(float k);
+	void smooth_taubin(float k, int N, bool constrained);
 	void smooth_taubin_weighted(float k, bool constrained);
 
 	// based on divergence theorem, assume ccw outward normal
@@ -276,6 +278,38 @@ void triangle_mesh::toSTL(std::vector<triangle_3d_f> &trigs) {
 	}
 }
 
+
+// write binary PLY file
+bool triangle_mesh::writePLY(const char* filename) {
+	FILE* fp = fopen(filename, "wb");
+	if (!fp) return false;
+
+	// must be little endian
+	uint32_t d = 1;
+	if (!(*(char*)&d)) return false;
+
+	// write header
+	int VN = (int)vertice.size(), FN = (int)faces.size();
+	fprintf(fp, "ply\n");
+	fprintf(fp, "format binary_little_endian 1.0\n");
+	fprintf(fp, "element vertex %d\n", VN);
+	fprintf(fp, "property float x\nproperty float y\nproperty float z\n");
+	fprintf(fp, "element face %d\n", FN);
+	fprintf(fp, "property list uchar int vertex_indices\n");
+	fprintf(fp, "end_header\n");
+
+	// write vertice
+	if (fwrite((float*)&vertice[0], sizeof(float), 3 * VN, fp) != 3 * VN) return false;
+
+	// write faces
+	for (int i = 0; i < FN; i++) {
+		fputc(3, fp);
+		if (fwrite(faces[i].v, sizeof(int), 3, fp) != 3) return false;
+	}
+
+	if (fclose(fp)) return false;
+	return true;
+}
 
 
 
@@ -658,7 +692,6 @@ void triangle_mesh::smooth_laplacian(float k) {
 	int VN = (int)vertice.size();
 	int *N = new int[VN];
 	vec3f *Pj = new vec3f[VN];
-	//for (int i = 0; i < VN; i++) N[i] = 0, Pj[i] = vec3f(0.);
 	std::uninitialized_fill_n(N, VN, 0);
 	std::uninitialized_fill_n((float*)&Pj[0], 3 * VN, 0.0f);
 
@@ -755,6 +788,60 @@ void triangle_mesh::smooth_taubin_weighted(float k, bool constrained = false) {
 	smooth_laplacian_weighted(-k, constrained);
 }
 
+// smooth N times
+void triangle_mesh::smooth_taubin(float k, int N, bool constrained) {
+	int VN = (int)vertice.size(), EN = (int)edges.size(), FN = (int)faces.size();
+
+	// calculate k for each vertice
+	float *K = new float[VN];
+	std::uninitialized_fill_n(K, VN, k);
+	if (constrained) {
+		// do not change boundary vertice
+		bool *face_count = new bool[EN];
+		std::uninitialized_fill_n(face_count, EN, false);
+		for (int i = 0; i < FN; i++)
+			for (int u = 0; u < 3; u++) face_count[faces[i].e[u]] ^= true;
+		for (int i = 0; i < EN; i++) if (face_count[i])
+			K[edges[i].v[0]] = K[edges[i].v[1]] = 0.;
+		delete face_count;
+	}
+
+	// calculate the number of neighbors for each vertice
+	int *NN = new int[VN];
+	std::uninitialized_fill_n(NN, VN, 0);
+	for (int i = 0; i < EN; i++)
+		NN[edges[i].v[0]]++, NN[edges[i].v[1]]++;
+
+	// smoothing
+	vec3f *Pj = new vec3f[VN];
+	for (int Ni = 0; Ni < N; Ni++) {
+		// calculate the sum of neighbours for each vertex
+		std::uninitialized_fill_n((float*)&Pj[0], 3 * VN, 0.0f);
+		for (int i = 0; i < EN; i++) {
+			int v0 = edges[i].v[0], v1 = edges[i].v[1];
+			Pj[v0] += vertice[v1], Pj[v1] += vertice[v0];
+		}
+		// update vertice position
+		for (int i = 0; i < VN; i++) {
+			Pj[i] *= 1.0f / (float)NN[i];
+			vertice[i] += K[i] * (Pj[i] - vertice[i]);
+		}
+		// calculate the sum of neighbours for each vertex
+		std::uninitialized_fill_n((float*)&Pj[0], 3 * VN, 0.0f);
+		for (int i = 0; i < EN; i++) {
+			int v0 = edges[i].v[0], v1 = edges[i].v[1];
+			Pj[v0] += vertice[v1], Pj[v1] += vertice[v0];
+		}
+		// update vertice position
+		for (int i = 0; i < VN; i++) {
+			Pj[i] *= 1.0f / (float)NN[i];
+			vertice[i] -= K[i] * (Pj[i] - vertice[i]);
+		}
+	}
+
+	// clean up
+	delete K; delete NN; delete Pj;
+}
 
 
 
@@ -785,6 +872,8 @@ int main(int argc, char* argv[]) {
 	triangle_mesh M;
 	M.fromSTL(trigs, epsilon);
 	printf("Restore connectivity: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+
+	if (!M.writePLY("D:\\connected.ply")) printf("Error\n");
 
 	// find disconnected components
 	if (0) {
@@ -832,6 +921,7 @@ int main(int argc, char* argv[]) {
 	// mesh smoothing
 	if (1) {
 		t0 = NTime::now();
+#if 0
 		for (int i = 0; i < 100; i++) {
 			//M.smooth_laplacian_weighted(0.8f, true);
 			M.smooth_taubin(0.8f);
@@ -842,6 +932,11 @@ int main(int argc, char* argv[]) {
 				M.toSTL(trigs);
 			}
 		}
+#else
+		trigs.clear();
+		M.smooth_taubin(0.8f, 100, true);
+		M.toSTL(trigs);
+#endif
 		printf("Mesh smoothing: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
 		t0 = NTime::now();
