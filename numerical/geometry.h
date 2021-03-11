@@ -8,6 +8,7 @@
 #include <cmath>
 #include <math.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #ifndef PI
 #define PI 3.1415926535897932384626
@@ -22,24 +23,23 @@ template<typename T> inline T min(T x, T y) { return (x < y ? x : y); }
 template<typename T, typename t> inline T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
 template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
 
-#if 1
+// for double precision
 #define invsqrt(x) (1.0/sqrt(x))
-#else
-#include <stdint.h>
-double invsqrt(double x) {
-	// https://cs.uwaterloo.ca/~m32rober/rsqrt.pdf#page=49
-	uint64_t i;
-	double x2, y;
-	x2 = x * 0.5;
-	y = x;
-	i = *(uint64_t*)&y;
-	i = 0x5fe6eb50c7b537a9 - (i >> 1);
-	y = *(double*)&i;
-	y = y * (1.5 - (x2*y*y));
-	y = y * (1.5 - (x2*y*y));
+
+// fast inverse square root - u sure this is faster ??!!
+// https://en.wikipedia.org/wiki/Fast_inverse_square_root
+inline float invsqrt_fast_f(float number) {
+	int32_t i;  // or uint32_t
+	float x2, y;
+	x2 = number * 0.5f;
+	y = number;
+	i = *(int32_t*)&y;                       // evil floating point bit level hacking
+	i = 0x5f375a86 - (i >> 1);               // what the ****?
+	y = *(float*)&i;
+	y = y * (1.5f - (x2 * y * y));   // 1st iteration
+	// y  = y * ( 1.5f - ( x2 * y * y ) );   // 2nd iteration, this can be removed
 	return y;
 }
-#endif
 
 
 // a sketchy planar vector template

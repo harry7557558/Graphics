@@ -40,6 +40,11 @@ struct triangle_mesh {
 	void loop_subdivide();
 	void reduce_edge(float k);
 
+	void smooth_laplacian(float k);
+	void smooth_laplacian_weighted(float k, bool constrained);
+	void smooth_taubin(float k);
+	void smooth_taubin_weighted(float k, bool constrained);
+
 	// based on divergence theorem, assume ccw outward normal
 	float calc_volume() const {
 		float V = 0.;
@@ -496,6 +501,7 @@ void triangle_mesh::loop_subdivide() {
 
 
 
+
 /* ================ MESH OPTIMIZATION ================ */
 
 
@@ -639,6 +645,122 @@ void triangle_mesh::reduce_edge(float k) {
 
 
 
+/* ================ MESH SMOOTHING ================ */
+
+// http://graphics.stanford.edu/courses/cs468-12-spring/LectureSlides/06_smoothing.pdf
+// http://www.faculty.jacobs-university.de/llinsen/teaching/320491/Lecture13.pdf
+
+
+#include <memory>
+
+// Laplacian smoothing
+void triangle_mesh::smooth_laplacian(float k) {
+	int VN = (int)vertice.size();
+	int *N = new int[VN];
+	vec3f *Pj = new vec3f[VN];
+	//for (int i = 0; i < VN; i++) N[i] = 0, Pj[i] = vec3f(0.);
+	std::uninitialized_fill_n(N, VN, 0);
+	std::uninitialized_fill_n((float*)&Pj[0], 3 * VN, 0.0f);
+
+	int EN = (int)edges.size();
+	for (int i = 0; i < EN; i++) {
+		int v0 = edges[i].v[0], v1 = edges[i].v[1];
+		Pj[v0] += vertice[v1], N[v0]++;
+		Pj[v1] += vertice[v0], N[v1]++;
+	}
+
+	for (int i = 0; i < VN; i++) {
+		Pj[i] *= 1.0f / (float)N[i];
+		vec3f dp = Pj[i] - vertice[i];
+		vertice[i] += k * dp;
+	}
+
+	delete N;
+	delete Pj;
+}
+
+// cotangent weighted Laplacian smoothing, doesn't work
+// currently identical to ordinary Laplacian smoothing except it provides an constrained option
+void triangle_mesh::smooth_laplacian_weighted(float k, bool constrained = false) {
+	//throw("DEBUGGING - DOESN'T WORK");
+
+	int EN = (int)edges.size();
+	float *W = new float[EN]; int *N = new int[EN];
+	for (int i = 0; i < EN; i++) W[i] = 0., N[i] = 0;
+	int FN = (int)faces.size();
+	for (int i = 0; i < FN; i++) {
+		const int *e = faces[i].e, *v = faces[i].v;
+		for (int u = 0; u < 3; u++) {
+#if 0
+			// DOESN'T WORK
+			vec3f a = vertice[v[(u + 1) % 3]] - vertice[u];
+			vec3f b = vertice[v[(u + 2) % 3]] - vertice[u];
+			float cot = dot(a, b) / length(cross(a, b));  // possible to become negative
+			if (isnan(cot)) cot = 0.0f;
+			W[e[(u + 1) % 3]] += cot;
+#endif
+			N[e[(u + 1) % 3]] += 1;
+		}
+	}
+	for (int i = 0; i < EN; i++) W[i] *= 1.0f / float(N[i]);
+
+	for (int i = 0; i < EN; i++) W[i] = 1.0;  // DOESN'T WORK
+
+	int VN = (int)vertice.size();
+	float *Ws = new float[VN];
+	vec3f *Pj = new vec3f[VN];
+	for (int i = 0; i < VN; i++) Ws[i] = 0., Pj[i] = vec3f(0.);
+
+	for (int i = 0; i < EN; i++) {
+		int v0 = edges[i].v[0], v1 = edges[i].v[1];
+		Pj[v0] += W[v1] * vertice[v1], Ws[v0] += W[v1];
+		Pj[v1] += W[v0] * vertice[v0], Ws[v1] += W[v0];
+	}
+
+	if (constrained) {
+		// prevent the shifting of boundary points
+		bool *cnst = new bool[VN];
+		for (int i = 0; i < VN; i++) cnst[i] = false;
+		for (int i = 0; i < EN; i++) if (N[i] & 1) {
+			cnst[edges[i].v[0]] = cnst[edges[i].v[1]] = true;
+		}
+		for (int i = 0; i < VN; i++) {
+			if (cnst[i]) continue;
+			Pj[i] *= 1.0f / Ws[i];
+			vec3f dp = Pj[i] - vertice[i];
+			vertice[i] += k * dp;
+		}
+		delete cnst;
+	}
+	else {
+		for (int i = 0; i < VN; i++) {
+			Pj[i] *= 1.0f / Ws[i];
+			vec3f dp = Pj[i] - vertice[i];
+			vertice[i] += k * dp;
+		}
+	}
+
+	delete N;
+	delete Ws;
+	delete Pj;
+}
+
+// Taubin smoothing, not recommended for k>0.8
+void triangle_mesh::smooth_taubin(float k) {
+	smooth_laplacian(k);
+	smooth_laplacian(-k);
+}
+void triangle_mesh::smooth_taubin_weighted(float k, bool constrained = false) {
+	smooth_laplacian_weighted(k, constrained);
+	smooth_laplacian_weighted(-k, constrained);
+}
+
+
+
+
+
+
+
 /* ================ MAIN ================ */
 
 int main(int argc, char* argv[]) {
@@ -693,7 +815,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// reduce small edges
-	if (1) {
+	if (0) {
 		t0 = NTime::now();
 		M.reduce_edge(0.5);
 		printf("Edge reduction: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
@@ -704,6 +826,26 @@ int main(int argc, char* argv[]) {
 
 		t0 = NTime::now();
 		visualize_disjoint_stl("D:\\reduced.stl", MS);
+		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+	}
+
+	// mesh smoothing
+	if (1) {
+		t0 = NTime::now();
+		for (int i = 0; i < 100; i++) {
+			//M.smooth_laplacian_weighted(0.8f, true);
+			M.smooth_taubin(0.8f);
+			//M.smooth_taubin_weighted(0.8f, true);
+			if (i % 10 == 9) {
+				for (int i = 0; i < (int)trigs.size(); i++) for (int u = 0; u < 3; u++) trigs[i][u] -= vec3f(0, 2, 0);
+				trigs.clear();
+				M.toSTL(trigs);
+			}
+		}
+		printf("Mesh smoothing: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
+
+		t0 = NTime::now();
+		writeSTL("D:\\smoothing.stl", &trigs[0], (int)trigs.size(), nullptr, STL_CCW);
 		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 	}
 
