@@ -1,4 +1,4 @@
-Public domain C/C++ single file libraries written by other people.
+C/C++ header-only libraries written by other people.
 
-Most for reading and writing media formats.
+Most for reading and writing files.
 
