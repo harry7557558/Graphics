@@ -199,7 +199,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #include "numerical/geometry.h"  // vec2, vec3, mat3
 #include "numerical/eigensystem.h"  // EigenPairs_Jacobi
 
-#include "ply_reader.h"
+#include <string>
+#include <algorithm>
+#include <vector>
+#include "3d_reader.h"
 
 // convert stl_color to vec3f
 // https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
@@ -870,38 +873,14 @@ void render() {
 
 // ============================================== User ==============================================
 
-#if 0
-bool loadSTL(const WCHAR* filename) {
-	FILE *fp = _wfopen(filename, L"rb"); if (!fp) return false;
-	char s[80]; if (fread(s, 1, 80, fp) != 80) return false;
-	if (fread(&N, sizeof(int), 1, fp) != 1) return false;
-	try {
-		if (T) delete T; if (T_transformed) delete T_transformed;
-		if (T_Color) delete T_Color;
-		T = new stl_triangle[N];
-		T_transformed = new stl_triangle[N];
-		T_Color = new vec3f[N];
-	} catch (...) { T = 0; T_transformed = 0; T_Color = 0; N = 0; return false; }
-	hasInvalidColor = false;
-	for (int i = 0; i < N; i++) {
-		float f[12];
-		if (fread(f, sizeof(float), 12, fp) != 12) return false;
-		T[i] = stl_triangle{ vec3f(f[0], f[1], f[2]), vec3f(f[3], f[4], f[5]), vec3f(f[6], f[7], f[8]), vec3f(f[9], f[10], f[11]) };
-		stl_color col; if (fread(&col, 2, 1, fp) != 1) return false;
-		hasInvalidColor |= col >= 0;
-		T_Color[i] = stlColor2vec3(col);
-	}
-	return true;
-}
-#endif
-bool loadPLY(const WCHAR* filename) {
+bool loadFile(const WCHAR* filename) {
 	FILE *fp = _wfopen(filename, L"rb");
 	if (V) { delete V; V = 0; }
 	if (T) { delete T; T = 0; }
 	if (V_transformed) { delete V_transformed; V_transformed = 0; }
 	bool success = false;
 	try {
-		success = readPLY(fp, V, T, VN, TN);
+		success = read3DFile(fp, V, T, VN, TN);
 	} catch (...) {}
 	fclose(fp);
 	if (success) {
@@ -914,9 +893,6 @@ bool loadPLY(const WCHAR* filename) {
 		VN = TN = 0;
 		return false;
 	}
-}
-bool loadFile(const WCHAR* filename) {
-	return loadPLY(filename);
 }
 bool loadFileUserEntry() {
 	SetWindowPos(_HWND, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
