@@ -10,7 +10,9 @@ struct ply_triangle {
 
 
 
-bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
+COLORREF toCOLORREF(vec3f c);
+
+bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF* &v_col) {
 	if (fp == 0) return false;
 
 	const int MAX_SIZE = 0x10000;
@@ -49,8 +51,12 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 		std::string s;
 		for (int i = 0; ; i++) {
 			char c = next_byte();
-			if (c == end_char) { index--; return s; }
-			if (c == 0) throw(c);
+			if (c == end_char) {
+				index--;
+				if (end_char == '\n' && s.back() == '\r') s.pop_back();
+				return s;
+			}
+			if (c == 0 || c == EOF) throw(c);
 			s.push_back(c);
 		}
 	};
@@ -77,8 +83,10 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 
 	VN = FN = -1;
 
-	int xi, yi, zi, property_index = 0;
-
+	int xi = -1, yi = -1, zi = -1, property_index = 0;
+	int ri = -1, gi = -1, bi = -1;
+	std::vector<int> vertex_size_list;  // in bytes
+	std::string element_name = "";
 
 	auto split_string = [](std::string &nm, std::string &s) {
 		int first_space = (int)s.find(' ');
@@ -99,32 +107,52 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 		}
 
 		else if (nm == "element") {
-			std::string nm;
-			if (!split_string(nm, s)) return false;
+			if (!split_string(element_name, s)) return false;
 			int d = std::stoi(s);
-			if (nm == "vertex") VN = d;
-			else if (nm == "face") {
+			if (element_name == "vertex") VN = d;
+			else if (element_name == "face") {
 				FN = d;
 				if (VN == -1) return false;
+			}
+			else {
+				if (FN == -1 || VN == -1) return false;
 			}
 		}
 
 		else if (nm == "property") {
+			if (element_name != "vertex" && element_name != "face") continue;
 			std::string type;
 			if (!split_string(type, s)) return false;
 			if (type == "list") {
-				if (s != "uchar int vertex_indices") return false;
+				if (!split_string(type, s)) return false;
+				if (type != "uchar" && type != "char" && type != "int8" && type != "uint8") return false;
+				if (!split_string(type, s)) return false;
+				if (type != "uint" && type != "int" && type != "int32" && type != "uint32") return false;
+				if (s != "vertex_indices" && s != "vertex_index") return false;
 				if (FN == -1) return false;
 			}
 			else {
-				if (format != ASCII && type != "float") return false;
-				if (VN != -1 && FN == -1) {
-					if (type == "float") {
+				if (element_name == "vertex") {
+					if (type == "uchar" || type == "char" || type == "int8" || type == "uint8") vertex_size_list.push_back(1);
+					else if (type == "short" || type == "ushort" || type == "int16" || type == "uint16") vertex_size_list.push_back(2);
+					else if (type == "float" || type == "float32" || type == "int" || type == "uint" || type == "int32" || type == "uint32") vertex_size_list.push_back(4);
+					else if (type == "double" || type == "float64" || type == "int64" || type == "uint64") vertex_size_list.push_back(8);
+					else return false;
+
+					if (type == "float" || type == "float32") {
 						if (s == "x") xi = property_index;
 						if (s == "y") yi = property_index;
 						if (s == "z") zi = property_index;
 					}
 					else if (s == "x" || s == "y" || s == "z") return false;
+
+					if (s == "red" || s == "green" || s == "blue") {
+						if (s == "red") ri = property_index;
+						if (s == "green") gi = property_index;
+						if (s == "blue") bi = property_index;
+						if (type != "uchar" && type != "uint8") return false;
+					}
+
 					property_index += 1;
 				}
 			}
@@ -135,6 +163,9 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 	}
 
 	if (format == -1 || VN == -1 || FN == -1 || xi == -1 || yi == -1 || zi == -1) return false;
+
+	bool has_color = ri != -1 && gi != -1 && bi != -1;
+	if (has_color) v_col = new COLORREF[VN];
 
 
 	Vs = new vec3f[VN]; Fs = new ply_triangle[FN];
@@ -170,6 +201,10 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 		for (int i = 0; i < VN; i++) {
 			for (int u = 0; u < property_index; u++) fs[u] = readFloat();
 			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			if (has_color) {
+				vec3f col = (vec3f(fs[ri], fs[gi], fs[bi]) + vec3f(0.5)) / 255.;
+				v_col[i] = toCOLORREF(col);
+			}
 		}
 		delete fs;
 
@@ -198,9 +233,17 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 		if (next_byte() != '\n') return false;
 
 		float *fs = new float[property_index];
+		uint32_t cr, cg, cb;
 		for (int i = 0; i < VN; i++) {
-			for (int u = 0; u < property_index; u++) *(uint32_t*)&fs[u] = read32();
+			for (int u = 0; u < property_index; u++) {
+				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();
+				else if (u == ri) cr = next_byte();
+				else if (u == gi) cg = next_byte();
+				else if (u == bi) cb = next_byte();
+				else for (int _ = 0; _ < vertex_size_list[u]; _++) next_byte();
+			}
 			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
 		}
 		delete fs;
 
@@ -230,9 +273,17 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 		if (next_byte() != '\n') return false;
 
 		float *fs = new float[property_index];
+		uint32_t cr, cg, cb;
 		for (int i = 0; i < VN; i++) {
-			for (int u = 0; u < property_index; u++) *(uint32_t*)&fs[u] = read32();
+			for (int u = 0; u < property_index; u++) {
+				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();
+				else if (u == ri) cr = next_byte();
+				else if (u == gi) cg = next_byte();
+				else if (u == bi) cb = next_byte();
+				else for (int _ = 0; _ < vertex_size_list[u]; _++) next_byte();
+			}
 			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
 		}
 		delete fs;
 
@@ -252,6 +303,7 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 
 	return true;
 }
+
 
 
 
@@ -409,23 +461,35 @@ void stl2ply(const std::vector<triangle_3d_f> &trigs, float epsilon, std::vector
 
 
 
-bool readBinarySTL(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
+bool readBinarySTL(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF* &f_col) {
 
 	char s[80]; if (fread(s, 1, 80, fp) != 80) return false;
 	int N; if (fread(&N, sizeof(int), 1, fp) != 1) return false;
 	if (N <= 0) return false;
 	std::vector<triangle_3d_f> trigs;
 	try {
-
 		trigs.reserve(N);
+		f_col = new COLORREF[N];
 	} catch (std::bad_alloc) {
 		return false;
 	}
+
+	// https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
+	auto stlColor = [](int16_t c)->COLORREF {
+		if (c >= 0) return 0xffffffff;
+		COLORREF r = 0; uint8_t *k = (uint8_t*)&r;
+		k[2] = (((uint32_t)c & (uint32_t)0b111110000000000) >> 10) << 3;
+		k[1] = (((uint32_t)c & (uint32_t)0b000001111100000) >> 5) << 3;
+		k[0] = (((uint32_t)c & (uint32_t)0b000000000011111)) << 3;
+		return r;
+	};
+
 	for (int i = 0; i < N; i++) {
 		vec3f f[4];
 		if (fread(f, sizeof(vec3f), 4, fp) != 4) return false;
 		uint16_t col; if (fread(&col, 2, 1, fp) != 1) return false;
 		trigs.push_back(triangle_3d_f(f[1], f[2], f[3]));
+		f_col[i] = stlColor(col);
 	}
 
 	std::vector<vec3f> vertice;
@@ -507,11 +571,11 @@ bool readAsciiSTL(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 }
 
 
-bool read3DFile(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
+bool read3DFile(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF* &v_col, COLORREF* &f_col) {
 	if (fp == NULL) return false;
 
 	try {
-		if (readPLY(fp, Vs, Fs, VN, FN)) return true;
+		if (readPLY(fp, Vs, Fs, VN, FN, v_col)) return true;
 		else throw(false);
 	} catch (...) {
 		rewind(fp);
@@ -525,7 +589,7 @@ bool read3DFile(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN) {
 	}
 
 	try {
-		if (readBinarySTL(fp, Vs, Fs, VN, FN)) return true;
+		if (readBinarySTL(fp, Vs, Fs, VN, FN, f_col)) return true;
 		else throw(false);
 	} catch (...) {
 		rewind(fp);

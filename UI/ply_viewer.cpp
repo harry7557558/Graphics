@@ -204,16 +204,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #include <vector>
 #include "3d_reader.h"
 
-// convert stl_color to vec3f
-// https://en.wikipedia.org/wiki/STL_(file_format)#Color_in_binary_STL
-vec3f stlColor2vec3(int16_t c) {
-	if (c >= 0) return vec3f(1.);  // otherwise, max 31/32=0.97
-	float r = ((uint32_t)c & (uint32_t)0b111110000000000) >> 10;
-	float g = ((uint32_t)c & (uint32_t)0b000001111100000) >> 5;
-	float b = ((uint32_t)c & (uint32_t)0b000000000011111);
-	return vec3f(r, g, b) * 0.03125f;
-}
-
 
 
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
@@ -318,11 +308,12 @@ bool DarkBackground = false;
 #pragma endregion Camera/Screen, Mouse/Key
 
 
-#pragma region STL file
+#pragma region PLY file
 
 WCHAR filename[MAX_PATH] = L"";
 int VN; vec3f *V = 0, *V_transformed = 0;  // vertice
 int TN; ply_triangle *T = 0; // triangles
+COLORREF *Vcol = 0, *Fcol = 0;  // vertice or face colors, at most one non-zero
 vec3f BMin, BMax;  // bounding box
 double Volume; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
@@ -380,7 +371,7 @@ double rayIntersect(vec3f ro, vec3f rd) {
 }
 
 
-#pragma endregion  STL and related calculations
+#pragma endregion  geometry and related calculations
 
 
 // ============================================ Rendering ============================================
@@ -394,14 +385,33 @@ vec3f *_COLORBUF = 0;
 #define colorbuf(x,y) _COLORBUF[(y)*_WIN_W+(x)]
 
 
-typedef unsigned char byte;
-COLORREF toCOLORREF(vec3f c) {
-	COLORREF r = 0; byte *k = (byte*)&r;
-	k[0] = byte(255.99f * clamp(c.z, 0.f, 1.f));
-	k[1] = byte(255.99f * clamp(c.y, 0.f, 1.f));
-	k[2] = byte(255.99f * clamp(c.x, 0.f, 1.f));
+vec3f fromCOLORREF(COLORREF c) {
+	vec3f r; byte *k = (byte*)&c;
+	r.z = (byte)k[0] / 255.f;
+	r.y = (byte)k[1] / 255.f;
+	r.x = (byte)k[2] / 255.f;
 	return r;
 }
+COLORREF toCOLORREF(vec3f c) {
+	COLORREF r = 0; uint8_t *k = (uint8_t*)&r;
+	k[0] = uint8_t(255.f * clamp(c.z, 0.f, 1.f));
+	k[1] = uint8_t(255.f * clamp(c.y, 0.f, 1.f));
+	k[2] = uint8_t(255.f * clamp(c.x, 0.f, 1.f));
+	return r;
+}
+
+vec3f getFaceColor(int i) {
+	if (Fcol) {
+		return fromCOLORREF(Fcol[i]);
+	}
+	if (Vcol) {
+		vec3f col = vec3f(0.);
+		for (int u = 0; u < 3; u++) col += fromCOLORREF(Vcol[T[i][u]]);
+		return col * 0.33333333f;
+	}
+	return vec3f(1.0);
+}
+
 
 void drawLine(vec2 p, vec2 q, COLORREF col) {
 	vec2 d = q - p;
@@ -665,7 +675,7 @@ vec3f calcShadeFromID(int i) {
 	vec3f n =
 		NormalMode == 0 ? normalize(cross(B - A, C - A)) :
 		NormalMode == 1 ? normalize(cross(C - A, B - A)) : vec3f(0.);
-	vec3f c = vec3f(1);  // default: from file
+	vec3f c = vec3f(1);
 	switch (ShadeMode) {
 	case 0: {  // phong
 		float k = dot(n, light);
@@ -691,9 +701,11 @@ vec3f calcShadeFromID(int i) {
 		break;
 	}
 	case 3: {  // directly from file
+		c = getFaceColor(i);
 		break;  // nothing needs to be done here
 	}
 	case 4: {  // file + Phong
+		c = getFaceColor(i);
 		float k = min(abs(dot(n, light)), 1.f);
 		vec3f d = normalize(mid - vec3f(CamP));
 		float spc = dot(d - (2.f * dot(d, n))*n, light);
@@ -878,9 +890,11 @@ bool loadFile(const WCHAR* filename) {
 	if (V) { delete V; V = 0; }
 	if (T) { delete T; T = 0; }
 	if (V_transformed) { delete V_transformed; V_transformed = 0; }
+	if (Vcol) { delete Vcol; Vcol = 0; }
+	if (Fcol) { delete Fcol; Fcol = 0; }
 	bool success = false;
 	try {
-		success = read3DFile(fp, V, T, VN, TN);
+		success = read3DFile(fp, V, T, VN, TN, Vcol, Fcol);
 	} catch (...) {}
 	fclose(fp);
 	if (success) {
