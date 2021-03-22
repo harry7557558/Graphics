@@ -18,14 +18,14 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 	const int MAX_SIZE = 0x10000;
 	int buffer_size = MAX_SIZE;
 	int index = buffer_size;
-	char buf[MAX_SIZE + 1]; buf[MAX_SIZE] = 0;
+	uint8_t buf[MAX_SIZE + 1]; buf[MAX_SIZE] = 0;
 	auto next_byte = [&]()->int {
 		if (index >= buffer_size) {
 			if (buffer_size == MAX_SIZE)
 				buffer_size = (int)fread(buf, 1, MAX_SIZE, fp), index = 0;
 			else return EOF;
 		}
-		return buf[index++];
+		return (int)buf[index++];
 	};
 	auto ignore_whitespace = [&]()->bool {
 		for (int i = 0;; i++) {
@@ -233,7 +233,7 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 		if (next_byte() != '\n') return false;
 
 		float *fs = new float[property_index];
-		uint32_t cr, cg, cb;
+		uint32_t cr = 0, cg = 0, cb = 0;
 		for (int i = 0; i < VN; i++) {
 			for (int u = 0; u < property_index; u++) {
 				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();
@@ -244,6 +244,7 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 			}
 			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
 			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
+			printf("%x %x %x\n", cr, cg, cb);
 		}
 		delete fs;
 
@@ -273,7 +274,7 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 		if (next_byte() != '\n') return false;
 
 		float *fs = new float[property_index];
-		uint32_t cr, cg, cb;
+		uint32_t cr = 0, cg = 0, cb = 0;
 		for (int i = 0; i < VN; i++) {
 			for (int u = 0; u < property_index; u++) {
 				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();

@@ -58,7 +58,7 @@ struct triangle_mesh {
 		return V;
 	}
 
-	// for debug purpose
+	// for debugging purpose
 	int count_duplicate_vertice() const {
 		std::vector<vec3f> v = vertice;
 		std::sort(v.begin(), v.end(), [](vec3f a, vec3f b) {
@@ -383,7 +383,7 @@ std::vector<triangle_mesh> triangle_mesh::split_disjoint() const {
 }
 
 // visualize disjoint components using colors
-void visualize_disjoint_stl(const char* filename, const std::vector<triangle_mesh> &MS) {
+void visualize_disjoint_ply(const char* filename, const std::vector<triangle_mesh> &MS) {
 	std::vector<stl_triangle> trigs;
 	int MS_N = (int)MS.size();
 
@@ -402,15 +402,49 @@ void visualize_disjoint_stl(const char* filename, const std::vector<triangle_mes
 		cols.push_back(ColorFunctions<vec3f, float>::LightTemperatureMap((Vs[i] - minV) / max(maxV - minV, 1e-6f)));
 	}
 
-	// add triangles
+	int VN = 0, FN = 0;
+	for (int i = 0; i < MS_N; i++) {
+		VN += (int)MS[i].vertice.size();
+		FN += (int)MS[i].faces.size();
+	}
+
+	// ply header
+	FILE* fp = fopen(filename, "wb");
+	fprintf(fp, "ply\n");
+	fprintf(fp, "format binary_little_endian 1.0\n");
+	fprintf(fp, "element vertex %d\n", VN);
+	fprintf(fp, "property float x\nproperty float y\nproperty float z\n");
+	fprintf(fp, "property uchar red\nproperty uchar green\nproperty uchar blue\n");
+	fprintf(fp, "element face %d\n", FN);
+	fprintf(fp, "property list uchar int vertex_indices\n");
+	fprintf(fp, "end_header\n");
+
+	// write vertice
 	for (int Mi = 0; Mi < MS_N; Mi++) {
-		for (int i = 0; i < (int)MS[Mi].faces.size(); i++) {
-			const int *f = MS[Mi].faces[i].v;
-			trigs.push_back(stl_triangle(MS[Mi].vertice[f[0]], MS[Mi].vertice[f[1]], MS[Mi].vertice[f[2]], cols[Mi]));
+		uint8_t col[3];
+		for (int u = 0; u < 3; u++) col[u] = (uint8_t)(255 * ((float*)&cols[Mi])[u] + 0.5);
+		for (int i = 0; i < (int)MS[Mi].vertice.size(); i++) {
+			vec3f p = MS[Mi].vertice[i];
+			fwrite(&p, sizeof(vec3f), 1, fp);
+			fwrite(col, 1, 3, fp);
 		}
 	}
-	writeSTL(filename, &trigs[0], (int)trigs.size(), nullptr, STL_CCW);
 
+	// write faces
+	int sum_vn = 0;
+	for (int Mi = 0; Mi < MS_N; Mi++) {
+		for (int i = 0; i < (int)MS[Mi].faces.size(); i++) {
+			const triangle_mesh::face *f = &MS[Mi].faces[i];
+			fputc(3, fp);
+			for (int u = 0; u < 3; u++) {
+				int d = sum_vn + f->v[u];
+				fwrite(&d, 4, 1, fp);
+			}
+		}
+		sum_vn += MS[Mi].vertice.size();
+	}
+
+	fclose(fp);
 }
 
 
@@ -882,7 +916,7 @@ int main(int argc, char* argv[]) {
 		printf("Disjoint set: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
 		t0 = NTime::now();
-		visualize_disjoint_stl("D:\\disconnected.stl", MS);
+		visualize_disjoint_ply("D:\\disconnected.ply", MS);
 		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 	}
 
@@ -914,7 +948,7 @@ int main(int argc, char* argv[]) {
 		printf("Disjoint set: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 
 		t0 = NTime::now();
-		visualize_disjoint_stl("D:\\reduced.stl", MS);
+		visualize_disjoint_ply("D:\\reduced.ply", MS);
 		printf("Write file: %.1lfms\n", 1000.*fsec(NTime::now() - t0).count());
 	}
 

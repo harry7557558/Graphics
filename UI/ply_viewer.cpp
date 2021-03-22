@@ -37,15 +37,6 @@
 //   - Numpad2: Decrease camera position vertical angle by 15 degrees
 // WSAD keys are supported but not recommended (may be used along with Alt+Click)
 // Press Home key or Ctrl+0 to reset viewport to default
-// To-do list:
-//   - Rotation and zooming that changes the position of the viewport center but not the camera (Shift+Numpad)
-//   - Moving camera along xOy plane but not changing the viewport center (Ctrl+Shift+Drag)
-//   - Shortcuts for camera roll (Shift+Numpad4/Numpad6 in Blender)
-//   - Dynamic translation and zooming based on the position of the camera and viewport center
-//   - Arrow keys to go up/down (help with WSAD)
-//   - Free rotation when grid is hidden
-//   - A key to move viewport center to center of mass
-//   - Optional: "crawling" on the surface
 
 // VISUALIZATION OPTIONS:
 // Press C or Shift+C to switch to next/previous coloring mode
@@ -75,19 +66,6 @@
 //   - The inertia tensor (calculated at the center of mass) is visualized as three yellow principle axes with lengths equal to the principle radiuses
 //   - If one or more calculations get NAN, there will be a dark green cross at the center of mass
 // Press P to tell whether the object is a surface or a solid (affects the calculation of physical properties)
-// To-do list:
-//   - [not trivial] Fix the stroking issue
-//   - An option to always show viewport center
-//   - Math visualization:
-//     - setAxisRatio
-//     - A (mandatory) clipping box
-//   - Pop out dialog box to show numerical informations of the object
-//   - Hide/unhide part of object
-//   - Visualization of the objects' bounding box/sphere
-//   - Visualization of the volume of the object
-//   - Outline rendering based on geometry
-//   - Smoothed shading (interpolation)
-//   - Option to show xOy plane with rendering for shadow
 
 // FILE AND EDITING:
 // Press Ctrl+O to open Windows file explorer to browse and open a file
@@ -101,16 +79,6 @@
 //   - Press Numpad5 to translate object so that its center coincident with the origin
 //   - Press plus/minus keys or scroll mouse wheel to scale the object about its center
 //   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along the z-axis, about the xOy plane
-// To-do list:
-//   - Report error if the file contains NAN/INF values
-//   - Alt+Numpad0 to move the object to the first quadrant (x-y only)
-//   - Shortcuts to rotate the object to make its principal axes axis-oriented
-//   - Nonlinear transforms
-//   - Reflection
-//   - Mouse-involved editings (eg. dragging, scrolling)
-//   - Shortcut to view next/previous model in directory
-//   - Support for non-standard animated STL (keyframes for position/orientation)
-//   - Recording GIF
 
 
 
@@ -895,8 +863,8 @@ bool loadFile(const WCHAR* filename) {
 	bool success = false;
 	try {
 		success = read3DFile(fp, V, T, VN, TN, Vcol, Fcol);
+		if (fp) fclose(fp);
 	} catch (...) {}
-	fclose(fp);
 	if (success) {
 		V_transformed = new vec3f[VN];
 		return true;
@@ -909,13 +877,20 @@ bool loadFile(const WCHAR* filename) {
 	}
 }
 bool loadFileUserEntry() {
+	bool topmost = GetWindowLong(_HWND, GWL_EXSTYLE) & WS_EX_TOPMOST;
 	SetWindowPos(_HWND, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 	OPENFILENAME ofn = { sizeof(OPENFILENAME) };
 	ofn.lpstrFile = filename;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.Flags = OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
-	if (!GetOpenFileName(&ofn)) return false;
-	return loadFile(filename);
+	if (!GetOpenFileName(&ofn)) {
+		SetWindowPos(_HWND, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		return false;
+	}
+	else {
+		SetWindowPos(_HWND, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+		return loadFile(filename);
+	}
 }
 #if 0
 bool saveFile(const WCHAR* filename) {
