@@ -148,7 +148,8 @@ namespace SPH {
 	// forces
 	double density_0 = 1.0;  // rest density
 	double pressure(double density) {  // calculate pressure from fluid density
-		return 10.*(pow(density / density_0, 7.) - 1.);
+		//return 10.*(pow(density / density_0, 7.) - 1.);
+		return 100.*(density / density_0 - 1.);
 	}
 	double viscosity = 0.;  // fluid viscosity, unit: m²/s; a=viscosity*∇²v
 	vec2 g = vec2(0, -9.8);  // acceleration due to gravity
@@ -179,32 +180,7 @@ namespace SPH {
 	void updateScene(double dt);
 	void non_iterative_state_equation(double dt);
 	void non_iterative_splitting(double dt);
-
-#if 0
-	// for rendering only
-	double get_density(vec2 p) {
-		void* _Grid = Grid;
-		ivec2 ij = getGridId(p);
-		if (ij.x < 0 || ij.y < 0 || ij.x >= Grid_N.x || ij.y >= Grid_N.y) return 0.0;
-		int i0 = max(ij.x - 1, 0), i1 = min(ij.x + 1, Grid_N.x - 1);
-		int j0 = max(ij.y - 1, 0), j1 = min(ij.y + 1, Grid_N.y - 1);
-		double sum_w = 1e-12;
-		for (int i = i0; i <= i1; i++) {
-			for (int j = j0; j <= j1; j++) {
-				if (_Grid != Grid) continue;
-				gridcell *g = getGrid(ivec2(i, j));
-				int gN = g->N;
-				if (!(gN >= 0 && gN < MAX_PN_G)) continue;
-				for (int u = 0; u < gN; u++) {
-					if (!(g->Ps[u] >= 0 && g->Ps[u] < N)) continue;
-					vec2 pj = Particles[g->Ps[u]].p;
-					sum_w += W(length(pj - p));
-				}
-			}
-		}
-		return m * sum_w;
-	}
-#endif
+	void iterative_splitting(double dt, double eta);
 
 };  // namespace SPH
 
@@ -220,7 +196,7 @@ void SPH::calcGrid() {
 		LB = pMin(LB, Particles[i].p);
 		TR = pMax(TR, Particles[i].p);
 	}
-	//LB = pMax(LB, vec2(-2, -2)), TR = pMin(TR, vec2(5, 4));
+	LB = pMax(LB, vec2(-2, -2)), TR = pMin(TR, vec2(5, 4));
 	LB -= Grid_dp, TR += Grid_dp;
 	if (0) {
 		const double R = 3.;
@@ -291,7 +267,7 @@ void SPH::find_neighbors() {
 
 void SPH::updateScene(double dt) {
 	// split large steps
-	double max_step = 0.0005;
+	double max_step = 0.001;
 	if (dt > max_step) {
 		int N = (int)(dt / max_step + 1);
 		for (int i = 0; i < N; i++) updateScene(dt / N);
@@ -302,7 +278,8 @@ void SPH::updateScene(double dt) {
 	if (!Accelerations) Accelerations = new vec2[N];
 
 	//non_iterative_state_equation(dt);
-	non_iterative_splitting(dt);  // slower but less "particle effect"
+	//non_iterative_splitting(dt);  // slower but less "particle effect"
+	iterative_splitting(dt, 0.01);  // not sure if I implemented it correctly but it isn't more stable
 
 	SPH::t += dt;
 
@@ -371,7 +348,6 @@ void SPH::non_iterative_splitting(double dt) {
 	}
 
 	// calculate the acceleration caused by viscosity and update velocity
-	vec2 *v_temp = new vec2[N];
 	for (int i = 0; i < N; i++) {
 		vec2 lap_v(0.);
 		for (int u = 0; u < Neighbors[i].N; u++) {
@@ -382,7 +358,7 @@ void SPH::non_iterative_splitting(double dt) {
 			lap_v += (2.*m / rhoj) * vij * (dot(xij, W_grad_ij) / (xij.sqr() + 0.01*h*h));
 		}
 		Accelerations[i] += viscosity * lap_v;
-		v_temp[i] = Particles[i].v + Accelerations[i] * dt;
+		Particles[i].v += Accelerations[i] * dt;
 	}
 
 	// calculate the temp density and pressure
@@ -392,8 +368,7 @@ void SPH::non_iterative_splitting(double dt) {
 		for (int _ = 0; _ < Neighbors[i].N; _++) {
 			int j = Neighbors[i].Ns[_];
 			density += m * W(length(Particles[i].p - Particles[j].p));
-			// I think this should be multiplied by m even though the equation in the paper doesn't
-			density += m * dot((v_temp[i] - v_temp[j]) * dt, W_grad(Particles[i].p - Particles[j].p));
+			density += m * dot((Particles[i].v - Particles[j].v) * dt, W_grad(Particles[i].p - Particles[j].p));
 		}
 		rho_temp[i] = density;
 		Particles[i].pressure = pressure(density);
@@ -415,11 +390,92 @@ void SPH::non_iterative_splitting(double dt) {
 
 	// update position and velocity
 	for (int i = 0; i < N; i++) {
-		Particles[i].v = v_temp[i] + Accelerations[i] * dt;
+		Particles[i].v += Accelerations[i] * dt;
 		Particles[i].p += Particles[i].v * dt;
 	}
-	delete v_temp;
 	delete rho_temp;
+}
+
+// Iterative equation of state solver with splitting
+void SPH::iterative_splitting(double dt, double eta) {
+	find_neighbors();
+
+	// calculate the acceleration caused by other forces
+	for (int i = 0; i < N; i++)
+		Accelerations[i] = g + Boundary(Particles[i].p);
+
+	// calculate the density at each particle
+	for (int i = 0; i < N; i++) {
+		double density = 1e-12;
+		for (int _ = 0; _ < Neighbors[i].N; _++) {
+			int j = Neighbors[i].Ns[_];
+			density += m * W(length(Particles[i].p - Particles[j].p));
+		}
+		Particles[i].density = density;
+	}
+
+	// calculate the acceleration caused by viscosity and update velocity/position
+	for (int i = 0; i < N; i++) {
+		vec2 lap_v(0.);
+		for (int u = 0; u < Neighbors[i].N; u++) {
+			int j = Neighbors[i].Ns[u];
+			vec2 xij = Particles[i].p - Particles[j].p, vij = Particles[i].v - Particles[j].v;
+			double rhoj = Particles[j].density;
+			vec2 W_grad_ij = W_grad(xij);
+			lap_v += (2.*m / rhoj) * vij * (dot(xij, W_grad_ij) / (xij.sqr() + 0.01*h*h));
+		}
+		Accelerations[i] += viscosity * lap_v;
+		Particles[i].v += Accelerations[i] * dt;
+		//Particles[i].p += Particles[i].v * dt;
+	}
+
+	// iteration
+	for (int i = 0; ; i++) {
+
+		// calculate the density and pressure
+		for (int i = 0; i < N; i++) {
+			double density = 1e-12;
+			for (int _ = 0; _ < Neighbors[i].N; _++) {
+				int j = Neighbors[i].Ns[_];
+				density += m * W(length(Particles[i].p - Particles[j].p));
+				//density += m * dot((Particles[i].v - Particles[j].v) * dt, W_grad(Particles[i].p - Particles[j].p));
+			}
+			Particles[i].density = density;
+			Particles[i].pressure = pressure(density);
+		}
+
+		// calculate the acceleration due to the gradient of pressure
+		for (int i = 0; i < N; i++) {
+			vec2 grad_P(0.);
+			for (int u = 0; u < Neighbors[i].N; u++) {
+				int j = Neighbors[i].Ns[u];
+				vec2 W_grad_ij = W_grad(Particles[i].p - Particles[j].p);
+				double rhoi = Particles[i].density, rhoj = Particles[j].density;
+				double pi = Particles[i].pressure, pj = Particles[j].pressure;
+				grad_P += rhoi * m * (pi / (rhoi*rhoi) + pj / (rhoj*rhoj)) * W_grad_ij;
+			}
+			Accelerations[i] = -grad_P / Particles[i].density;
+		}
+
+		// update position and velocity
+		for (int i = 0; i < N; i++) {
+			Particles[i].v += Accelerations[i] * dt;
+			Particles[i].p += Accelerations[i] * dt * dt;
+		}
+
+		// check if the error of density is small enough
+		double sum_err = 0.;
+		for (int i = 0; i < N; i++) {
+			double err = Particles[i].density - density_0;
+			sum_err += err * err;
+		}
+		if (sqrt(sum_err / N) < eta*density_0 || i >= 10) {
+			break;
+		}
+		find_neighbors();
+	}
+
+	for (int i = 0; i < N; i++) Particles[i].p += Particles[i].v*dt;
 }
 
 
@@ -524,7 +580,7 @@ void render() {
 	}
 
 	// visualize SPH grid
-	if (1) {
+	if (0) {
 		for (int i = 0; i < SPH::Grid_N.x; i++) {
 			for (int j = 0; j < SPH::Grid_N.y; j++) {
 				drawBoxF(SPH::Grid_LB + vec2(i, j) * SPH::Grid_dp, SPH::Grid_LB + vec2(i + 1, j + 1)*SPH::Grid_dp, 0x202040);
@@ -541,22 +597,37 @@ void render() {
 	}
 
 	// visualize density field
-	/*if (1) {
-		for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) {
-			vec2 p = fromInt(vec2(i, j));
-			double density = SPH::get_density(p);
-			if (density > 0.5) {
-				_WINIMG[j*_WIN_W + i] = 0xFFFFFFFF;
+	if (1) {
+		double *density = new double[_WIN_W*_WIN_H];
+		for (int i = 0; i < _WIN_W*_WIN_H; i++) density[i] = 0.;
+		for (int i = 0; i < SPH::N; i++) {
+			vec2 p = SPH::Particles[i].p, pi = fromFloat(p);
+			double r = 2.0 * SPH::h * Unit;
+			int i0 = max(0, (int)floor(pi.x - r - 1)), i1 = min(_WIN_W - 1, (int)ceil(pi.x + r + 1));
+			int j0 = max(0, (int)floor(pi.y - r - 1)), j1 = min(_WIN_H - 1, (int)ceil(pi.y + r + 1));
+			for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) {
+				density[j*_WIN_W + i] += SPH::m * SPH::W(length(fromInt(vec2(i, j)) - p));
 			}
 		}
-	}*/
+		for (int j = 0; j < _WIN_H; j++) for (int i = 0; i < _WIN_W; i++) {
+			double d = density[j*_WIN_W + i];
+			if (d != 0.) {
+				if (0) {
+					if (d > 0.5) _WINIMG[j*_WIN_W + i] = 0xffffff;
+				}
+				else {
+					vec3 col = tanh(2.*d) * ColorFunctions<vec3, double>::Rainbow(clamp(0.5*pow(d, 6.), 0., 1.));
+					_WINIMG[j*_WIN_W + i] = COLORREF(col.z * 255) | (COLORREF(col.y * 255) << 8) | (COLORREF(col.x * 255) << 16);
+				}
+			}
+		}
+		delete density;
+	}
 
 
 	// draw SPH particles
-	if (1) {
-		double density = 0.;
+	if (0) {
 		for (int i = 0; i < SPH::N; i++) {
-			density += SPH::Particles[i].density / SPH::N;
 			//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
 			vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
 			drawDotF(SPH::Particles[i].p, SPH::h*Unit,
@@ -566,7 +637,6 @@ void render() {
 				if (SPH::Neighbors && SPH::Neighbors[i].N) drawDotF(SPH::Particles[i].p, SPH::h*Unit, 0x00FFFF);
 			}
 		}
-		//printf("(%lf,%lf),", SPH::t, density);
 	}
 
 	// momentum and energy calculation
@@ -741,12 +811,13 @@ public:  // preset scenes
 
 void WindowCreate(int _W, int _H) {
 	//presetScenes::Scene_random(500, 0.02, vec2(1, 0));
-	//presetScenes::Scene_left(0.02);
-	presetScenes::Scene_left(0.01);
+	presetScenes::Scene_left(0.02);
+	//presetScenes::Scene_left(0.01);
 	//presetScenes::Scene_right(0.01);
 	//presetScenes::Scene_fall(0.01);
 
 	//SPH::Boundary = presetScenes::boundary_functions::box_block;
+	//SPH::viscosity = 0.01;
 
 	if (0) {
 		SPH::h = 1.;
