@@ -92,9 +92,13 @@ double rand01(uint32_t &seed) {
 double rand_11(uint32_t &seed) {
 	return (.5 + (int32_t)lcg_next(seed))*(1. / 2147483648.);  // (-1,1)
 }
-vec2 rand2(uint32_t &seed) {
+vec2 rand2(uint32_t &seed) {  // unit vector
 	double a = lcg_next(seed) * (2.*PI / 4294967296.);
 	return vec2(cos(a), sin(a));
+}
+vec2 rand2_u(uint32_t &seed) {  // uniform distribution in |v|<r
+	double m = sqrt(rand01(seed)), a = 2.*PI*rand01(seed);
+	return vec2(m*cos(a), m*sin(a));
 }
 vec3 rand3(uint32_t &seed) {
 	double u = lcg_next(seed) * (2.*PI / 4294967296.);  // 0-2π

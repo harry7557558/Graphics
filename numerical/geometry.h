@@ -63,6 +63,7 @@ struct ivec2 {
 	friend ivec2 operator * (const int &a, const ivec2 &v) { return ivec2(a*v.x, a*v.y); }
 	ivec2 operator / (const int &a) const { return ivec2(x / a, y / a); }
 	ivec2 operator % (const int &a) const { return ivec2(x % a, y % a); }
+	ivec2 yx() const { return ivec2(y, x); }
 };
 
 struct vec2 {
@@ -500,6 +501,18 @@ struct triangle_3d_f {
 	triangle_3d_f() {}
 	triangle_3d_f(vec3f v0, vec3f v1, vec3f v2) { V[0] = v0, V[1] = v1, V[2] = v2; }
 	triangle_3d_f(std::initializer_list<vec3f> s) { V[0] = *s.begin(), V[1] = *(s.begin() + 1), V[2] = *(s.begin() + 2); }
+};
+struct triangle_2d {
+	vec2 v[3];
+	vec2& operator[](int d) { return v[d]; }
+	const vec2& operator[](int d) const { return v[d]; }
+	triangle_2d() {}
+	triangle_2d(vec2 v0, vec2 v1, vec2 v2) { v[0] = v0, v[1] = v1, v[2] = v2; }
+	triangle_2d(std::initializer_list<vec2> s) { v[0] = *s.begin(), v[1] = *(s.begin() + 1), v[2] = *(s.begin() + 2); }
+	vec2 center() const { return (v[0] + v[1] + v[2])*(1. / 3.); }
+	void translate(vec2 d) { v[0] += d, v[1] += d, v[2] += d; }
+	void scale(double s) { v[0] *= s, v[1] *= s, v[2] *= s; }
+	double area() const { return 0.5*det(v[1] - v[0], v[2] - v[0]); }  // signed
 };
 
 
