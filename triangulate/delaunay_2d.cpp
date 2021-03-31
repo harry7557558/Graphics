@@ -67,7 +67,7 @@ ccircle circumcircle(const std::vector<vec2> &vertices, int i, int j, int k) {
 	return ccircle{ i, j, k, c, (p2 - c).sqr() };
 }
 
-void delaunay(std::vector<vec2> vertices, std::vector<ivec3> &trigs, bool convex_hull) {
+void delaunay(std::vector<vec2> vertices, std::vector<ivec3> &trigs) {
 	trigs.clear();
 	int N = (int)vertices.size();
 	if (N < 3) return;
@@ -140,12 +140,6 @@ void delaunay(std::vector<vec2> vertices, std::vector<ivec3> &trigs, bool convex
 			trigs.push_back(ivec3(closed[i].i, closed[i].j, closed[i].k));
 		}
 	}
-	if (!convex_hull) return;
-
-	// create convex hull
-	vertices.resize(N);
-	double *sum_angle = new double[N];
-	for (int i = 0; i < N; i++) sum_angle[i] = 0.;
 }
 
 
@@ -160,18 +154,18 @@ std::vector<vec2> randomPoints(int N, uint32_t seed) {
 	return res;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
 	freopen("D:\\.svg", "w", stdout);
 	printf("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' version='1.1' width='%d' height='%d'>\n", 600, 600);
 	printf("<g transform='translate(%d,%d) scale(%lg,%lg)'>", 300, 300, 200., -200.);
 	printf("<line x1='-2' y1='0' x2='2' y2='0' style='stroke:gray;stroke-width:2px;vector-effect:non-scaling-stroke;'/>");
 	printf("<line x1='0' y1='-2' x2='0' y2='2' style='stroke:gray;stroke-width:2px;vector-effect:non-scaling-stroke;'/>");
 
-	std::vector<vec2> vertices = randomPoints(8, 1);
+	std::vector<vec2> vertices = randomPoints(100000, 1);
 	std::vector<ivec3> trigs;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	delaunay(vertices, trigs, true);
+	delaunay(vertices, trigs);
 	auto t1 = std::chrono::high_resolution_clock::now();
 	fprintf(stderr, "%lf ms\n", 1000.*std::chrono::duration<double>(t1 - t0).count());
 
