@@ -43,7 +43,7 @@ class mass():
 
 
 class spring:
-    def __init__(self, m1: int, m2: int, l0: float = 0.0, ks: float = 1.0, kd: float = 0.0):
+    def __init__(self, m1: int, m2: int, l0: float = 1.0, ks: float = 1.0, kd: float = 0.0):
         self.l0 = l0                # rest length
         self.m1, self.m2 = m1, m2   # index of the two connected masses
         self.ks, self.kd = ks, kd   # spring constant and damping constant
@@ -60,24 +60,38 @@ class scene():
         self.spring_list = spring_list
         self.time = 0
 
-    def calc_force(self):
+    def calc_force_non_stiff(self):
+        mass_list = self.mass_list
+        mn = len(mass_list)
+
+        # gravity
+        for i in range(mn):
+            mass_list[i].f += vec2(0, -1) / max(mass_list[i].inv_m, 1e-6)
+
+        # ground contact
+        # not sure if this one should be considered stiff or not
+        for i in range(mn):
+            fn = max(-mass_list[i].p.y, 0)
+            mass_list[i].f += vec2(0, 1000.*fn*fn)
+
+    def calc_force(self, non_stiff_only=False, stiff_only=False):
         mass_list = self.mass_list
         spring_list = self.spring_list
         mn = len(mass_list)
         sn = len(spring_list)
 
-        # gravity
         for i in range(mn):
-            mass_list[i].f = vec2(0, -1) / max(mass_list[i].inv_m, 1e-12)
+            mass_list[i].f = vec2(0.0, 0.0)
+
+        # calculate non-stiff forces
+        if not stiff_only:
+            self.calc_force_non_stiff()
+        if non_stiff_only:
+            return
 
         # viscous drag
         for i in range(mn):
             mass_list[i].f -= mass_list[i].v * mass_list[i].vd
-
-        # ground contact
-        for i in range(mn):
-            fn = 1000.*max(-mass_list[i].p.y, 0)
-            mass_list[i].f += vec2(0, fn)
 
         # spring forces
         for i in range(sn):
@@ -91,6 +105,98 @@ class scene():
             f = edp * fm
             mass_list[s.m1].f += f
             mass_list[s.m2].f -= f
+
+    def calc_dfdx_stiff(self):
+        mass_list = self.mass_list
+        spring_list = self.spring_list
+        mn, sn = len(mass_list), len(spring_list)
+
+        dfdx = np.zeros((2*mn, 2*mn))
+
+        def spring_force(p1, p2, v1, v2, ks, kd, l0):
+            """ F = [ks*(length(Δx)-r)+kd*dot(Δv,normalize(Δx))] * normalize(Δx) """
+            dp = p2 - p1
+            dv = v2 - v1
+            dpl = length(dp)
+            edp = dp / dpl
+            fm = ks*(dpl-l0) + kd*dot(dv, edp)
+            f = edp * fm
+            return f
+
+        eps = 1e-4
+        for i in range(sn):
+            s = spring_list[i]
+            p1, p2 = mass_list[s.m1].p, mass_list[s.m2].p
+            v1, v2 = mass_list[s.m1].v, mass_list[s.m2].v
+            dfdp1x = (spring_force(p1+vec2(eps, 0), p2, v1, v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1-vec2(eps, 0), p2, v1, v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdp1y = (spring_force(p1+vec2(0, eps), p2, v1, v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1-vec2(0, eps), p2, v1, v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdp2x = (spring_force(p1, p2+vec2(eps, 0), v1, v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2-vec2(eps, 0), v1, v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdp2y = (spring_force(p1, p2+vec2(0, eps), v1, v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2-vec2(0, eps), v1, v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdp1 = [[dfdp1x.x, dfdp1x.y], [dfdp1y.x, dfdp1y.y]]
+            for i in range(2):
+                for j in range(2):
+                    dfdx[2*s.m1+i][2*s.m1+j] += dfdp1[i][j]
+                    dfdx[2*s.m1+i][2*s.m2+j] -= dfdp1[i][j]
+            dfdp2 = [[dfdp2x.x, dfdp2x.y], [dfdp2y.x, dfdp2y.y]]
+            for i in range(2):
+                for j in range(2):
+                    dfdx[2*s.m2+i][2*s.m1+j] += dfdp2[i][j]
+                    dfdx[2*s.m2+i][2*s.m2+j] -= dfdp2[i][j]
+
+        # return np.transpose(dfdx)
+        return dfdx
+
+    def calc_dfdv_stiff(self):
+        mass_list = self.mass_list
+        spring_list = self.spring_list
+        mn, sn = len(mass_list), len(spring_list)
+
+        dfdv = np.zeros((2*mn, 2*mn))
+
+        def spring_force(p1, p2, v1, v2, ks, kd, l0):
+            """ F = [ks*(length(Δx)-r)+kd*dot(Δv,normalize(Δx))] * normalize(Δx) """
+            dp = p2 - p1
+            dv = v2 - v1
+            dpl = length(dp)
+            edp = dp / dpl
+            fm = ks*(dpl-l0) + kd*dot(dv, edp)
+            f = edp * fm
+            return f
+
+        eps = 1e-4
+        for i in range(sn):
+            s = spring_list[i]
+            p1, p2 = mass_list[s.m1].p, mass_list[s.m2].p
+            v1, v2 = mass_list[s.m1].v, mass_list[s.m2].v
+            dfdv1x = (spring_force(p1, p2, v1+vec2(eps, 0), v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2, v1-vec2(eps, 0), v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdv1y = (spring_force(p1, p2, v1+vec2(0, eps), v2, s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2, v1-vec2(0, eps), v2, s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdv2x = (spring_force(p1, p2, v1, v2+vec2(eps, 0), s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2, v1, v2-vec2(eps, 0), s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdv2y = (spring_force(p1, p2, v1, v2+vec2(0, eps), s.ks, s.kd, s.l0) -
+                      spring_force(p1, p2, v1, v2-vec2(0, eps), s.ks, s.kd, s.l0)) / (2.0*eps)
+            dfdv1 = [[dfdv1x.x, dfdv1x.y], [dfdv1y.x, dfdv1y.y]]
+            for i in range(2):
+                for j in range(2):
+                    dfdv[2*s.m1+i][2*s.m1+j] += dfdv1[i][j]
+                    dfdv[2*s.m1+i][2*s.m2+j] -= dfdv1[i][j]
+            dfdv2 = [[dfdv2x.x, dfdv2x.y], [dfdv2y.x, dfdv2y.y]]
+            for i in range(2):
+                for j in range(2):
+                    dfdv[2*s.m2+i][2*s.m1+j] += dfdv2[i][j]
+                    dfdv[2*s.m2+i][2*s.m2+j] -= dfdv2[i][j]
+
+        # viscous drag
+        for i in range(mn):
+            dfdv[2*i][2*i] -= mass_list[i].vd
+            dfdv[2*i+1][2*i+1] -= mass_list[i].vd
+
+        return dfdv
 
     def update_expeuler(self, dt):
         """ explicit Euler integration """
@@ -175,7 +281,7 @@ class scene():
             for i in range(mn):
                 k.mass_list[i].p = vec2(x[2*i], x[2*i+1])
                 k.mass_list[i].v = vec2(v[2*i], v[2*i+1])
-            k.calc_force()
+            k.calc_force(stiff_only=True)
             f = np.zeros((2*mn))
             for i in range(mn):
                 f[2*i] = k.mass_list[i].f.x
@@ -185,23 +291,43 @@ class scene():
         f0 = calc_force(x0, v0)
 
         # calculate ∂f/∂x
-        eps = 0.0001
-        dfdx = np.zeros((2*mn, 2*mn))
-        for i in range(2*mn):
-            dx = np.zeros((2*mn))
-            dx[i] = eps
-            dfdx[i] = (calc_force(x0+dx, v0) -
-                       calc_force(x0-dx, v0)) / (2.0*eps)
+        # eps = 0.0001
+        # dfdx = np.zeros((2*mn, 2*mn))
+        # for i in range(2*mn):
+        #     dx = np.zeros((2*mn))
+        #     dx[i] = eps
+        #     dfdx[i] = (calc_force(x0+dx, v0) -
+        #                calc_force(x0-dx, v0)) / (2.0*eps)
+        #dfdx = np.transpose(dfdx)
+
+        dfdx_a = self.calc_dfdx_stiff()
+        # err = sqrt(np.sum((dfdx_a-dfdx)**2)) / (2*mn)
+        # print(dfdx)
+        # print(dfdx_a)
+        # print(dfdx)
+        # print("err_x", err)
+
+        dfdx = dfdx_a
         dfdx = np.transpose(dfdx)
 
         # calculate ∂f/∂v
-        dfdv = np.zeros((2*mn, 2*mn))
-        for i in range(2*mn):
-            dv = np.zeros((2*mn))
-            dv[i] = eps
-            dfdv[i] = (calc_force(x0, v0+dv) -
-                       calc_force(x0, v0-dv)) / (2.0*eps)
-        dfdv = np.transpose(dfdv)
+        # dfdv = np.zeros((2*mn, 2*mn))
+        # for i in range(2*mn):
+        #     dv = np.zeros((2*mn))
+        #     dv[i] = eps
+        #     dfdv[i] = (calc_force(x0, v0+dv) -
+        #                calc_force(x0, v0-dv)) / (2.0*eps)
+        #dfdv = np.transpose(dfdv)
+
+        dfdv_a = self.calc_dfdv_stiff()
+        # err = sqrt(np.sum((dfdv_a-dfdv)**2)) / (2*mn)
+        # print(dfdv)
+        # print(dfdv_a)
+        # print("err_v", err)
+
+        dfdv = dfdv_a
+
+        #dfdv = self.calc_dfdv()
 
         # left of the linear system: I-h⋅M⁻¹⋅∂f/∂v-h²⋅M⁻¹⋅∂f/∂x
         equ_left = np.identity(2*mn) - dt*np.matmul(inv_m, dfdv) \
@@ -210,15 +336,16 @@ class scene():
         # right of the linear system: h⋅M⁻¹ ⋅ (f(x₀,v₀) + h⋅∂f/∂x⋅v₀)
         equ_right = np.dot(dt*inv_m, f0 + dt*np.dot(dfdx, v0))
 
-        # calculate the change of velocity and position
+        # calculate the change of velocity
         dv = np.linalg.solve(equ_left, equ_right)
-        dx = dt*(v0+dv)
 
         # update
+        self.calc_force(non_stiff_only=True)
         self.time += dt
         for i in range(mn):
-            mass_list[i].p += vec2(dx[2*i], dx[2*i+1])
             mass_list[i].v += vec2(dv[2*i], dv[2*i+1])
+            mass_list[i].v += mass_list[i].f*mass_list[i].inv_m * dt
+            mass_list[i].p += mass_list[i].v * dt
 
 
 #
@@ -342,12 +469,20 @@ class PresetScenes():
 
 obj = PresetScenes().box_x()
 obj = PresetScenes().box_xx(1, 1, 1.0, 1.0, 0.0)
-#obj = PresetScenes().box_xx(5, 4, 1.0, 0.8, 0.2)
-#obj = PresetScenes().box_xx(10, 8, 2.0, 1.6, 1.5)
+obj = PresetScenes().box_xx(5, 4, 1.0, 0.8, 0.2)
+obj = PresetScenes().box_xx(10, 8, 2.0, 1.6, 1.5)
 #obj = PresetScenes().polygon_s(8, 0.5, 0.8)
-obj = PresetScenes().polygon_s(16, 0.5, 1.0)
-#obj = PresetScenes().sheet_hang(16, 8, 3.0, 1.5, False, False)
-obj = PresetScenes().sheet_hang(4, 2, 3.0, 1.5, False, False)
+#obj = PresetScenes().polygon_s(16, 0.5, 1.0)
+#obj = PresetScenes().sheet_hang(4, 2, 3.0, 1.5, False, False)
+obj = PresetScenes().sheet_hang(16, 8, 3.0, 1.5, False, False)
+
+#obj = scene([mass(vec2(0.0, 0.0)), mass(vec2(1.0, 0.0)), mass(vec2(0.0, 1.0))], [spring(0, 1, 1.0, 1.0, 0.2), spring(1, 2, 1.0, 1.0, 0.2), spring(2, 0, 1.0, 1.0, 0.2)])
+#obj = scene([mass(vec2(-1.0, 0.0)), mass(vec2(1.0, 0.0))], [spring(0, 1, 1.0, 1.0, 0.2)])
+
+
+#obj.mass_list[0].inv_m = 0.0
+#obj.mass_list[1].v = vec2(0.0, 1.0)
+#obj.mass_list[1].vd = 1.0
 
 obj_expeuler = deepcopy(obj)
 obj_rungekutta = deepcopy(obj)
@@ -385,22 +520,25 @@ def draw_object(screen, obj, color):
 
 
 SHOW_REFERENCE = False
-CALC_ERROR = True
+CALC_ERROR = False
 err_obj_1 = obj_rungekutta
 err_obj_2 = obj_impeuler
 
 for frame in range(2**16):
+    _quit = False
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            pygame.quit()
+            _quit = True
+    if _quit:
+        break
 
     # update objects
     dt = 0.04
     N = int(0.04 / dt)
-    dt = 0.5
+    #dt = 0.1
     for i in range(N):
         # obj_expeuler.update_expeuler(dt)
-        obj_rungekutta.update_rungekutta(dt)
+        #obj_rungekutta.update_rungekutta(dt)
         obj_impeuler.update_impeuler(dt)
     if SHOW_REFERENCE:
         dt = 0.001
@@ -431,7 +569,7 @@ for frame in range(2**16):
     if SHOW_REFERENCE:
         draw_object(screen, obj, (128, 128, 128))
     #draw_object(screen, obj_expeuler, (255, 0, 0))
-    draw_object(screen, obj_rungekutta, (0, 0, 255))
+    #draw_object(screen, obj_rungekutta, (0, 0, 255))
     draw_object(screen, obj_impeuler, (255, 0, 255))
 
     pygame.display.flip()

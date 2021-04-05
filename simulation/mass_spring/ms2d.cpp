@@ -164,10 +164,12 @@ struct object {
 	}
 
 	// force calculation
-	void calcForce();
+	void calcForce_nonstiff();
+	void calcForce(bool stiff_only);
+
 	// force derivatives (2Nx2N matrix)
-	void calcForce_dFdx(double A[]);
-	void calcForce_dFdv(double A[]);
+	void calcForce_dfdx_stiff(double A[]);
+	void calcForce_dfdv_stiff(double A[]);
 
 	// recalculate drag_id
 	bool update_drag_id(vec2 p, double epsilon) {
@@ -197,22 +199,32 @@ const vec2 g = vec2(0, -1);
 // ground contact spring constant
 const double k_ground = 1000.;
 
-void object::calcForce() {
-	int mn = masses.size(), sn = springs.size();
+void object::calcForce_nonstiff() {
+	int mn = masses.size();
 	for (int i = 0; i < mn; i++) masses[i].F = vec2(0.);
 	// gravity
 	for (int i = 0; i < mn; i++) {
-		masses[i].F += g / max(masses[i].inv_m, 1e-10);
-	}
-	// viscous drag
-	for (int i = 0; i < mn; i++) {
-		masses[i].F += -masses[i].vd * masses[i].v;
+		masses[i].F += g / max(masses[i].inv_m, 1e-6);
 	}
 	// ground contact
 	for (int i = 0; i < mn; i++) {
 		double Fn = k_ground * max(-masses[i].p.y, 0.);
 		masses[i].F += vec2(0, Fn);  // no friction, no damping??
 	}
+}
+
+void object::calcForce(bool stiff_only = false) {
+	int mn = masses.size(), sn = springs.size();
+	for (int i = 0; i < mn; i++) masses[i].F = vec2(0.);
+
+	// non-stiff forces
+	if (!stiff_only) calcForce_nonstiff();
+
+	// viscous drag
+	for (int i = 0; i < mn; i++) {
+		masses[i].F += -masses[i].vd * masses[i].v;
+	}
+
 	// spring force
 	for (int i = 0; i < sn; i++) {
 		obj_spring s = springs[i];
@@ -224,32 +236,21 @@ void object::calcForce() {
 		vec2 f = fm * edp;
 		m1->F += f, m2->F -= f;
 	}
+
 	// dragging
 	if (drag_id != -1) masses[drag_id].F = vec2(0.);
 }
 
-void object::calcForce_dFdx(double Mat[]) {
+void object::calcForce_dfdx_stiff(double dfdx[]) {
 	int mn = masses.size(), sn = springs.size();
-	auto A = [&](int j, int i)->double& { return Mat[j*(2 * mn) + i]; };
-	for (int j = 0; j < 2 * mn; j++) for (int i = 0; i < 2 * mn; i++) A(j, i) = 0.;
-	// gravity
-	for (int i = 0; i < mn; i++) {
-		// nothing
-	}
-	// viscous drag
-	for (int i = 0; i < mn; i++) {
-		// not for x
-	}
-	// ground contact
-	for (int i = 0; i < mn; i++) {
-		// vec2(k_ground * max(-masses[i].p.y, 0.))
-		A(2 * i + 1, 2 * i + 1) += masses[i].p.y < 0. ? -k_ground : 0.;
-	}
+	auto A = [&](int i, int j)->double& { return dfdx[i*(2 * mn) + j]; };
+	for (int i = 0; i < 4 * (mn*mn); i++) dfdx[i] = 0.0;
+
 	// spring force
 	for (int i = 0; i < sn; i++) {
 		obj_spring s = springs[i];
-		obj_mass *m1 = &masses[s.m1], *m2 = &masses[s.m2];
-		// getting headache in calculating this derivative
+		vec2 p1 = masses[s.m1].p, p2 = masses[s.m2].p;
+		vec2 v1 = masses[s.m1].v, v2 = masses[s.m2].v;
 		auto F = [&](vec2 p1, vec2 p2, vec2 v1, vec2 v2) {
 			vec2 dp = p2 - p1, dv = v2 - v1;
 			double dpl = length(dp); vec2 edp = dp * (1. / dpl);
@@ -257,50 +258,45 @@ void object::calcForce_dFdx(double Mat[]) {
 			return fm * edp;
 		};
 		double eps = 1e-4;
-		mat2 dFd1 = mat2(
-			(F(m1->p + vec2(eps, 0), m2->p, m1->v, m2->v) - F(m1->p - vec2(eps, 0), m2->p, m1->v, m2->v)) * (.5 / eps),
-			(F(m1->p + vec2(0, eps), m2->p, m1->v, m2->v) - F(m1->p - vec2(0, eps), m2->p, m1->v, m2->v)) * (.5 / eps)
-		);
-		mat2 dFd2 = mat2(
-			(F(m1->p, m2->p + vec2(eps, 0), m1->v, m2->v) - F(m1->p, m2->p - vec2(eps, 0), m1->v, m2->v)) * (.5 / eps),
-			(F(m1->p, m2->p + vec2(0, eps), m1->v, m2->v) - F(m1->p, m2->p - vec2(0, eps), m1->v, m2->v)) * (.5 / eps)
-		);
-		// add force
-		auto addMat = [&](int j, int i, mat2 m) {
-			A(2 * j, 2 * i) += m.v[0][0];
-			A(2 * j, 2 * i + 1) += m.v[0][1];
-			A(2 * j + 1, 2 * i) += m.v[1][0];
-			A(2 * j + 1, 2 * i + 1) += m.v[1][1];
-		};
-		addMat(s.m1, s.m1, dFd1);
-		addMat(s.m1, s.m2, dFd2);
-		addMat(s.m2, s.m1, -dFd1);
-		addMat(s.m2, s.m1, -dFd2);
+		vec2 dfdp1x = (F(p1 + vec2(eps, 0), p2, v1, v2) -
+			F(p1 - vec2(eps, 0), p2, v1, v2)) * (.5 / eps);
+		vec2 dfdp1y = (F(p1 + vec2(0, eps), p2, v1, v2) -
+			F(p1 - vec2(0, eps), p2, v1, v2)) * (.5 / eps);
+		vec2 dfdp2x = (F(p1, p2 + vec2(eps, 0), v1, v2) -
+			F(p1, p2 - vec2(eps, 0), v1, v2)) * (.5 / eps);
+		vec2 dfdp2y = (F(p1, p2 + vec2(0, eps), v1, v2) -
+			F(p1, p2 - vec2(0, eps), v1, v2)) * (.5 / eps);
+		double dfdp1[4] = { dfdp1x.x, dfdp1x.y, dfdp1y.x, dfdp1y.y };
+		for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+			A(2 * s.m1 + i, 2 * s.m1 + j) += dfdp1[2 * i + j];
+			A(2 * s.m1 + i, 2 * s.m2 + j) -= dfdp1[2 * i + j];
+		}
+		double dfdp2[4] = { dfdp2x.x, dfdp2x.y, dfdp2y.x, dfdp2y.y };
+		for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+			A(2 * s.m2 + i, 2 * s.m1 + j) += dfdp2[2 * i + j];
+			A(2 * s.m2 + i, 2 * s.m2 + j) -= dfdp2[2 * i + j];
+		}
 	}
+
+	for (int i = 0; i < 2 * mn; i++) for (int j = 0; j < i; j++) std::swap(A(i, j), A(j, i));
 }
-void object::calcForce_dFdv(double Mat[]) {
+
+void object::calcForce_dfdv_stiff(double dfdv[]) {
 	int mn = masses.size(), sn = springs.size();
-	auto A = [&](int j, int i)->double& { return Mat[j*(2 * mn) + i]; };
-	for (int j = 0; j < 2 * mn; j++) for (int i = 0; i < 2 * mn; i++) A(j, i) = 0.;
-	// gravity
-	for (int i = 0; i < mn; i++) {
-		// nothing
-	}
+	auto A = [&](int i, int j)->double& { return dfdv[i*(2 * mn) + j]; };
+	for (int i = 0; i < 4 * (mn*mn); i++) dfdv[i] = 0.0;
+
 	// viscous drag
 	for (int i = 0; i < mn; i++) {
-		// -masses[i].vd * masses[i].v;
-		A(2 * i, 2 * i) += -masses[i].vd;
-		A(2 * i + 1, 2 * i + 1) += -masses[i].vd;
+		A(2 * i, 2 * i) -= masses[i].vd;
+		A(2 * i + 1, 2 * i + 1) -= masses[i].vd;
 	}
-	// ground contact
-	for (int i = 0; i < mn; i++) {
-		// not for v
-	}
+
 	// spring force
 	for (int i = 0; i < sn; i++) {
 		obj_spring s = springs[i];
-		obj_mass *m1 = &masses[s.m1], *m2 = &masses[s.m2];
-		// getting headache in calculating this derivative
+		vec2 p1 = masses[s.m1].p, p2 = masses[s.m2].p;
+		vec2 v1 = masses[s.m1].v, v2 = masses[s.m2].v;
 		auto F = [&](vec2 p1, vec2 p2, vec2 v1, vec2 v2) {
 			vec2 dp = p2 - p1, dv = v2 - v1;
 			double dpl = length(dp); vec2 edp = dp * (1. / dpl);
@@ -308,25 +304,24 @@ void object::calcForce_dFdv(double Mat[]) {
 			return fm * edp;
 		};
 		double eps = 1e-4;
-		mat2 dFd1 = mat2(
-			(F(m1->p, m2->p, m1->v + vec2(eps, 0), m2->v) - F(m1->p, m2->p, m1->v - vec2(eps, 0), m2->v)) * (.5 / eps),
-			(F(m1->p, m2->p, m1->v + vec2(0, eps), m2->v) - F(m1->p, m2->p, m1->v - vec2(0, eps), m2->v)) * (.5 / eps)
-		);
-		mat2 dFd2 = mat2(
-			(F(m1->p, m2->p, m1->v, m2->v + vec2(eps, 0)) - F(m1->p, m2->p, m1->v, m2->v - vec2(eps, 0))) * (.5 / eps),
-			(F(m1->p, m2->p, m1->v, m2->v + vec2(0, eps)) - F(m1->p, m2->p, m1->v, m2->v - vec2(0, eps))) * (.5 / eps)
-		);
-		// add force
-		auto addMat = [&](int j, int i, mat2 m) {
-			A(2 * j, 2 * i) += m.v[0][0];
-			A(2 * j, 2 * i + 1) += m.v[0][1];
-			A(2 * j + 1, 2 * i) += m.v[1][0];
-			A(2 * j + 1, 2 * i + 1) += m.v[1][1];
-		};
-		addMat(s.m1, s.m1, dFd1);
-		addMat(s.m1, s.m2, dFd2);
-		addMat(s.m2, s.m1, -dFd1);
-		addMat(s.m2, s.m1, -dFd2);
+		vec2 dfdv1x = (F(p1, p2, v1 + vec2(eps, 0), v2) -
+			F(p1, p2, v1 - vec2(eps, 0), v2)) * (.5 / eps);
+		vec2 dfdv1y = (F(p1, p2, v1 + vec2(0, eps), v2) -
+			F(p1, p2, v1 - vec2(0, eps), v2)) * (.5 / eps);
+		vec2 dfdv2x = (F(p1, p2, v1, v2 + vec2(eps, 0)) -
+			F(p1, p2, v1, v2 - vec2(eps, 0))) * (.5 / eps);
+		vec2 dfdv2y = (F(p1, p2, v1, v2 + vec2(0, eps)) -
+			F(p1, p2, v1, v2 - vec2(0, eps))) * (.5 / eps);
+		double dfdv1[4] = { dfdv1x.x, dfdv1x.y, dfdv1y.x, dfdv1y.y };
+		for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+			A(2 * s.m1 + i, 2 * s.m1 + j) += dfdv1[2 * i + j];
+			A(2 * s.m1 + i, 2 * s.m2 + j) -= dfdv1[2 * i + j];
+		}
+		double dfdv2[4] = { dfdv2x.x, dfdv2x.y, dfdv2y.x, dfdv2y.y };
+		for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+			A(2 * s.m2 + i, 2 * s.m1 + j) += dfdv2[2 * i + j];
+			A(2 * s.m2 + i, 2 * s.m2 + j) -= dfdv2[2 * i + j];
+		}
 	}
 }
 
@@ -371,152 +366,86 @@ void step_Euler(object &Scene, double dt) {
 }
 
 // implicit Euler method (brute force, elimination)
+#include "numerical/linearsystem.h"
 void step_impEuler_elim(object &Scene, double h) {
-	// Δv = (I - h⋅m⁻¹⋅(∂f/∂v + h⋅∂f/∂x))⁻¹ [h⋅m⁻¹⋅(f(x₀,v₀) + h⋅∂f/∂x⋅v₀)]
+	// Δv = (I - h⋅M⁻¹⋅(∂f/∂v + h⋅∂f/∂x))⁻¹ [h⋅M⁻¹⋅(f(x₀,v₀) + h⋅∂f/∂x⋅v₀)]
 	// Δx = h⋅(v₀ + Δv)
 
-	// setup matrix
 	int mn = Scene.masses.size(), N = 2 * mn;
-	double *dFdx = new double[N*N], *dFdv = new double[N*N];
-	//Scene.calcForce_dFdx(dFdx);
-	//Scene.calcForce_dFdv(dFdv);
-	// numerical derivative
-	if (1) {
-		const auto Scene_backup = Scene;
-		double eps = 1e-4;
-		vec2 *F_xp = new vec2[N], *F_xm = new vec2[N], *F_yp = new vec2[N], *F_ym = new vec2[N];
-		for (int j = 0; j < mn; j++) {  // for each column
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].p.x += eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_xp[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].p.x -= eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_xm[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].p.y += eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_yp[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].p.y -= eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_ym[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			// derivative
-			for (int i = 0; i < mn; i++) {
-				mat2 dFdp = mat2((F_xp[i] - F_xm[i])*(.5 / eps), (F_yp[i] - F_ym[i])*(.5 / eps));
-				dFdx[N*(2*i)+(2*j)] = dFdp.v[0][0];
-				dFdx[N*(2*i)+(2*j + 1)] = dFdp.v[0][1];
-				dFdx[N*(2*i + 1) + (2*j)] = dFdp.v[1][0];
-				dFdx[N*(2*i + 1) + (2*j + 1)] = dFdp.v[1][1];
-			}
-		}
-		for (int j = 0; j < mn; j++) {  // for each column
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].v.x += eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_xp[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].v.x -= eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_xm[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].v.y += eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_yp[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			for (int i = 0; i < mn; i++) Scene.masses[i].v.y -= eps;
-			Scene.calcForce();
-			for (int i = 0; i < mn; i++) F_ym[i] = Scene.masses[i].F;
-			Scene = Scene_backup;
-			// derivative
-			for (int i = 0; i < mn; i++) {
-				mat2 dFdp = mat2((F_xp[i] - F_xm[i])*(.5 / eps), (F_yp[i] - F_ym[i])*(.5 / eps));
-				dFdv[N*(2*i)+(2*j)] = dFdp.v[0][0];
-				dFdv[N*(2*i)+(2*j + 1)] = dFdp.v[0][1];
-				dFdv[N*(2*i + 1) + (2*j)] = dFdp.v[1][0];
-				dFdv[N*(2*i + 1) + (2*j + 1)] = dFdp.v[1][1];
-			}
-		}
-		delete F_xp; delete F_xm; delete F_yp; delete F_ym;
-	}
-	// matrix
-	double *A = new double[N*N];
-	for (int i = 0; i < N; i++) {
-		double inv_m = Scene.masses[i / 2].inv_m;
-		for (int j = 0; j < N; j++) {
-			A[i*N + j] = (i == j ? 1. : 0.) - h * inv_m * (dFdv[i*N + j] + h * dFdx[i*N + j]);
-		}
-	}
-	// setup vector
-	Scene.calcForce();
-	double *f0 = new double[N], *v0 = new double[N];
+
+	// calculate M⁻¹
+	double *inv_m = new double[N*N];
+	for (int i = 0; i < N*N; i++) inv_m[i] = 0.0;
 	for (int i = 0; i < mn; i++) {
-		*(vec2*)&f0[2 * i] = Scene.masses[i].F;
-		*(vec2*)&v0[2 * i] = Scene.masses[i].v;
-	}
-	double *dV = new double[N];
-	for (int i = 0; i < N; i++) {
-		dV[i] = h * f0[i];
-		for (int j = 0; j < N; j++) dV[i] += h * h * dFdx[i*N + j] * v0[j];
-		dV[i] *= Scene.masses[i / 2].inv_m;
+		inv_m[(2 * i)*(N + 1)] = inv_m[(2 * i + 1)*(N + 1)] = Scene.masses[i].inv_m;
 	}
 
-	/*for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++)
-			printf("%lf\t", A[i*N + j]);
-		printf("\t%lf\n", dV[i]);
+	// calculate f(x₀,v₀)
+	Scene.calcForce(true);
+	double *f0 = new double[N], *x0 = new double[N], *v0 = new double[N];
+	for (int i = 0; i < mn; i++) {
+		f0[2 * i] = Scene.masses[i].F.x;
+		f0[2 * i + 1] = Scene.masses[i].F.y;
+		x0[2 * i] = Scene.masses[i].p.x;
+		x0[2 * i + 1] = Scene.masses[i].p.y;
+		v0[2 * i] = Scene.masses[i].v.x;
+		v0[2 * i + 1] = Scene.masses[i].v.y;
 	}
-	printf("\n");*/
 
-	// elimination
+	// calculate ∂f/∂x and ∂f/∂v
+	double *dFdx = new double[N*N], *dFdv = new double[N*N];
+	Scene.calcForce_dfdx_stiff(dFdx);
+	Scene.calcForce_dfdv_stiff(dFdv);
+
+	// multiply ∂f/∂x, ∂f/∂v, and f(x₀,v₀) by M⁻¹
+	double *A = new double[N*N];
+#if 0
+	matmul(N, inv_m, dFdx, A); matcpy(N, A, dFdx);
+	matmul(N, inv_m, dFdv, A); matcpy(N, A, dFdv);
+#else
 	for (int i = 0; i < N; i++) {
-		auto Ai = &A[i*N];
-		if (Ai[i] == 0.) {
-			for (int j = i + 1; j < N; j++) {
-				auto Aj = &A[j*N];
-				if (Aj[i] != 0.) {
-					for (int k = i; k < N; k++) std::swap(Ai[i], Aj[i]);
-					std::swap(dV[i], dV[j]);
-					break;
-				}
-			}
-		}
-		double m = 1.0 / Ai[i];
-		for (int k = i; k < N; k++) Ai[k] *= m;
-		dV[i] *= m;
-		for (int j = 0; j < N; j++) if (j != i) {
-			auto Aj = &A[j*N];
-			double m = -Aj[i] / Ai[i];
-			for (int k = i; k < N; k++) Aj[k] += m * Ai[k];
-			dV[j] += m * dV[i];
+		for (int j = 0; j < N; j++) {
+			dFdx[i*N + j] *= inv_m[i*N + i];
+			dFdv[i*N + j] *= inv_m[i*N + i];
 		}
 	}
+#endif
+	for (int i = 0; i < N; i++) f0[i] *= inv_m[i*N + i];
 
-	/*for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++)
-			printf("%lf\t", A[i*N + j]);
-		printf("\t%lf\n", dV[i]);
+	// left of the linear system: I-h⋅M⁻¹⋅∂f/∂v-h²⋅M⁻¹⋅∂f/∂x
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			A[i*N + j] = (i == j ? 1.0 : 0.0) - h * dFdv[i*N + j] - h * h*dFdx[i*N + j];
+		}
 	}
-	printf("\n");*/
-	//exit(0);
+
+	// right of the linear system: h⋅M⁻¹⋅(f(x₀,v₀) + h⋅∂f/∂x⋅v₀)
+	double *dv = new double[N];
+	matvecmul(N, dFdx, v0, dv);
+	for (int i = 0; i < N; i++) {
+		dv[i] = h * (f0[i] + h * dv[i]);
+	}
+
+	// solve the linear system
+	solveLinear(N, A, dv);
 
 	// update
+	Scene.calcForce_nonstiff();
 	for (int i = 0; i < mn; i++) {
-		Scene.masses[i].v += *(vec2*)&dV[2 * i];
+		Scene.masses[i].v += *(vec2*)&dv[2 * i];
+		Scene.masses[i].v += Scene.masses[i].F*Scene.masses[i].inv_m * h;
 		Scene.masses[i].p += h * Scene.masses[i].v;
 	}
 	Scene.time += h;
-	delete dFdx; delete dFdv; delete A;
-	delete f0; delete v0; delete dV;
+	delete inv_m; delete dFdx; delete dFdv; delete A;
+	delete f0; delete x0; delete v0; delete dv;
 }
 
 
 
 void updateScene(double dt, vec2 cursor) {
 	// split large steps
-	double max_step = 0.001;
+	double max_step = 0.04;
 	if (dt > max_step) {
 		int N = (int)(dt / max_step + 1);
 		for (int i = 0; i < N; i++) updateScene(dt / N, cursor);
@@ -745,7 +674,7 @@ void initScene() {
 	//presetScenes::polygon_S(8, 0.5, 0.8);
 	//presetScenes::polygon_S(16, 0.5, 1.0);
 	presetScenes::sheet_hang_2(16, 8, 3.0, 1.5, false, false);
-	//presetScenes::sheet_hang_2(16, 8, 3.0, 2.4, false, true);
+	//presetScenes::sheet_hang_2(24, 12, 3.0, 1.5, true, false);
 	Scene_ref = Scene;
 }
 
