@@ -110,6 +110,25 @@ std::vector<vec2> testcase_07() {
 	return res;
 }
 
+std::vector<vec2> testcase_08() {
+	std::vector<vec2> res;
+	int N = 10;
+	double dx = 1.0 / N;
+	uint32_t seed = 0;
+	for (int i = -N; i <= N; i++) {
+		for (int j = -N; j <= N; j++) {
+			vec2 p = vec2(i, j)*dx;
+			double xd = 0.95*dx * (rand01(seed) - 0.5);
+			double yd = 0.95*dx * (rand01(seed) - 0.5);
+			if (abs(i) != N) p.x += xd;
+			if (abs(j) != N) p.y += yd;
+			res.push_back(p);
+		}
+	}
+	return res;
+}
+
+
 
 
 #include <chrono>
@@ -122,11 +141,11 @@ int main() {
 	printf("<line x1='-2' y1='0' x2='2' y2='0' style='stroke:gray;stroke-width:2px;vector-effect:non-scaling-stroke;'/>");
 	printf("<line x1='0' y1='-2' x2='0' y2='2' style='stroke:gray;stroke-width:2px;vector-effect:non-scaling-stroke;'/>");
 
-	std::vector<vec2> vertices = testcase_07();
+	std::vector<vec2> vertices = testcase_08();
 	std::vector<ivec3> trigs;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	Delaunay_2d().delaunay(vertices, trigs);
+	Delaunay_2d<vec2>().delaunay(vertices, trigs);
 	auto t1 = std::chrono::high_resolution_clock::now();
 	fprintf(stderr, "vn = %d\nfn = %d\n", (int)vertices.size(), (int)trigs.size());
 	fprintf(stderr, "%lf ms\n", 1000.*std::chrono::duration<double>(t1 - t0).count());
@@ -139,10 +158,11 @@ int main() {
 
 	printf("<g style='stroke-width:%lgpx;stroke:black;fill:none;'>", 1. / SC);
 	for (int i = 0, tn = trigs.size(); i < tn; i += 1) {
+		vec2 p0 = vertices[trigs[i].x], p1 = vertices[trigs[i].y], p2 = vertices[trigs[i].z];
 		printf("<polygon points='%lg,%lg %lg,%lg %lg,%lg' />",
-			vertices[trigs[i].x].x, vertices[trigs[i].x].y,
-			vertices[trigs[i].y].x, vertices[trigs[i].y].y,
-			vertices[trigs[i].z].x, vertices[trigs[i].z].y);
+			p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
+		if (abs(det(p1 - p0, p2 - p0)) < 1e-10)
+			fprintf(stderr, "degenerated triangle\n");
 	}
 	printf("</g>");
 

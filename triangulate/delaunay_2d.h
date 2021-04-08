@@ -9,21 +9,22 @@
 
 // duplicate points may lead to undefined behavior
 
+template<typename _vec2>
 class Delaunay_2d {
 
 public:
 
 	double epsilon, upsilon;
 
-	triangle_2d supertriangle(const std::vector<vec2> &vertices) {
+	triangle_2d supertriangle(const std::vector<_vec2> &vertices) {
 		vec2 pmin(INFINITY), pmax(-INFINITY);
 		for (int i = vertices.size(); i--;) {
-			vec2 p = vertices[i];
+			vec2 p = vec2(vertices[i]);
 			pmin = pMin(p, pmin), pmax = pMax(p, pmax);
 		}
-		vec2 dp = pmax - pmin;
+		vec2 dp = vec2(pmax) - vec2(pmin);
 		double d = upsilon * max(dp.x, dp.y);
-		vec2 mid = pmin + 0.5*dp;
+		vec2 mid = vec2(pmin) + 0.5*dp;
 		vec2 p1 = mid + vec2(0, 1)*d;
 		vec2 p2 = mid + vec2(-0.866025, -0.5)*d;
 		vec2 p3 = mid + vec2(0.866025, -0.5)*d;
@@ -34,8 +35,8 @@ public:
 		int i, j, k;
 		vec2 c; double r2;
 	};
-	ccircle circumcircle(const std::vector<vec2> &vertices, int i, int j, int k) {
-		vec2 p1 = vertices[i], p2 = vertices[j], p3 = vertices[k];
+	ccircle circumcircle(const std::vector<_vec2> &vertices, int i, int j, int k) {
+		vec2 p1 = vec2(vertices[i]), p2 = vec2(vertices[j]), p3 = vec2(vertices[k]);
 		double fabsy1y2 = abs(p1.y - p2.y), fabsy2y3 = abs(p2.y - p3.y);
 
 		vec2 c;
@@ -71,7 +72,7 @@ public:
 		return ccircle{ i, j, k, c, (p2 - c).sqr() };
 	}
 
-	void delaunay(std::vector<vec2> vertices, std::vector<ivec3> &trigs) {
+	void delaunay(std::vector<_vec2> vertices, std::vector<ivec3> &trigs) {
 		trigs.clear();
 		int N = (int)vertices.size();
 		if (N < 3) return;

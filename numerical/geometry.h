@@ -64,6 +64,8 @@ struct ivec2 {
 	ivec2 operator / (const int &a) const { return ivec2(x / a, y / a); }
 	ivec2 operator % (const int &a) const { return ivec2(x % a, y % a); }
 	ivec2 yx() const { return ivec2(y, x); }
+	friend int dot(const ivec2 &u, const ivec2 &v) { return u.x*v.x + u.y*v.y; }
+	friend int det(const ivec2 &u, const ivec2 &v) { return u.x*v.y - u.y*v.x; }
 };
 
 struct vec2 {
