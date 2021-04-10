@@ -35,7 +35,6 @@
 //   - Numpad6: Rotate camera position horizontally by 15 degrees (counterclockwise)
 //   - Numpad8: Increase camera position vertical angle by 15 degrees
 //   - Numpad2: Decrease camera position vertical angle by 15 degrees
-// WSAD keys are supported but not recommended (may be used along with Alt+Click)
 // Press Home key or Ctrl+0 to reset viewport to default
 
 // VISUALIZATION OPTIONS:
@@ -51,10 +50,13 @@
 //   - Polygon: no fill, stroke the triangle using filling color
 //   - Point cloud: no fill or stroke, use filling color to plot vertices
 // Press (Shift+)N to switch normal calculation mode (for rendering only)
-//   - [0] from file [1] counter-clockwise, right-hand rule [2] clockwise
+//   - [0] counter-clockwise, right-hand rule [1] clockwise
 // Press T to enable/disable transparent rendering mode
 //   - Transparent rendering mode is designed for viewing the internal structure of models
 //   - Tip: Switch coloring mode (C) to improve clearness and aesthetics
+// Press S to enable/disable smooth shading
+//   - Smooth shading only works when transparent rendering mode is disabled
+//   - Press S twice to recalculate normal if the shading appears weird after modifying
 // Press X to hide/show axis
 // Press G to hide/show grid ([-10,10] with grid width 1)
 //   - By default there are larger and smaller grid lines if the object is too large or small; Press F or Shift+G to turn on/off this feature
@@ -269,6 +271,7 @@ int ShadeMode = 0;
 int RenderMode = 0;
 int NormalMode = 0;
 bool TransparentShading = false;
+bool SmoothShading = false;
 bool showAxis = true, showGrid = true, showMajorMinorGrids = true, showVerticalGrids = false;
 bool showCOM = false, showInertia = false, TreatAsSolid = false;
 bool DarkBackground = false;
@@ -279,12 +282,45 @@ bool DarkBackground = false;
 #pragma region PLY file
 
 WCHAR filename[MAX_PATH] = L"";
-int VN; vec3f *V = 0, *V_transformed = 0;  // vertice
+int VN; vec3f *V = 0, *V_transformed = 0, *V_normal = 0;  // vertice
 int TN; ply_triangle *T = 0; // triangles
 COLORREF *Vcol = 0, *Fcol = 0;  // vertice or face colors, at most one non-zero
 vec3f BMin, BMax;  // bounding box
 double Volume; vec3 COM;  // volume/area & center of mass
 mat3 Inertia, Inertia_O, Inertia_D;  // inertia tensor calculated at center of mass, orthogonal and diagonal components
+
+vec3f fromCOLORREF(COLORREF c);
+COLORREF toCOLORREF(vec3f c);
+
+void calcVertexNormal() {
+	if (!V_normal) V_normal = new vec3f[VN];
+	for (int i = 0; i < VN; i++) V_normal[i] = vec3f(0.0);
+	for (int i = 0; i < TN; i++) {
+		vec3f n = cross(V[T[i][1]] - V[T[i][0]], V[T[i][2]] - V[T[i][0]]);
+		V_normal[T[i][0]] += n;
+		V_normal[T[i][1]] += n;
+		V_normal[T[i][2]] += n;
+	}
+	for (int i = 0; i < VN; i++) {
+		V_normal[i] = NormalMode == 1 ? -normalize(V_normal[i]) : normalize(V_normal[i]);
+	}
+}
+
+void calcVertexColor() {
+	if (Vcol) return;
+	vec3f *cols = new vec3f[VN];
+	uint8_t *cols_count = new uint8_t[VN];
+	for (int i = 0; i < VN; i++) cols[i] = vec3f(0.0), cols_count[i] = 0;
+	for (int i = 0; i < TN; i++) {
+		vec3f col = Fcol ? fromCOLORREF(Fcol[i]) : vec3f(1.0);
+		for (int u = 0; u < 3; u++)
+			cols[T[i][u]] += col, cols_count[T[i][u]] += 1;
+	}
+	Vcol = new COLORREF[VN];
+	for (int i = 0; i < VN; i++)
+		Vcol[i] = toCOLORREF(cols[i] / (float)cols_count[i]);
+	delete cols; delete cols_count;
+}
 
 void calcBoundingBox() {
 	BMin = vec3f(INFINITY), BMax = -BMin;
@@ -379,6 +415,10 @@ vec3f getFaceColor(int i) {
 	}
 	return vec3f(1.0);
 }
+vec3f getFaceColor(int i, vec2f uv) {
+	if (!Vcol) return fromCOLORREF(Fcol[i]);
+	return (1.0f - uv.x - uv.y)*fromCOLORREF(Vcol[T[i][0]]) + uv.x * fromCOLORREF(Vcol[T[i][1]]) + uv.y * fromCOLORREF(Vcol[T[i][2]]);
+}
 
 
 void drawLine(vec2 p, vec2 q, COLORREF col) {
@@ -432,7 +472,7 @@ void drawCircle(vec2 c, double r, COLORREF Color) {
 }
 
 
-vec3f calcShadeFromID(int i);
+vec3f calcShadeFromID(int i, vec2f uv);
 
 // accept double-precision parameters
 void drawLine_ZB(vec3 A, vec3 B, COLORREF col) {
@@ -498,7 +538,7 @@ void drawTriangle_ZB(vec3f A, vec3f B, vec3f C, COLORREF fill, COLORREF stroke =
 							Canvas(j, i) = fill;
 							depthbuf(j, i) = z;
 						}
-						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill);
+						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill, vec2f(0.33333333f));
 					}
 				}
 			}
@@ -517,7 +557,7 @@ void drawTriangle_ZB(vec3f A, vec3f B, vec3f C, COLORREF fill, COLORREF stroke =
 							Canvas(j, i) = fill;
 							depthbuf(j, i) = z;
 						}
-						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill);
+						if (TransparentShading) colorbuf(j, i) += calcShadeFromID(fill, vec2f(0.33333333f));
 					}
 					p.x += 1.;
 					pab += ab2.x, pbc += bc2.x, pca += ca2.x;
@@ -541,7 +581,7 @@ void drawTriangle_ZB(vec3f A, vec3f B, vec3f C, COLORREF fill, COLORREF stroke =
 							depthbuf(x, y) = z;
 						}
 						z += dz;
-						if (TransparentShading) colorbuf(x, y) += calcShadeFromID(fill);
+						if (TransparentShading) colorbuf(x, y) += calcShadeFromID(fill, vec2f(0.33333333f));
 					}
 				}
 			};
@@ -637,17 +677,17 @@ std::chrono::steady_clock::time_point _iTimer = std::chrono::high_resolution_clo
 
 // a function that returns the color from triangle id
 vec3f light;
-vec3f calcShadeFromID(int i) {
+vec3f calcShadeFromID(int i, vec2f uv) {
 	vec3f A = V[T[i][0]], B = V[T[i][1]], C = V[T[i][2]];
-	vec3f mid = (A + B + C) * 0.33333333f;
-	vec3f n =
+	vec3f p = (1.0f - uv.x - uv.y)*A + uv.x*B + uv.y*C;
+	vec3f n = SmoothShading ? normalize((1.0f - uv.x - uv.y)*V_normal[T[i][0]] + uv.x*V_normal[T[i][1]] + uv.y*V_normal[T[i][2]]) :
 		NormalMode == 0 ? normalize(cross(B - A, C - A)) :
 		NormalMode == 1 ? normalize(cross(C - A, B - A)) : vec3f(0.);
 	vec3f c = vec3f(1);
 	switch (ShadeMode) {
 	case 0: {  // phong
 		float k = dot(n, light);
-		vec3f d = normalize(mid - vec3f(CamP));
+		vec3f d = normalize(p - vec3f(CamP));
 		float spc = dot(d - (2 * dot(d, n))*n, light);
 		spc = powf(max(spc, 0.f), 20.0f);
 		c = vec3f(0.1f, 0.05f, 0.05f) + (k > 0.f ? vec3f(0.8f, 0.8f, 0.7f) : vec3f(0.6f, 0.7f, 0.8f))*abs(k) + vec3f(0.15f)*spc;
@@ -658,7 +698,7 @@ vec3f calcShadeFromID(int i) {
 		break;
 	}
 	case 2: {  // height map, for visualization
-		float t = ((A.z + B.z + C.z) / 3. - BMin.z) / (BMax.z - BMin.z);
+		float t = (p.z - BMin.z) / (BMax.z - BMin.z);
 		if (!isnan(t)) {
 			float r = (((((33.038589*t - 100.425221)*t + 116.136811)*t - 67.842553)*t + 23.470346)*t - 4.018730)*t + 0.498427;
 			float g = (((((39.767595*t - 128.776104)*t + 160.884144)*t - 98.285228)*t + 27.859936)*t - 1.455343)*t + 0.123248;
@@ -669,20 +709,20 @@ vec3f calcShadeFromID(int i) {
 		break;
 	}
 	case 3: {  // directly from file
-		c = getFaceColor(i);
+		c = SmoothShading ? getFaceColor(i, uv) : getFaceColor(i);
 		break;  // nothing needs to be done here
 	}
 	case 4: {  // file + Phong
-		c = getFaceColor(i);
+		c = SmoothShading ? getFaceColor(i, uv) : getFaceColor(i);
 		float k = min(abs(dot(n, light)), 1.f);
-		vec3f d = normalize(mid - vec3f(CamP));
+		vec3f d = normalize(p - vec3f(CamP));
 		float spc = dot(d - (2.f * dot(d, n))*n, light);
 		spc = powf(max(spc, 0.f), 20.0f);
 		c *= 0.2f + 0.8f*k + 0.2f*spc;
 		break;
 	}
 	}
-	return TransparentShading ? c / abs(dot(n, normalize(mid - vec3f(CamP)))) : c;
+	return TransparentShading ? c / abs(dot(n, normalize(p - vec3f(CamP)))) : c;
 };
 
 
@@ -751,7 +791,16 @@ void render() {
 			if (DarkBackground) _WINIMG[px] = 0;
 			else _WINIMG[px] = toCOLORREF(mix(vec3f(0.95f), vec3f(0.65f, 0.65f, 1.00f), float(px / _WIN_W) / float(_WIN_H)));
 		}
-		if (i >= 0) _WINIMG[px] = toCOLORREF(calcShadeFromID(i));
+		if (i >= 0) {
+			vec2f uv = vec2f(0.33333333f);
+			if (SmoothShading) {
+				vec2f p = V_transformed[T[i][0]].xy(),
+					a = V_transformed[T[i][1]].xy() - p, b = V_transformed[T[i][2]].xy() - p;
+				vec2f q = vec2f((float)(px % _WIN_W), (float)(px / _WIN_W)) - p;
+				uv = vec2f(det(q, b), det(a, q)) * (1.0 / det(a, b));
+			}
+			_WINIMG[px] = toCOLORREF(calcShadeFromID(i, uv));
+		}
 		//_WINIMG[px] = toCOLORREF(vec3(0.5 + 0.5*tanh(-0.005*(_DEPTHBUF[px % _WIN_W][px / _WIN_W] - (Tr*Center).z))));
 	}
 
@@ -840,7 +889,7 @@ void render() {
 		swprintf(text, L"%s [%d %s]  normal=%s   %dx%d %.1lffps",
 			&filename[lastslash],
 			TN, TreatAsSolid ? L"solid" : L"surface",
-			NormalMode == 0 ? L"file" : NormalMode == 1 ? L"ccw" : NormalMode == 2 ? L"cw" : L"ERROR!",
+			NormalMode == 0 ? L"ccw" : NormalMode == 1 ? L"cw" : L"ERROR!",
 			_WIN_W, _WIN_H, 1.0 / time_elapsed);
 	}
 	else {  // read value
@@ -858,6 +907,7 @@ bool loadFile(const WCHAR* filename) {
 	if (V) { delete V; V = 0; }
 	if (T) { delete T; T = 0; }
 	if (V_transformed) { delete V_transformed; V_transformed = 0; }
+	if (V_normal) { delete V_normal; V_normal = 0; }
 	if (Vcol) { delete Vcol; Vcol = 0; }
 	if (Fcol) { delete Fcol; Fcol = 0; }
 	bool success = false;
@@ -867,6 +917,7 @@ bool loadFile(const WCHAR* filename) {
 	} catch (...) {}
 	if (success) {
 		V_transformed = new vec3f[VN];
+		if (SmoothShading) calcVertexNormal(), calcVertexColor();
 		return true;
 	}
 	else {
@@ -957,7 +1008,7 @@ void setDefaultView() {
 	Ctrl = Shift = Alt = false;
 }
 void Init() {
-	//wcscpy(filename, L"D:\\stanford_dragon.ply"); loadPLY(filename);
+	//wcscpy(filename, L"D:\\apple.ply"); loadFile(filename);
 	wcscpy(filename, L"Press Ctrl+O to open a file.  ");
 	setDefaultView();
 }
@@ -1112,19 +1163,21 @@ void KeyUp(WPARAM _KEY) {
 	else {
 		if (_KEY == 'C') ShadeMode = (ShadeMode + (Shift ? 4 : 1)) % 5;
 		if (_KEY == VK_TAB && !TransparentShading) RenderMode += Shift ? -1 : 1;
-		if (_KEY == 'N') NormalMode = (NormalMode + (Shift ? 2 : 1)) % 3;
+		if (_KEY == 'N') { NormalMode = (NormalMode + (Shift ? 1 : 1)) % 2; if (SmoothShading) calcVertexNormal(); }
 		if (_KEY == 'X') showAxis ^= 1;
 		if (_KEY == 'G') showGrid ^= !Shift, showMajorMinorGrids ^= Shift;
 		if (_KEY == 'F') showMajorMinorGrids ^= 1;
 		if (_KEY == 'H') showVerticalGrids ^= 1;
 		if (_KEY == 'T') TransparentShading ^= 1;
+		if (_KEY == 'S') { if (SmoothShading ^= 1) calcVertexColor(), calcVertexNormal(); }
 		if (_KEY == 'M') calcVolumeCenterInertia(), showCOM ^= 1;
 		if (_KEY == 'I') calcVolumeCenterInertia(), showInertia ^= 1;
 		if (_KEY == 'B') DarkBackground ^= 1;
 		if (_KEY == 'P') TreatAsSolid ^= 1, calcVolumeCenterInertia();
 		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(vec3(BMax) + vec3(BMin));
 
-		// WSAD, not recommended
+#if 0
+		// WSAD, no longer use
 		if (dist*Unit < 1e5) {
 			vec3 scrdir = normalize(Center - CamP);
 			double sc = 0.08*dot(vec3(BMax) - vec3(BMin), vec3(1.));
@@ -1133,6 +1186,7 @@ void KeyUp(WPARAM _KEY) {
 			if (_KEY == 'A') { vec3 d = sc * normalize(cross(veck, scrdir)); Center += d; }
 			if (_KEY == 'D') { vec3 d = sc * normalize(cross(veck, scrdir)); Center -= d; }
 		}
+#endif
 
 		// set window topmost
 		if (_KEY == VK_F1) {

@@ -244,7 +244,6 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 			}
 			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
 			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
-			printf("%x %x %x\n", cr, cg, cb);
 		}
 		delete fs;
 
