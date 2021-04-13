@@ -22,6 +22,8 @@ template<typename T> inline T max(T x, T y) { return (x > y ? x : y); }
 template<typename T> inline T min(T x, T y) { return (x < y ? x : y); }
 template<typename T, typename t> inline T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
 template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
+template<typename T> inline T mod(T x, T y) { return x - y * floor(x / y); }
+template<typename T> inline T fract(T x) { return x - floor(x); }
 
 // for double precision
 #define invsqrt(x) (1.0/sqrt(x))
@@ -111,6 +113,7 @@ struct vec2 {
 	friend vec2 abs(const vec2 &a) { return vec2(abs(a.x), abs(a.y)); }
 	friend vec2 floor(const vec2 &a) { return vec2(floor(a.x), floor(a.y)); }
 	friend vec2 ceil(const vec2 &a) { return vec2(ceil(a.x), ceil(a.y)); }
+	friend vec2 fract(const vec2 &a) { return vec2(fract(a.x), fract(a.y)); }
 	friend vec2 sqrt(const vec2 &a) { return vec2(sqrt(a.x), sqrt(a.y)); }
 	friend vec2 sin(const vec2 &a) { return vec2(sin(a.x), sin(a.y)); }
 	friend vec2 cos(const vec2 &a) { return vec2(cos(a.x), cos(a.y)); }
@@ -262,7 +265,14 @@ struct vec3 {
 	friend vec3 pMax(const vec3 &a, const vec3 &b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3 pMin(const vec3 &a, const vec3 &b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 	friend vec3 abs(const vec3 &a) { return vec3(abs(a.x), abs(a.y), abs(a.z)); }
+	friend vec3 floor(const vec3 &a) { return vec3(floor(a.x), floor(a.y), floor(a.z)); }
+	friend vec3 ceil(const vec3 &a) { return vec3(ceil(a.x), ceil(a.y), ceil(a.z)); }
+	friend vec3 fract(const vec3 &a) { return vec3(fract(a.x), fract(a.y), fract(a.z)); }
+	friend vec3 sin(const vec3 &a) { return vec3(sin(a.x), sin(a.y), sin(a.z)); }
+	friend vec3 cos(const vec3 &a) { return vec3(cos(a.x), cos(a.y), cos(a.z)); }
+	friend vec3 sqrt(const vec3 &a) { return vec3(sqrt(a.x), sqrt(a.y), sqrt(a.z)); }
 	friend vec3 exp(const vec3 &a) { return vec3(exp(a.x), exp(a.y), exp(a.z)); }
+	friend vec3 log(const vec3 &a) { return vec3(log(a.x), log(a.y), log(a.z)); }
 
 	vec2 xy() const { return vec2(x, y); }
 	vec2 xz() const { return vec2(x, z); }

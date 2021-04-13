@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Raytracing Test</title>
+    <style>
+        #canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #fps {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            font-family: Consolas;
+            font-size: 20px;
+            color: white;
+        }
+
+        #aa-selector {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="fps">fps</div>
+
+    <select id="aa-selector">
+        <option value="1" selected>AA=1×1</option>
+        <option value="2">AA=2×2</option>
+        <option value="3">AA=3×3</option>
+        <option value="4">AA=4×4</option>
+        <option value="5">AA=5×5</option>
+    </select>
+
+    <pre id="fsSource" style="width:100%;white-space:pre-wrap;display:none;">
+precision highp float;
+
+uniform highp vec2 iRotate;
+uniform highp float iDist;
+uniform highp vec2 iResolution;
+
+const vec3 light = normalize(vec3(0, 0, 1));
+
+bool intersect_sphere(vec3 ce, float r, in vec3 ro, in vec3 rd, out float t, out vec3 n) {
+    vec3 p = ro-ce;
+    float b = dot(p,rd), c = dot(p,p)-r*r;
+    float delta = b*b-c; if (delta<=0.0) return false;
+    delta = sqrt(delta);
+    t = -b-delta; if (t<=0.0) t = -b+delta;
+    if (t<=0.0) return false;
+    n = (p+rd*t)/r; return true;
+}
+
+bool intersect_rod(vec3 pa, vec3 pb, float r, in vec3 ro, in vec3 rd, out float t, out vec3 n) {
+    vec3 ab = pb-pa, p = ro-pa;
+    float ab2 = dot(ab, ab), abrd = dot(ab, rd), abp = dot(ab, p);
+    float a = ab2 - abrd*abrd;
+    float b = ab2*dot(p,rd) - abp*abrd;
+    float c = ab2*dot(p,p) - abp*abp - r*r*ab2;
+    float delta = b*b-a*c; if (delta<=0.0) return false;
+    delta = sqrt(delta);
+    t = (-b-delta)/a;
+    if (t>0.0) {
+        float h = abp+t*abrd;
+        if (h>0.0 && h< ab2) {
+            n = (p+rd*t-ab*h/ab2)/r;
+            return true;
+        }
+    }
+    t = (-b+delta)/a;
+    if (t>0.0) {
+        float h = abp+t*abrd;
+        if (h>0.0 && h< ab2) {
+            n = (p+rd*t-ab*h/ab2)/r;
+            return true;
+        }
+    }
+    return false;
+}
+
+vec3 traceRay(vec3 ro, vec3 rd) {
+    
+    const float R = 0.2, r = 0.1;
+    const float rt3_2 = 0.8660254037844386;
+
+    vec3 t_col = vec3(1.0), f_col;
+
+    for (int i = 0; i < 8; i++) {
+        ro += 1e-3*rd;
+        float min_t = 1e+12, t;
+        vec3 min_n = vec3(0.0), n;
+
+        // intersect with the plane
+        t = -(ro.z+(rt3_2+R))/rd.z;
+        if (t > 0.0) {
+            min_t = t;
+            f_col = vec3(0.5, 0.8, 1.0);
+            vec2 p = ro.xy+rd.xy*t;
+            if (mod(floor(p.x)+floor(p.y),2.0)==0.0) f_col*=0.99;
+            min_n = vec3(0, 0, 1);
+        }
+
+        // intersect with balls
+        if (intersect_sphere(vec3(0, 0, 0), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(1, 0, 0), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(0, 1, 0), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(0.5, -0.5, rt3_2), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(0.5, 0.5, rt3_2), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(-0.5, 0.5, rt3_2), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+        if (intersect_sphere(vec3(0.5, 0.5, -rt3_2), R, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = vec3(1.0);
+        }
+
+        // intersect with rods
+        const vec3 rod_col = vec3(1.0, 0.7, 0.75);
+        if (intersect_rod(vec3(-1, 0, 0), vec3(1, 0, 0), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+        if (intersect_rod(vec3(0, -1, 0), vec3(0, 1, 0), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+        if (intersect_rod(vec3(-0.5, -0.5, -rt3_2), vec3(0.5, 0.5, rt3_2), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+        if (intersect_rod(vec3(-0.5, 0.5, -rt3_2), vec3(0.5, -0.5, rt3_2), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+        if (intersect_rod(vec3(0.5, -0.5, -rt3_2), vec3(-0.5, 0.5, rt3_2), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+        if (intersect_rod(vec3(-0.5, -0.5, rt3_2), vec3(0.5, 0.5, -rt3_2), r, ro, rd, t, n) && t < min_t) {
+            min_t = t, min_n = n, f_col = rod_col;
+        }
+
+        if (min_n==vec3(0.0)) break;
+        ro = ro + rd*min_t;
+        rd = rd - 2.0*dot(rd, min_n)*min_n;
+        t_col *= f_col;
+    }
+
+    t_col *= dot(rd, light);
+    return t_col;
+}
+
+#define MAX_AA 5
+uniform int AA;
+
+void main() {
+
+    float rx = iRotate.x, rz = iRotate.y;
+    vec3 w = vec3(cos(rx)*vec2(cos(rz),sin(rz)), sin(rx));
+    vec3 u=vec3(-sin(rz),cos(rz),0);
+    vec3 v=cross(w,u);
+
+    vec3 ro = iDist*w;
+
+    vec3 col = vec3(0.0);
+    for (int i=0;i< MAX_AA;i++) {
+        for (int j=0;j< MAX_AA;j++) {
+            vec2 aVertexPosition = 2.0 * (gl_FragCoord.xy + vec2(i,j)/float(AA)) / iResolution - vec2(1.0);
+            vec3 rd = normalize(mat3(u,v,-w)*vec3(aVertexPosition*iResolution.xy,2.0*length(iResolution)));
+            col += clamp(traceRay(ro, normalize(rd)), 0.0, 1.0);
+            if (j==AA-1) break;
+        }
+        if (i==AA-1) break;
+    }
+    col /= float(AA*AA);
+
+    gl_FragColor = vec4(col,1.0);
+}
+
+</pre>
+
+    <script>
+        function main() {
+            const canvas = document.getElementById("canvas");
+            const gl = canvas.getContext("webgl");
+
+            // vertex and fragment shader code
+            var vsSource = "attribute vec4 aVertexPosition;void main(void){gl_Position=aVertexPosition;}";
+            var fsSource = document.getElementById('fsSource').innerHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+            var iRx = 0.1, iRz = -2.0, iDist = 8.0;  // viewport
+            var AA = 1;
+
+            // initialize a shader program
+            function initShaderProgram(gl, vsSource, fsSource) {
+                function loadShader(gl, type, source) {
+                    var shader = gl.createShader(type);  // create a new shader
+                    gl.shaderSource(shader, source);  // send the source code to the shader
+                    gl.compileShader(shader);  // compile shader
+                    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS))  // check if compiled succeed
+                        throw new Error(gl.getShaderInfoLog(shader));  // compile error message
+                    return shader;
+                }
+                var vShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+                var fShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+                // create the shader program
+                var shaderProgram = gl.createProgram();
+                gl.attachShader(shaderProgram, vShader);
+                gl.attachShader(shaderProgram, fShader);
+                gl.linkProgram(shaderProgram);
+                // if creating shader program failed
+                if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS))
+                    throw new Error(gl.getProgramInfoLog(shaderProgram));
+                return shaderProgram;
+            }
+            console.time("compile shader");
+            var shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+            console.timeEnd("compile shader");
+
+            // look up the locations that WebGL assigned to inputs
+            const programInfo = {
+                program: shaderProgram,
+                attribLocations: {  // attribute variables, receive values from buffers
+                    vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                },
+                uniformLocations: {  // uniform variables, similar to JS global variables
+                    iRotate: gl.getUniformLocation(shaderProgram, 'iRotate'),
+                    iDist: gl.getUniformLocation(shaderProgram, 'iDist'),
+                    iResolution: gl.getUniformLocation(shaderProgram, "iResolution"),
+                    AA: gl.getUniformLocation(shaderProgram, "AA"),
+                },
+            };
+
+            // initialize buffers
+            function initBuffers(gl) {
+                var positionBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+                // vec2[4], coordinates from -1 to 1
+                var positions = [-1, 1, 1, 1, -1, -1, 1, -1];
+
+                // pass the list of positions into WebGL to build the shape
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+                return { position: positionBuffer, };
+            }
+            const buffers = initBuffers(gl);
+
+            // rendering
+            function drawScene(gl, programInfo, buffers) {
+
+                // clear the canvas
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.clearColor(0, 0, 0, 1);
+                gl.clearDepth(1.0);
+                gl.enable(gl.DEPTH_TEST);
+                gl.depthFunc(gl.LEQUAL);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                {
+                    const numComponents = 2;  // pull out 2 values per iteration
+                    const type = gl.FLOAT;  // the data in the buffer is 32bit floats
+                    const normalize = false;  // don't normalize
+                    const stride = 0; // how many bytes to get from one set of values to the next
+                    const offset = 0; // how many bytes inside the buffer to start from
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+                    gl.vertexAttribPointer(
+                        programInfo.attribLocations.vertexPosition,
+                        numComponents, type, normalize, stride, offset);
+                    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+                }
+
+                // make sure it uses the program
+                gl.useProgram(programInfo.program);
+
+                // set shader uniforms
+                // https://webglfundamentals.org/webgl/lessons/webgl-shaders-and-glsl.html
+                gl.uniform2f(programInfo.uniformLocations.iRotate, iRx, iRz);
+                gl.uniform1f(programInfo.uniformLocations.iDist, iDist);
+                gl.uniform2f(programInfo.uniformLocations.iResolution, canvas.clientWidth, canvas.clientHeight);
+                gl.uniform1i(programInfo.uniformLocations.AA, AA);
+
+                // render
+                {
+                    const offset = 0;
+                    const vertexCount = 4;
+                    gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
+                }
+            }
+
+            let then = 0;
+            var render_needed = true;
+            function render_main(now) {
+                if (render_needed) {
+                    // display fps
+                    now *= 0.001;
+                    var time_delta = now - then;
+                    then = now;
+                    if (time_delta != 0) {
+                        document.getElementById("fps").textContent = (1.0 / time_delta).toFixed(1) + " fps";
+                    }
+
+                    canvas.width = canvas.style.width = window.innerWidth;
+                    canvas.height = canvas.style.height = window.innerHeight;
+                    drawScene(gl, programInfo, buffers);
+
+                    render_needed = false;
+                }
+                requestAnimationFrame(render_main);
+            }
+
+            requestAnimationFrame(render_main);
+
+
+            // interactions
+            canvas.oncontextmenu = function (e) {
+                //e.preventDefault();
+            };
+            canvas.addEventListener("mousewheel", function (e) {
+                e.preventDefault();
+                var sc = Math.exp(-0.0002 * e.wheelDelta);
+                iDist *= sc;
+                render_needed = true;
+            }, { passive: false });
+
+            var mouseDown = false;
+            canvas.onmousedown = function (event) {
+                event.preventDefault();
+                mouseDown = true;
+            };
+            window.onmouseup = function (event) {
+                event.preventDefault();
+                mouseDown = false;
+            };
+            window.onresize = function (event) {
+                canvas.width = canvas.style.width = window.innerWidth;
+                canvas.height = canvas.style.height = window.innerHeight;
+                render_needed = true;
+            }
+            canvas.onmousemove = function (e) {
+                if (mouseDown) {
+                    iRx += 0.01 * e.movementY;
+                    iRz -= 0.01 * e.movementX;
+                    render_needed = true;
+                }
+            };
+
+            document.getElementById("aa-selector").addEventListener("input", function () {
+                const option = document.getElementById("aa-selector").selectedIndex;
+                AA = option + 1;
+                render_needed = true;
+            })
+        }
+
+        window.onload = main;
+
+    </script>
+</body>
+
+</html>
