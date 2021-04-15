@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Triangle Drawing Test</title>
+</head>
+
+<body style='background-color:lightgray;'>
+
+    <canvas id='glCanvas' width='640' height='360'></canvas>
+
+    <script>
+        "use strict";
+
+        const canvas = document.querySelector('#glCanvas');
+
+
+        function generateTriangles() {
+            // parametric surface
+            const cos = Math.cos, sin = Math.sin, exp = Math.exp, pi = Math.PI, sqrt = Math.sqrt;
+            var fun = function (u, v) {
+                var cx = cos(v) + 0.2 * sin(v) * sin(v), cy = -1.3 * sin(v) + cos(v) * cos(v);
+                var r = 0.5 + 0.8 * cx + 0.3 * cy, z = 2.8 * (exp(-0.4 * u) - 1.0) + cy - 0.3 * cx;
+                var s = exp(0.4 * u);
+                return [s * r * sin(pi * u), s * r * cos(pi * u), s * z];
+            };
+            var fun_normal = function (u, v) {
+                var eps = 0.001;
+                var su0 = fun(u - eps, v), su1 = fun(u + eps, v), sv0 = fun(u, v - eps), sv1 = fun(u, v + eps);
+                var du = [su1[0] - su0[0], su1[1] - su0[1], su1[2] - su0[2]];
+                var dv = [sv1[0] - sv0[0], sv1[1] - sv0[1], sv1[2] - sv0[2]];
+                var n = [du[1] * dv[2] - du[2] * dv[1], du[2] * dv[0] - du[0] * dv[2], du[0] * dv[1] - du[1] * dv[0]];
+                var m = 1.0 / sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                return [m * n[0], m * n[1], m * n[2]];
+            };
+            var u0 = -9.0, u1 = 1.0, v0 = 0.0, v1 = 2.0 * pi, un = 200, vn = 40;
+            var du = (u1 - u0) / un, dv = (v1 - v0) / vn;
+            // generate a point list and a index list
+            var points = [], normals = [], indices = [];
+            for (var ui = 0; ui <= un; ui++) {
+                for (var vi = 0; vi <= vn; vi++) {
+                    var u = u0 + ui * du, v = v0 + vi * dv;
+                    var p = fun(u, v), n = fun_normal(u, v);
+                    points.push(p[0]); points.push(p[1]); points.push(p[2]);
+                    normals.push(n[0]); normals.push(n[1]); normals.push(n[2]);
+                }
+            }
+            for (var ui = 0; ui < un; ui++) {
+                var indices_t = [];
+                for (var vi = 0; vi < vn; vi++) {
+                    indices_t = indices_t.concat(
+                        ui * (vn + 1) + vi, (ui + 1) * (vn + 1) + vi, (ui + 1) * (vn + 1) + vi + 1,
+                        ui * (vn + 1) + vi, (ui + 1) * (vn + 1) + vi + 1, ui * (vn + 1) + vi + 1
+                    );
+                }
+                indices = indices.concat(indices_t);
+            }
+            return {
+                vertexList: points,
+                normalList: normals,
+                indiceList: indices
+            };
+        }
+
+        console.time("generate shape");
+        const shape = generateTriangles();
+        console.timeEnd("generate shape");
+
+
+        var iRx = -0.50, iRz = 1.0, iSc = 0.3;  // viewport
+
+
+        // initialize a shader program so WebGL knows how to draw data
+        function initShaderProgram(gl, vsSource, fsSource) {
+
+            // function: create a shader of the given type, upload and compile source
+            function loadShader(gl, type, source) {
+                const shader = gl.createShader(type);  // create a new shader
+                gl.shaderSource(shader, source);  // shader source is sent to the shader
+                gl.compileShader(shader);  // compile shader
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {  // check if compile successful
+                    var error_message = "Shader compile error: " + gl.getShaderInfoLog(shader);  // get compile log
+                    gl.deleteShader(shader);
+                    throw error_message;
+                }
+                return shader;
+            }
+            // load shaders
+            const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+            // create shader program
+            const shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                throw alert("Unable to initialize the shader program: " + gl.getProgramInfoLog(shaderProgram));
+            }
+
+            return shaderProgram;
+        }
+
+
+        // main function
+        function main() {
+            // initialize GL context
+            const gl = canvas.getContext("webgl");
+            if (gl === null) throw alert("Unable to initialize WebGL");
+
+            // set background color to black
+            gl.clearColor(0, 0, 0, 1);  // vec4(0,0,0,1)
+            // clear the color buffer
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // vertex shader source
+            // run at each vertex of the shape to transform input vertex to clip space coordinate system
+            // each axis has range from -1.0 to 1.0
+            const vsSource = `
+                attribute vec4 aVertexPosition;
+                attribute vec3 aVertexNormal;
+
+                uniform vec2 iResolution;
+                uniform float iRx;
+                uniform float iRz;
+                uniform float iSc;
+
+                varying highp vec3 vPos;
+                varying highp vec3 vNormal;
+
+                void main() {
+                    gl_Position = aVertexPosition;
+                    gl_Position = gl_Position;
+                    gl_Position = mat4(
+                        1, 0, 0, 0,
+                        0, cos(iRx), sin(iRx), 0,
+                        0, -sin(iRx), cos(iRx), 0,
+                        0, 0, 0, 1
+                    ) * mat4(
+                        cos(iRz), sin(iRz), 0, 0,
+                        -sin(iRz), cos(iRz), 0, 0,
+                        0, 0, 1, 0,
+                        0, 0, 0, 1
+                    ) * mat4(
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, -0.1,
+                        0, 0, 0, 1.0/iSc
+                    ) * gl_Position;
+
+                    gl_Position *= vec4(min(iResolution.x,iResolution.y)/iResolution, 0.5, 1.0);
+
+                    vPos = gl_Position.xyz;
+                    vNormal = normalize(aVertexNormal).xyz;
+                }
+            `;
+            // fragment shader source
+            // called once at every pixel after the vertices have been processed by vertex shader
+            // calculate the color of the pixel
+            const fsSource = `
+                precision highp float;
+
+                varying vec3 vPos;
+                varying vec3 vNormal;
+
+                const vec3 light = normalize(vec3(-0.3, 0.3, 1));
+
+                void main() {
+                    vec3 n = normalize(vNormal);
+                    vec3 col = 0.5+0.5*n;
+
+                    float amb = 1.0;
+                    float lit = max(dot(n, light), 0.0);
+
+                    col *= vec3(0.4*amb + 0.6*lit);
+
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `;
+
+            // create shader program
+            const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+            // get variable locations
+            const programInfo = {
+                program: shaderProgram,
+                // attributes: receive values from buffers
+                attribLocations: {
+                    vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                    vertexNormal: gl.getAttribLocation(shaderProgram, 'aVertexNormal'),
+                },
+                // uniforms: similar to global variables, stay the same for all iterations of a shader
+                uniformLocations: {
+                    iResolution: gl.getUniformLocation(shaderProgram, 'iResolution'),
+                    iRx: gl.getUniformLocation(shaderProgram, 'iRx'),
+                    iRz: gl.getUniformLocation(shaderProgram, 'iRz'),
+                    iSc: gl.getUniformLocation(shaderProgram, 'iSc'),
+                },
+            };
+
+            // draw the scene
+            var buffers = initBuffers(gl);
+            var time_start = performance.now();
+            function render() {
+                var iTime = 0.001 * (performance.now() - time_start);
+                drawScene(gl, programInfo, buffers, iTime);
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+
+        }
+
+
+
+        // create the buffer for vertex positions
+        function initBuffers(gl) {
+            // create a buffer for the square's positions
+            const positionBuffer = gl.createBuffer();
+            // select the created buffer as the one to apply buffer operations
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+            // create an array of positions for the square
+            const positions = shape.vertexList;
+
+            // pass a list of positions into WebGL to build the shape
+            // create a Float32Array from Javascript array and use to fill the current buffer
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+            // normal buffer
+            var normals = shape.normalList;
+            const normalBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+            // index buffer
+            // to use 32 bit indice: https://computergraphics.stackexchange.com/questions/3637/how-to-use-32-bit-integers-for-element-indices-in-webgl-1-0
+            const indexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            const indices = shape.indiceList;
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            // return a list of created buffers
+            return {
+                position: positionBuffer,
+                normal: normalBuffer,
+                indices: indexBuffer,
+            };
+        }
+
+
+        // render the scene
+        function drawScene(gl, programInfo, buffers, iTime) {
+            gl.clearColor(0., 0., 0., 1.);  // clear to vec4(0,0,0,1)
+            gl.clearDepth(-10000.0);  // clear everything
+            gl.enable(gl.DEPTH_TEST);  // enable depth testing
+            gl.depthFunc(gl.GEQUAL);  // near objects obscure far objects
+
+            // clear the canvas
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+            // tell WebGL how to pull out the positions from the position buffer into the vertexPosition attribute
+            {
+                const numComponents = 3;  // pull out 3 values per iteration
+                const type = gl.FLOAT;  // data in the buffer is 32bit float
+                const normalize = false;  // do not normalize
+                const stride = 0;  // how many bytes to get from one set of values to next; 0: same as numComponents
+                const offset = 0;  // how many bytes inside the buffer to start from
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+                gl.vertexAttribPointer(
+                    programInfo.attribLocations.vertexPosition,
+                    numComponents, type, normalize, stride, offset);
+                gl.enableVertexAttribArray(
+                    programInfo.attribLocations.vertexPosition);
+            }
+
+            // tell WebGL how to pull out the normals from the normal buffer
+            {
+                const numComponents = 3;
+                const type = gl.FLOAT;
+                const normalize = false;
+                const stride = 0, offset = 0;
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+                gl.vertexAttribPointer(
+                    programInfo.attribLocations.vertexNormal,
+                    numComponents, type, normalize, stride, offset);
+                gl.enableVertexAttribArray(
+                    programInfo.attribLocations.vertexNormal);
+            }
+
+            // indice buffer
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+
+            // tell WebGL to use the program when drawing
+            gl.useProgram(programInfo.program);
+
+            // set shader uniforms
+            gl.uniform2fv(
+                programInfo.uniformLocations.iResolution,
+                [canvas.clientWidth, canvas.clientHeight]
+            );
+            gl.uniform1f(programInfo.uniformLocations.iRx, iRx);
+            gl.uniform1f(programInfo.uniformLocations.iRz, iRz);
+            gl.uniform1f(programInfo.uniformLocations.iSc, iSc);
+
+            // draw elements
+            {
+                const vertexCount = shape.indiceList.length;
+                const type = gl.UNSIGNED_SHORT;
+                const offset = 0;
+                gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
+            }
+        }
+
+
+        window.onload = main;
+
+        var mousedown = false;
+        canvas.addEventListener("mousedown", function (e) {
+            mousedown = true;
+        });
+        window.addEventListener("mouseup", function (e) {
+            mousedown = false;
+        });
+        canvas.addEventListener("mousemove", function (e) {
+            if (!mousedown) return;
+            iRx += 0.01 * e.movementY;
+            iRz += 0.01 * e.movementX;
+        });
+        canvas.addEventListener("mousewheel", function (e) {
+            e.preventDefault();
+            iSc *= Math.exp(0.0005 * e.wheelDelta);
+        }, { passive: false });
+
+    </script>
+</body>
+
+</html>

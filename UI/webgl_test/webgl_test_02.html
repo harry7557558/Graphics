@@ -156,12 +156,15 @@ vec3 traceRay(vec3 ro, vec3 rd) {
         }
 
         if (min_n==vec3(0.0)) break;
+
+        rd = normalize(rd), min_n = normalize(min_n);  // prevent error accumulation
+
         ro = ro + rd*min_t;
         rd = rd - 2.0*dot(rd, min_n)*min_n;
         t_col *= f_col;
     }
 
-    t_col *= dot(rd, light);
+    t_col *= max(dot(rd, light), 0.0);
     return t_col;
 }
 
