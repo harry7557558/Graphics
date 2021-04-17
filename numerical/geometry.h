@@ -24,6 +24,7 @@ template<typename T, typename t> inline T clamp(T x, t a, t b) { return (x<a ? a
 template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
 template<typename T> inline T mod(T x, T y) { return x - y * floor(x / y); }
 template<typename T> inline T fract(T x) { return x - floor(x); }
+template<typename T> inline T sign(T x) { return (T)(x > 0.0 ? 1.0 : x < 0.0 ? -1.0 : 0.0); }
 
 // for double precision
 #define invsqrt(x) (1.0/sqrt(x))
@@ -429,6 +430,14 @@ mat3 rotationMatrix_z(double a) {
 	);
 }
 
+// mostly used for debug
+double degree(double rad) {
+	return rad * (180. / PI);
+}
+double radians(double deg) {
+	return deg * (PI / 180.);
+}
+
 
 
 class mat3f {
@@ -481,17 +490,24 @@ public:
 
 
 
-// mostly used for debug
-double degree(double rad) {
-	return rad * (180. / PI);
-}
-double radians(double deg) {
-	return deg * (PI / 180.);
-}
+// recommended over pMax and pMin
+vec2 max(vec2 a, vec2 b) { return vec2(max(a.x, b.x), max(a.y, b.y)); }
+vec2f max(vec2f a, vec2f b) { return vec2f(max(a.x, b.x), max(a.y, b.y)); }
+vec2 min(vec2 a, vec2 b) { return vec2(min(a.x, b.x), min(a.y, b.y)); }
+vec2f min(vec2f a, vec2f b) { return vec2f(min(a.x, b.x), min(a.y, b.y)); }
+vec3 max(vec3 a, vec3 b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
+vec3f max(vec3f a, vec3f b) { return vec3f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
+vec3 min(vec3 a, vec3 b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+vec3f min(vec3f a, vec3f b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+vec2 clamp(vec2 p, double a, double b) { return vec2(clamp(p.x, a, b), clamp(p.y, a, b)); }
+vec2f clamp(vec2f p, float a, float b) { return vec2f(clamp(p.x, a, b), clamp(p.y, a, b)); }
+vec3 clamp(vec3 p, double a, double b) { return vec3(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b)); }
+vec3f clamp(vec3f p, float a, float b) { return vec3f(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b)); }
 
 
 
-// triangle class
+
+// triangle classes
 #include <initializer_list>
 struct triangle_3d {
 	vec3 V[3];
