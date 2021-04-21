@@ -125,11 +125,12 @@ Affine operator * (const Affine &A, const Affine &B) {
 
 // ======================================== Data / Parameters ========================================
 
+
+#pragma region General Global Variables
+
 // viewport
 vec3 Center(0.0, 0.0, 0.0);  // view center in world coordinate
 double rz = 0.2*PI, rx = 0.15*PI, ry = 0.0, dist = 12.0, Unit = 100.0;  // yaw, pitch, roll, camera distance, scale to screen
-
-#pragma region General Global Variables
 
 // window parameters
 Affine Tr;  // matrix
@@ -165,18 +166,6 @@ void calcMat() {
 	Affine S{ veci, vecj, veck, vec3(0), vec3(0), 1.0 / Unit };  // scaling
 	Affine T{ veci, vecj, veck, vec3(SCRCTR, 0.0), vec3(0), 1.0 };  // screen translation
 	Tr = T * S * P * R * D;
-}
-void getRay(vec2 Cursor, vec3 &p, vec3 &d) {
-	p = CamP;
-	d = normalize(ScrO + (Cursor.x / _WIN_W)*ScrA + (Cursor.y / _WIN_H)*ScrB - CamP);
-}
-void getScreen(vec3 &P, vec3 &O, vec3 &A, vec3 &B) {  // O+uA+vB
-	double cx = cos(rx), sx = sin(rx), cz = cos(rz), sz = sin(rz);
-	vec3 u(-sz, cz, 0), v(-cz * sx, -sz * sx, cx), w(cz * cx, sz * cx, sx);
-	Affine Y = axisAngle(w, -ry); u = Y * u, v = Y * v;
-	u *= 0.5*_WIN_W / Unit, v *= 0.5*_WIN_H / Unit, w *= dist;
-	P = Center + w;
-	O = Center - (u + v), A = u * 2.0, B = v * 2.0;
 }
 
 #pragma endregion
@@ -266,23 +255,6 @@ void drawTriangle(vec3 A, vec3 B, vec3 C, COLORREF col, bool stroke = false, COL
 		drawLine(a, b, strokecol); drawLine(a, c, strokecol); drawLine(b, c, strokecol);
 	}
 }
-void drawBox(vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
-	drawLine(vec2(Min.x, Min.y), vec2(Max.x, Min.y), col);
-	drawLine(vec2(Max.x, Min.y), vec2(Max.x, Max.y), col);
-	drawLine(vec2(Max.x, Max.y), vec2(Min.x, Max.y), col);
-	drawLine(vec2(Min.x, Max.y), vec2(Min.x, Min.y), col);
-}
-void fillBox(vec2 Min, vec2 Max, COLORREF col = 0xFF0000) {
-	int x0 = max((int)Min.x, 0), x1 = min((int)Max.x, _WIN_W - 1);
-	int y0 = max((int)Min.y, 0), y1 = min((int)Max.y, _WIN_H - 1);
-	for (int x = x0; x <= x1; x++) for (int y = y0; y <= y1; y++) Canvas(x, y) = col;
-}
-void drawSquare(vec2 C, double r, COLORREF col = 0xFFA500) {
-	drawBox(C - vec2(r, r), C + vec2(r, r), col);
-}
-void fillSquare(vec2 C, double r, COLORREF col = 0xFFA500) {
-	fillBox(C - vec2(r, r), C + vec2(r, r), col);
-}
 
 void drawLine_F(vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s;
@@ -296,8 +268,6 @@ void drawLine_F(vec3 A, vec3 B, COLORREF col = 0xFFFFFF) {
 void drawTriangle_F(vec3 A, vec3 B, vec3 C, COLORREF col) {
 	double u = dot(Tr.p, A) + Tr.s, v = dot(Tr.p, B) + Tr.s, w = dot(Tr.p, C) + Tr.s;
 	if (u > 0 && v > 0 && w > 0) { drawTriangle((Tr*A), (Tr*B), (Tr*C), col); return; }
-	if (u < 0 && v < 0 && w < 0) return;
-	// debug
 }
 void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF) {
 	r *= dot(Tr.p, P) + Tr.s;
@@ -364,7 +334,7 @@ struct RigidBody {
 
 	/* derived quantities */
 	mat3 R;  // orientation
-	mat3 inv_I;  // reciprocal of moment of inertia
+	mat3 I, inv_I;  // moment of inertia
 	vec3 v;  // velocity
 	vec3 w;  // angular velocity
 
@@ -381,7 +351,7 @@ struct RigidBody {
 
 	/* constructors */
 	RigidBody() {}
-	RigidBody(const char* filename, bool isSolid) {
+	RigidBody(const char* filename, bool isSolid, double normalize_mass = NAN) {
 		FILE* fp = fopen(filename, "rb");
 		if (!fp) return;
 		vec3f *Vs = 0; ply_triangle *Fs = 0;
@@ -393,6 +363,11 @@ struct RigidBody {
 			for (int i = 0; i < FN; i++)
 				faces.push_back(ivec3(Fs[i][0], Fs[i][1], Fs[i][2]));
 			calcConstants(1.0, isSolid);
+			if (!isnan(normalize_mass)) {
+				double s = isSolid ? cbrt(normalize_mass / m) : sqrt(normalize_mass / m);
+				for (int i = 0; i < VN; i++) vertices[i] *= s;
+				calcConstants(1.0, isSolid);
+			}
 		}
 		fclose(fp);
 		if (Vs) delete Vs; if (Fs) delete Fs;
@@ -413,6 +388,7 @@ struct RigidBody {
 			2.0*(x*z + s * y), 2.0*(y*z - s * x), 1.0 - 2.0*(x*x + y * y)
 		);
 		// moment of inertia, linear and angular velocity
+		I = R * I0 * transpose(R);
 		inv_I = R * inv_I0 * transpose(R);
 		v = inv_m * P;
 		w = inv_I * L;
@@ -475,15 +451,41 @@ void RigidBody::calcConstants(double density, bool isSolid) {
 }
 
 
+vec3 B0, B1;  // simulation box
 RigidBody body;
+
+const vec3 g = vec3(0, 0, -9.8);
 
 
 void calc_force_and_torque() {
 
 	// gravity
-	body.force = vec3(0, 0, -9.8) * body.m;
+	body.force = body.m * g;
 	body.torque = vec3(0.0);
 
+	// boundary collision
+	const double k_c = 100000.0 / body.vertices.size();  // collision force coefficient
+	const double k_d = 1000.0 / body.vertices.size();  // damping coefficient
+	const double mu = 500.0 / body.vertices.size();
+	auto addCollisionForce = [&](vec3 n, vec3 p0, vec3 p, vec3 v) {
+		double depth = max(-dot(n, p - p0), 0.0);
+		vec3 f_c = k_c * depth * n;
+		vec3 f_d = (depth == 0.0 ? 0.0 : -k_d * dot(v, n)) * n;  // not sure if this is physically correct
+		vec3 f_f = depth == 0.0 ? vec3(0.0) : -mu * normalize(v - dot(v, n) * n + vec3(1e-100));
+		vec3 f = f_c + f_d + f_f;
+		body.force += f;
+		body.torque += cross(p - body.x, f);
+	};
+	for (int i = 0; i < (int)body.vertices.size(); i++) {
+		vec3 p = body.getAbsolutePos(body.vertices[i]);
+		vec3 v = body.getAbsoluteVelocity(body.vertices[i]);
+		addCollisionForce(vec3(1, 0, 0), B0, p, v);
+		addCollisionForce(vec3(0, 1, 0), B0, p, v);
+		addCollisionForce(vec3(0, 0, 1), B0, p, v);
+		addCollisionForce(vec3(-1, 0, 0), B1, p, v);
+		addCollisionForce(vec3(0, -1, 0), B1, p, v);
+		addCollisionForce(vec3(0, 0, -1), B1, p, v);
+	}
 }
 
 void update_scene(double dt) {
@@ -523,14 +525,11 @@ void update_scene(double dt) {
 #include <chrono>
 
 void render() {
-	// time recorder
-	auto _time_0 = std::chrono::high_resolution_clock::now();
 
 	// initialize window
 	for (int i = 0, l = _WIN_W * _WIN_H; i < l; i++) _WINIMG[i] = 0;
 	for (int i = 0; i < _WIN_W; i++) for (int j = 0; j < _WIN_H; j++) _DEPTHBUF[i][j] = INFINITY;
 	calcMat();
-	getScreen(CamP, ScrO, ScrA, ScrB);
 
 	// axis and grid
 	{
@@ -552,19 +551,40 @@ void render() {
 				body.getAbsolutePos(body.vertices[T.y]),
 				body.getAbsolutePos(body.vertices[T.z])
 			);
-			vec3 n = t.unit_normal(), d = normalize(t.center() - CamP);
-			//if (dot(n, d) > 0) n = -n;
+			vec3 n = t.unit_normal();
 			double c = 0.6 + 0.4*dot(n, normalize(vec3(-0.1, 0.3, 1)));
 			drawTriangle_F(t[0], t[1], t[2], toCOLORREF(vec3f(c)));
 		}
 	}
 
+	// simulation box
+	{
+		const COLORREF col = 0xffffff;
+		drawLine_F(vec3(B0.x, B0.y, B0.z), vec3(B0.x, B1.y, B0.z), col);
+		drawLine_F(vec3(B0.x, B1.y, B0.z), vec3(B1.x, B1.y, B0.z), col);
+		drawLine_F(vec3(B1.x, B1.y, B0.z), vec3(B1.x, B0.y, B0.z), col);
+		drawLine_F(vec3(B1.x, B0.y, B0.z), vec3(B0.x, B0.y, B0.z), col);
+		drawLine_F(vec3(B0.x, B0.y, B0.z), vec3(B0.x, B0.y, B1.z), col);
+		drawLine_F(vec3(B0.x, B1.y, B0.z), vec3(B0.x, B1.y, B1.z), col);
+		drawLine_F(vec3(B1.x, B0.y, B0.z), vec3(B1.x, B0.y, B1.z), col);
+		drawLine_F(vec3(B1.x, B1.y, B0.z), vec3(B1.x, B1.y, B1.z), col);
+		drawLine_F(vec3(B0.x, B0.y, B1.z), vec3(B0.x, B1.y, B1.z), col);
+		drawLine_F(vec3(B0.x, B1.y, B1.z), vec3(B1.x, B1.y, B1.z), col);
+		drawLine_F(vec3(B1.x, B1.y, B1.z), vec3(B1.x, B0.y, B1.z), col);
+		drawLine_F(vec3(B1.x, B0.y, B1.z), vec3(B0.x, B0.y, B1.z), col);
+	}
+
+	//
 	drawCross3D(Center, 6, 0xFF8000);
 
-	// the actual fps is less because of displaying time
-	double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - _time_0).count();
-	//dbgprint("%lfms (%.1lf fps)\n", 1000 * time_elapsed, 1.0 / time_elapsed);
+	// statistics
+	double Eg = body.m * -dot(body.x, g);
+	double Ev = 0.5 * body.m * body.v.sqr();
+	double Er = 0.5 * dot(body.w, body.I * body.w);
+	double E = Eg + Ev + Er;
+	printf("(%lg,%.4lg),", body.t, E);
 
+	// window title (display time)
 	char text[1024];
 	sprintf(text, "%.3lfs", body.t);
 	SetWindowTextA(_HWND, text);
@@ -581,9 +601,13 @@ void Init() {
 	dist *= zoom_out, Unit /= zoom_out;
 
 	// initial configuration
-	body = RigidBody("D:\\cube.stl", true);
+	body = RigidBody("D:\\dragon_res4.ply", false, 20.0);
+	body.x = vec3(0, 0, 2);
 	body.P = body.m * vec3(5, 5, 10);
-	body.L = body.I0 * vec3(0, 0, 1);
+	body.L = body.I0 * vec3(0, 1, 1);
+	B0 = vec3(-10, -10, 0), B1 = vec3(10, 10, 10);
+
+	Center = 0.5*(B0 + B1);
 
 	// simulation thread
 	new std::thread([]() {
