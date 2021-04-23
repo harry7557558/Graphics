@@ -316,17 +316,16 @@ struct quaternion {
 
 #include "numerical/ode.h"
 
+// sphere with orientation
 struct RigidBody {
-	/* geometry */
-	std::vector<vec3> vertices;  // vertices
-	std::vector<ivec3> faces;  // triangle faces with ccw normal
 
 	/* constant quantities */
-	double m, inv_m;  // mass and its reciprocal
-	mat3 I0, inv_I0;  // moment of inertia when right oriented
+	static double r;  // radius
+	static double m, inv_m;  // mass and its reciprocal
+	static mat3 I0, inv_I0;  // moment of inertia when right oriented
 
 	/* state variables */
-	double t;  // time
+	static double t;  // time
 	vec3 x;  // position
 	quaternion q;  // orientation
 	vec3 P;  // momentum
@@ -342,41 +341,22 @@ struct RigidBody {
 	vec3 force;
 	vec3 torque;
 
-	vec3 getAbsolutePos(vec3 r) {
+	vec3 getAbsolutePos(vec3 r) const {
 		return x + R * r;
 	}
-	vec3 getAbsoluteVelocity(vec3 r) {
-		return v + cross(w, R*r);
+	vec3 getAbsoluteVelocity(vec3 r, bool rotated = false) const {
+		return v + cross(w, rotated ? r : R * r);
 	}
 
 	/* constructors */
 	RigidBody() {}
-	RigidBody(const char* filename, bool isSolid, double normalize_mass = NAN) {
-		FILE* fp = fopen(filename, "rb");
-		if (!fp) return;
-		vec3f *Vs = 0; ply_triangle *Fs = 0;
-		int VN, FN;
-		COLORREF *v_col = 0, *f_col = 0;
-		if (read3DFile(fp, Vs, Fs, VN, FN, v_col, f_col)) {
-			for (int i = 0; i < VN; i++)
-				vertices.push_back(vec3(Vs[i]));
-			for (int i = 0; i < FN; i++)
-				faces.push_back(ivec3(Fs[i][0], Fs[i][1], Fs[i][2]));
-			calcConstants(1.0, isSolid);
-			if (!isnan(normalize_mass)) {
-				double s = isSolid ? cbrt(normalize_mass / m) : sqrt(normalize_mass / m);
-				for (int i = 0; i < VN; i++) vertices[i] *= s;
-				calcConstants(1.0, isSolid);
-			}
-		}
-		fclose(fp);
-		if (Vs) delete Vs; if (Fs) delete Fs;
-		if (v_col) delete v_col; if (f_col) delete f_col;
-		resetVariables();
+	RigidBody(vec3 x, quaternion q, vec3 v, vec3 w) : x(x), q(q) {
+		calcDerivedQuantities();
+		P = m * v, L = I * w;
 	}
 
-	// calculate mass and moment of inertia, translate the shape so its center of mass is the origin
-	void calcConstants(double density, bool isSolid);
+	// calculate mass and moment of inertia
+	static void calcConstants(double density, double radius);
 
 	// set variables to default
 	void calcDerivedQuantities() {
@@ -420,77 +400,84 @@ struct RigidBody {
 		this->q = *(quaternion*)(vec + 3);
 		this->P = *(vec3*)(vec + 7);
 		this->L = *(vec3*)(vec + 10);
+		if (1) q = q * (1.0 / sqrt(q.s*q.s + q.t.sqr()));
 	}
 
 };
 
-void RigidBody::calcConstants(double density, bool isSolid) {
-	double Volume = 0; vec3 COM = vec3(0.0); mat3 Inertia = mat3(0.0);
-	for (int i = 0; i < (int)faces.size(); i++) {
-		vec3 a = vertices[faces[i].x], b = vertices[faces[i].y], c = vertices[faces[i].z];
-		if (isSolid) {
-			double dV = det(a, b, c) / 6.;
-			Volume += dV;
-			COM += dV * (a + b + c) / 4.;
-			Inertia += dV * 0.1*(mat3(dot(a, a) + dot(b, b) + dot(c, c) + dot(a, b) + dot(a, c) + dot(b, c)) -
-				(tensor(a, a) + tensor(b, b) + tensor(c, c) + 0.5*(tensor(a, b) + tensor(a, c) + tensor(b, a) + tensor(b, c) + tensor(c, a) + tensor(c, b))));
-		}
-		else {
-			double dV = 0.5*length(cross(b - a, c - a));
-			Volume += dV;
-			COM += dV * (a + b + c) / 3.;
-			Inertia += dV / 6. *(mat3(dot(a, a) + dot(b, b) + dot(c, c) + dot(a, b) + dot(a, c) + dot(b, c)) -
-				(tensor(a, a) + tensor(b, b) + tensor(c, c) + 0.5*(tensor(a, b) + tensor(a, c) + tensor(b, a) + tensor(b, c) + tensor(c, a) + tensor(c, b))));
-		}
-	}
-	COM /= Volume;
-	Inertia = Inertia - Volume * (mat3(dot(COM, COM)) - tensor(COM, COM));
-	this->inv_m = 1.0 / (this->m = density * Volume);
-	this->inv_I0 = inverse(this->I0 = density * Inertia);
-	for (int i = 0; i < (int)vertices.size(); i++) vertices[i] -= COM;
+double RigidBody::r = 0.0;
+double RigidBody::m = 0.0; double RigidBody::inv_m = INFINITY;
+mat3 RigidBody::I0 = mat3(0.0); mat3 RigidBody::inv_I0 = mat3(INFINITY);
+double RigidBody::t = 0.0;
+
+void RigidBody::calcConstants(double density, double radius) {
+	r = radius;
+	m = 1.333333 * PI * r*r*r * density, inv_m = 1.0 / m;
+	I0 = mat3(0.4*m*r*r), inv_I0 = inverse(I0);
 }
 
 
 vec3 B0, B1;  // simulation box
 const bool has_top = false;
 
-RigidBody body;
+std::vector<RigidBody> bodies;
 
 const vec3 g = vec3(0, 0, -9.8);
 
 
 void calc_force_and_torque() {
+	const int BN = (int)bodies.size();
 
 	// gravity
-	body.force = body.m * g;
-	body.torque = vec3(0.0);
+	for (int i = 0; i < BN; i++) {
+		bodies[i].force = bodies[i].m * g;
+		bodies[i].torque = vec3(0.0);
+	}
+
+	const double k_c = 10000.0 * RigidBody::m;  // collision force coefficient
+	const double k_d = 50.0 * RigidBody::m;  // damping coefficient
+	const double mu = 0.2;  // friction coefficient
 
 	// boundary collision
-	double sc = body.m / body.vertices.size();
-	const double k_c = 10000.0 * sc;  // collision force coefficient
-	const double k_d = 100.0 * sc;  // damping coefficient
-	const double mu = 0.2;  // friction coefficient
-	auto addCollisionForce = [&](vec3 n, vec3 p0, vec3 p, vec3 v) {
-		double depth = -dot(n, p - p0);
+	auto addCollisionForce = [&](RigidBody &body, vec3 n, vec3 p0) {
+		double depth = -dot(n, body.x - p0) + body.r;
 		if (depth > 0.0) {
 			vec3 f_c = k_c * depth * n;
-			vec3 f_d = -k_d * dot(v, n) * n;  // not sure if this is physically correct
-			vec3 f_f = -mu * (k_c * depth) * normalize(v - dot(v, n) * n + vec3(1e-100));
-			vec3 f = f_c + f_d + f_f;
-			body.force += f;
-			body.torque += cross(p - body.x, f);
+			vec3 f_d = -k_d * dot(body.v, n) * n;  // not sure if this is physically correct
+			vec3 v_f = body.getAbsoluteVelocity(-body.r*n, true);
+			vec3 f_f = -mu * (k_c * depth) * normalize(v_f - dot(v_f, n) * n);
+			if (isnan(f_f.x)) f_f = vec3(0.0);
+			body.force += f_c + f_d + f_f;
+			body.torque += cross(-body.r*n, f_f);
 		}
 	};
-	for (int i = 0; i < (int)body.vertices.size(); i++) {
-		vec3 p = body.getAbsolutePos(body.vertices[i]);
-		vec3 v = body.getAbsoluteVelocity(body.vertices[i]);
-		addCollisionForce(vec3(1, 0, 0), B0, p, v);
-		addCollisionForce(vec3(0, 1, 0), B0, p, v);
-		addCollisionForce(vec3(0, 0, 1), B0, p, v);
-		addCollisionForce(vec3(-1, 0, 0), B1, p, v);
-		addCollisionForce(vec3(0, -1, 0), B1, p, v);
-		if (has_top) addCollisionForce(vec3(0, 0, -1), B1, p, v);
+	for (int i = 0; i < BN; i++) {
+		addCollisionForce(bodies[i], vec3(1, 0, 0), B0);
+		addCollisionForce(bodies[i], vec3(0, 1, 0), B0);
+		addCollisionForce(bodies[i], vec3(0, 0, 1), B0);
+		addCollisionForce(bodies[i], vec3(-1, 0, 0), B1);
+		addCollisionForce(bodies[i], vec3(0, -1, 0), B1);
+		if (has_top) addCollisionForce(bodies[i], vec3(0, 0, -1), B1);
 	}
+
+	// collision between objects
+	for (int i = 0; i < BN; i++) {
+		for (int j = 0; j < BN; j++) if (j != i) {
+			vec3 xij = bodies[j].x - bodies[i].x, n = normalize(xij);
+			double penetrate = -(length(xij) - 2.0 * RigidBody::r);
+			if (penetrate > 0.0) {
+				vec3 f_c = -k_c * penetrate * n;
+				vec3 f_d = -k_d * dot(bodies[i].v, n) * n;
+				vec3 v_f = bodies[i].getAbsoluteVelocity(bodies[i].r*n, true);
+				vec3 f_f = -mu * (k_c * penetrate) * normalize(v_f - dot(v_f, n) * n);
+				if (isnan(f_f.x)) f_f = vec3(0.0);
+				//f_f = vec3(0.0);
+				bodies[i].force += f_c + f_d + f_f;
+				bodies[i].torque += cross(bodies[i].r*n, f_f);
+			}
+		}
+	}
+
 }
 
 void update_scene(double dt) {
@@ -503,25 +490,31 @@ void update_scene(double dt) {
 		return;
 	}
 
-	double t0 = body.t;
+	double t0 = RigidBody::t;
 
-	//const int N = body.vectorSize();
-	const int N = 13;
-	double x[N]; body.toVector(x);
-	double temp0[N], temp1[N], temp2[N];
+	int N0 = RigidBody::vectorSize();
+	int BN = bodies.size();
+	int N = N0 * BN;
+	double *x = new double[N];
+	for (int i = 0; i < BN; i++) bodies[i].toVector(&x[N0*i]);
+	double *temp0 = new double[N], *temp1 = new double[N], *temp2 = new double[N];
 
 	RungeKuttaMethod([&](const double* x, double t, double* dxdt) {
-		body.fromVector(x);
-		body.calcDerivedQuantities();
-		body.t = t;
+		for (int i = 0; i < BN; i++) {
+			bodies[i].fromVector(&x[N0*i]);
+			bodies[i].calcDerivedQuantities();
+		}
+		RigidBody::t = t;
 		calc_force_and_torque();
-		body.toVectorDerivative(dxdt);
+		for (int i = 0; i < BN; i++) {
+			bodies[i].toVectorDerivative(&dxdt[N0*i]);
+		}
 	}, x, N, t0, dt, temp0, temp1, temp2);
 
-	body.fromVector(x);
-	body.t = t0 + dt;
+	//body.fromVector(x);
+	RigidBody::t = t0 + dt;
 
-	if (1) body.q = body.q * (1.0 / sqrt(body.q.s*body.q.s + body.q.t.sqr()));
+	delete x; delete temp0; delete temp1; delete temp2;
 }
 
 
@@ -551,15 +544,40 @@ void render() {
 
 	// shape
 	{
-		for (ivec3 T : body.faces) {
-			triangle_3d t(
-				body.getAbsolutePos(body.vertices[T.x]),
-				body.getAbsolutePos(body.vertices[T.y]),
-				body.getAbsolutePos(body.vertices[T.z])
-			);
+		const triangle_3d octa[8] = {
+			triangle_3d(vec3(0, 0, 1), vec3(1, 0, 0), vec3(0, 1, 0)),
+			triangle_3d(vec3(0, 0, 1), vec3(0, 1, 0), vec3(-1, 0, 0)),
+			triangle_3d(vec3(0, 0, 1), vec3(-1, 0, 0), vec3(0, -1, 0)),
+			triangle_3d(vec3(0, 0, 1), vec3(0, -1, 0), vec3(1, 0, 0)),
+			triangle_3d(vec3(0, 0, -1), vec3(0, 1, 0), vec3(1, 0, 0)),
+			triangle_3d(vec3(0, 0, -1), vec3(-1, 0, 0), vec3(0, 1, 0)),
+			triangle_3d(vec3(0, 0, -1), vec3(0, -1, 0), vec3(-1, 0, 0)),
+			triangle_3d(vec3(0, 0, -1), vec3(1, 0, 0), vec3(0, -1, 0))
+		};
+		auto draw_triangle = [](triangle_3d t) {
 			vec3 n = t.unit_normal();
 			double c = 0.6 + 0.4*dot(n, normalize(vec3(-0.1, 0.3, 1)));
 			drawTriangle_F(t[0], t[1], t[2], toCOLORREF(vec3f(c)));
+		};
+		const int SUBDIV = 16;
+		for (int i = 0; i < (int)bodies.size(); i++) {
+			const RigidBody b = bodies[i];
+			for (int f = 0; f < 8; f++) {
+				for (int ui = 0; ui < SUBDIV; ui++) for (int vi = 0; ui + vi < SUBDIV; vi++) {
+					double u0 = ui / (double)SUBDIV, u1 = (ui + 1) / (double)SUBDIV;
+					double v0 = vi / (double)SUBDIV, v1 = (vi + 1) / (double)SUBDIV;
+					draw_triangle(triangle_3d(
+						b.getAbsolutePos(b.r * normalize((1 - u0 - v0)*octa[f][0] + u0 * octa[f][1] + v0 * octa[f][2])),
+						b.getAbsolutePos(b.r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2])),
+						b.getAbsolutePos(b.r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2]))
+					));
+					if (ui + vi + 2 <= SUBDIV) draw_triangle(triangle_3d(
+						b.getAbsolutePos(b.r * normalize((1 - u1 - v1)*octa[f][0] + u1 * octa[f][1] + v1 * octa[f][2])),
+						b.getAbsolutePos(b.r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2])),
+						b.getAbsolutePos(b.r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2]))
+					));
+				}
+			}
 		}
 	}
 
@@ -586,16 +604,18 @@ void render() {
 	// drawCross3D(Center, 6, 0xFF8000);
 
 	// statistics
-	double Eg = body.m * -dot(body.x, g);
-	double Ev = 0.5 * body.m * body.v.sqr();
-	double Er = 0.5 * dot(body.w, body.I * body.w);
-	double E = Eg + Ev + Er;
-	printf("(%lg,%.4lg),", body.t, E);
-	//printf("(%lg,%lf),", body.t, sqrt(body.q.s*body.q.s + body.q.t.sqr()));
+	double E = 0.0;
+	for (int i = 0; i < (int)bodies.size(); i++) {
+		double Eg = bodies[i].m * -dot(bodies[i].x, g);
+		double Ev = 0.5 * bodies[i].m * bodies[i].v.sqr();
+		double Er = 0.5 * dot(bodies[i].w, bodies[i].I * bodies[i].w);
+		E += Eg + Ev + Er;
+	}
+	printf("(%lg,%.4lg),", RigidBody::t, E);
 
 	// window title (display time)
 	char text[1024];
-	sprintf(text, "%d vertice   %.3lfs", (int)body.vertices.size(), body.t);
+	sprintf(text, "%.3lfs", RigidBody::t);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -604,15 +624,23 @@ void render() {
 
 
 #include <thread>
+#include "numerical/random.h"
 
 void Init() {
 
 	// initial configuration
 	const double sc = 0.2;
-	body = RigidBody("D:\\dragon_res4.ply", false, 20.0 * sc*sc);
-	//body.x = vec3(0, 0, 2) * sc, body.P = body.m * vec3(5, 5, 8), body.L = body.I0 * vec3(0, 1, 1);
-	body.x = vec3(8, -8, 4) * sc, body.P = body.m * vec3(-3, 3, -1), body.L = body.I0 * vec3(1, 1, 1);
 	B0 = vec3(-10, -10, 0) * sc, B1 = vec3(10, 10, 10) * sc;
+	RigidBody::calcConstants(1.0, 2.0 * sc);
+	uint32_t seed = 0;
+	for (int i = 0; i < 20; i++) {
+		bodies.push_back(RigidBody(
+			vec3(0.01*sin(lcg_next(seed)), 0.01*sin(lcg_next(seed)), i + 1),
+			quaternion{ 1.0, vec3(0.0) },
+			vec3(0, 0, 0),
+			vec3(0.0)
+		));
+	}
 
 	double zoom_out = 6.0 * sc;
 	dist *= zoom_out, Unit /= zoom_out;
@@ -625,7 +653,7 @@ void Init() {
 		for (;;) {
 			double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			double time_next = ceil(time / frame_delay)*frame_delay;
-			double dt = time_next - body.t;
+			double dt = time_next - RigidBody::t;
 
 			update_scene(dt);
 
