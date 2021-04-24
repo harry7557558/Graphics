@@ -418,7 +418,7 @@ void RigidBody::calcConstants(double density, double radius) {
 
 
 vec3 B0, B1;  // simulation box
-const bool has_top = false;
+const bool has_top = true;
 
 std::vector<RigidBody> bodies;
 
@@ -436,7 +436,8 @@ void calc_force_and_torque() {
 
 	const double k_c = 10000.0 * RigidBody::m;  // collision force coefficient
 	const double k_d = 50.0 * RigidBody::m;  // damping coefficient
-	const double mu = 0.2;  // friction coefficient
+	const double mu_b = 0.2;  // friction coefficient between sphere and boundary
+	const double mu_s = 0.1;  // friction coefficient between spheres
 
 	// boundary collision
 	auto addCollisionForce = [&](RigidBody &body, vec3 n, vec3 p0) {
@@ -445,7 +446,7 @@ void calc_force_and_torque() {
 			vec3 f_c = k_c * depth * n;
 			vec3 f_d = -k_d * dot(body.v, n) * n;  // not sure if this is physically correct
 			vec3 v_f = body.getAbsoluteVelocity(-body.r*n, true);
-			vec3 f_f = -mu * (k_c * depth) * normalize(v_f - dot(v_f, n) * n);
+			vec3 f_f = -mu_b * (k_c * depth) * normalize(v_f - dot(v_f, n) * n);
 			if (isnan(f_f.x)) f_f = vec3(0.0);
 			body.force += f_c + f_d + f_f;
 			body.torque += cross(-body.r*n, f_f);
@@ -461,22 +462,71 @@ void calc_force_and_torque() {
 	}
 
 	// collision between objects
+	auto add_force = [&](int i, int j) {
+		if (i == j) return;
+		vec3 xij = bodies[j].x - bodies[i].x, n = normalize(xij);
+		double penetrate = -(length(xij) - 2.0 * RigidBody::r);
+		if (penetrate > 0.0) {
+			vec3 f_c = -k_c * penetrate * n;
+			vec3 f_d = -k_d * dot(bodies[i].v, n) * n;
+			vec3 v_f = bodies[i].getAbsoluteVelocity(bodies[i].r*n, true);
+			vec3 f_f = -mu_s * (k_c * penetrate) * normalize(v_f - dot(v_f, n) * n);
+			if (isnan(f_f.x)) f_f = vec3(0.0);
+			//f_f = vec3(0.0);
+			bodies[i].force += f_c + f_d + f_f;
+			bodies[i].torque += cross(bodies[i].r*n, f_f);
+		}
+	};
+#if 0
+	// O(N^2)
 	for (int i = 0; i < BN; i++) {
-		for (int j = 0; j < BN; j++) if (j != i) {
-			vec3 xij = bodies[j].x - bodies[i].x, n = normalize(xij);
-			double penetrate = -(length(xij) - 2.0 * RigidBody::r);
-			if (penetrate > 0.0) {
-				vec3 f_c = -k_c * penetrate * n;
-				vec3 f_d = -k_d * dot(bodies[i].v, n) * n;
-				vec3 v_f = bodies[i].getAbsoluteVelocity(bodies[i].r*n, true);
-				vec3 f_f = -mu * (k_c * penetrate) * normalize(v_f - dot(v_f, n) * n);
-				if (isnan(f_f.x)) f_f = vec3(0.0);
-				//f_f = vec3(0.0);
-				bodies[i].force += f_c + f_d + f_f;
-				bodies[i].torque += cross(bodies[i].r*n, f_f);
-			}
+		for (int j = 0; j < BN; j++) {
+			add_force(i, j);
 		}
 	}
+#else
+	// grid construction
+	vec3 P0(INFINITY), P1(-INFINITY), dP(2.0 * RigidBody::r);
+	for (int i = 0; i < BN; i++)
+		P0 = min(P0, bodies[i].x), P1 = max(P1, bodies[i].x);
+	if (1) P0 -= vec3(RigidBody::r), P1 += vec3(RigidBody::r);
+	ivec3 GN = ivec3(ceil((P1 - P0) / dP));
+	const int MAX_I = 8;
+	struct cell { int i[MAX_I] = { -1, -1, -1, -1, -1, -1, -1, -1 }; };
+	cell *_G = new cell[GN.x*GN.y*GN.z];
+	auto G = [&](int i, int j, int k) -> cell& { return _G[i + GN.x*(j + GN.y*k)]; };
+	// add spheres to grid
+	for (int i = 0; i < BN; i++) {
+		vec3 p = bodies[i].x;
+		ivec3 pi = ivec3((p - P0) / dP);
+		cell *g = &G(pi.x, pi.y, pi.z);
+		for (int u = 0; u < MAX_I; u++) {
+			if (g->i[u] == -1) { g->i[u] = i; break; }
+		}
+	}
+	// collision detection
+	auto add_cell = [&](int i0, int i, int j, int k) {
+		if (i < 0 || i >= GN.x || j < 0 || j >= GN.y || k < 0 || k >= GN.z) return;
+		cell *g = &G(i, j, k);
+		for (int u = 0; u < MAX_I; u++) {
+			if (g->i[u] != -1) add_force(i0, g->i[u]);
+			else break;
+		}
+	};
+	for (int k = 0; k < GN.z; k++) for (int j = 0; j < GN.y; j++) for (int i = 0; i < GN.x; i++) {
+		cell *g = &G(i, j, k);
+		for (int u = 0; u < MAX_I; u++) {
+			if (g->i[u] != -1) {
+				for (int _i = i - 1; _i <= i + 1; _i++)
+					for (int _j = j - 1; _j <= j + 1; _j++)
+						for (int _k = k - 1; _k <= k + 1; _k++)
+							add_cell(g->i[u], _i, _j, _k);
+			}
+			else break;
+		}
+	}
+	delete _G;
+#endif
 
 }
 
@@ -559,7 +609,7 @@ void render() {
 			double c = 0.6 + 0.4*dot(n, normalize(vec3(-0.1, 0.3, 1)));
 			drawTriangle_F(t[0], t[1], t[2], toCOLORREF(vec3f(c)));
 		};
-		const int SUBDIV = 16;
+		const int SUBDIV = 4;
 		for (int i = 0; i < (int)bodies.size(); i++) {
 			const RigidBody b = bodies[i];
 			for (int f = 0; f < 8; f++) {
@@ -611,11 +661,11 @@ void render() {
 		double Er = 0.5 * dot(bodies[i].w, bodies[i].I * bodies[i].w);
 		E += Eg + Ev + Er;
 	}
-	printf("(%lg,%.4lg),", RigidBody::t, E);
+	//printf("(%lg,%.4lg),", RigidBody::t, E);
 
 	// window title (display time)
 	char text[1024];
-	sprintf(text, "%.3lfs", RigidBody::t);
+	sprintf(text, "%d bodies   %.3lfs", (int)bodies.size(), RigidBody::t);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -630,19 +680,29 @@ void Init() {
 
 	// initial configuration
 	const double sc = 0.2;
-	B0 = vec3(-10, -10, 0) * sc, B1 = vec3(10, 10, 10) * sc;
-	RigidBody::calcConstants(1.0, 2.0 * sc);
-	uint32_t seed = 0;
-	for (int i = 0; i < 20; i++) {
-		bodies.push_back(RigidBody(
-			vec3(0.01*sin(lcg_next(seed)), 0.01*sin(lcg_next(seed)), i + 1),
-			quaternion{ 1.0, vec3(0.0) },
-			vec3(0, 0, 0),
-			vec3(0.0)
-		));
-	}
+	B0 = vec3(-20, -12, 0) * sc, B1 = vec3(20, 12, 20) * sc;
+	RigidBody::calcConstants(1.0, 1.0 * sc);
 
-	double zoom_out = 6.0 * sc;
+	for (int k = 0; k < 8; k++) {
+		for (int j = -5; j <= 5; j++) {
+			for (int i = 0; i < 4; i++) {
+				bodies.push_back(RigidBody(
+					vec3(2 * i, 2 * j, 2 * k + 1)*RigidBody::r,
+					quaternion{ 1.0, vec3(0.0) },
+					vec3(0, 0, 0),
+					vec3(0.0)
+				));
+			}
+		}
+	}
+	bodies.push_back(RigidBody(
+		vec3(-3, 0, RigidBody::r),
+		quaternion{ 1.0, vec3(0.0) },
+		vec3(10, 0, 5),
+		vec3(0.0)
+	));
+
+	double zoom_out = 10.0 * sc;
 	dist *= zoom_out, Unit /= zoom_out;
 	Center = 0.5*(B0 + B1);
 
@@ -650,12 +710,14 @@ void Init() {
 	new std::thread([]() {
 		auto t0 = std::chrono::high_resolution_clock::now();
 		const double frame_delay = 0.01;
-		for (;;) {
+		for (int i = 0;; i++) {
 			double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			double time_next = ceil(time / frame_delay)*frame_delay;
 			double dt = time_next - RigidBody::t;
 
 			update_scene(dt);
+			double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() - time;
+			printf("(%lf,%lf),", time, time_elapsed / dt);
 
 			double t_remain = time_next - std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
