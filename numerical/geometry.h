@@ -128,7 +128,7 @@ struct vec2f {
 	explicit vec2f() {}
 	explicit vec2f(const float &a) :x(a), y(a) {}
 	explicit vec2f(const float &x, const float &y) :x(x), y(y) {}
-	explicit vec2f(const int &x, const int &y) :x((float)x), y((float)y) {}
+	//explicit vec2f(const int &x, const int &y) :x((float)x), y((float)y) {}
 	explicit vec2f(vec2 p) :x((float)p.x), y((float)p.y) {};
 
 	vec2f operator - () const { return vec2f(-x, -y); }
@@ -301,7 +301,7 @@ struct vec3f {
 	vec3f() {}
 	explicit vec3f(float a) :x(a), y(a), z(a) {}
 	explicit vec3f(float x, float y, float z) :x(x), y(y), z(z) {}
-	explicit vec3f(int x, int y, int z) :x((float)x), y((float)y), z((float)z) {}
+	//explicit vec3f(int x, int y, int z) :x((float)x), y((float)y), z((float)z) {}
 	explicit vec3f(vec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
 
 	vec3f operator - () const { return vec3f(-x, -y, -z); }

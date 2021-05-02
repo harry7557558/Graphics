@@ -299,10 +299,6 @@ COLORREF toCOLORREF(vec3f c) {
 
 
 
-mat3 cross(vec3 w, mat3 R) {
-	return mat3(cross(w, R.column(0)), cross(w, R.column(1)), cross(w, R.column(2)));
-}
-
 struct quaternion {
 	double s; vec3 t;
 	quaternion operator * (double a) const {
@@ -311,18 +307,25 @@ struct quaternion {
 	quaternion operator * (quaternion q) const {
 		return quaternion{ s*q.s - dot(t, q.t), s*q.t + q.s*t + cross(t, q.t) };
 	}
+	quaternion() {}
+	quaternion(double s, vec3 t) : s(s), t(t) {}
+	quaternion(vec3 n, double w) : s(cos(w)), t(sin(w)*n) {}
 };
 
 #include "numerical/ode.h"
+#include <functional>
 
-// sphere with orientation
 struct RigidBody {
 
 	/* constant quantities */
-	static double r;  // radius
-	static double m, inv_m;  // mass and its reciprocal
-	static mat3 I0, inv_I0;  // moment of inertia when right oriented
-	vec3f color;
+	static std::vector<triangle_3d> trigs;  // mesh for rendering
+	static std::vector<vec3> particles;  // particles for collision detection
+	static double particle_r, particle_m;  // radius and mass of each particle
+	static double m, inv_m;  // the object's mass and its reciprocal
+	static mat3 I0, inv_I0;  // the object's moment of inertia when right oriented
+
+	/* construct rigid body from volume defined by implicit equation */
+	static void fromMetaball(std::function<double(vec3)> fun, vec3 p0, vec3 p1, int diff, double density);
 
 	/* state variables */
 	static double t;  // time
@@ -350,13 +353,10 @@ struct RigidBody {
 
 	/* constructors */
 	RigidBody() {}
-	RigidBody(vec3 x, quaternion q, vec3 v, vec3 w, vec3f color = vec3f(1.0)) : x(x), q(q), color(color) {
+	RigidBody(vec3 x, quaternion q, vec3 v, vec3 w) : x(x), q(q) {
 		calcDerivedQuantities();
 		P = m * v, L = I * w;
 	}
-
-	// calculate mass and moment of inertia
-	static void calcConstants(double density, double radius);
 
 	// set variables to default
 	void calcDerivedQuantities() {
@@ -405,15 +405,40 @@ struct RigidBody {
 
 };
 
-double RigidBody::r = 0.0;
+std::vector<triangle_3d> RigidBody::trigs = std::vector<triangle_3d>();
+std::vector<vec3> RigidBody::particles = std::vector<vec3>();
+double RigidBody::particle_r = 0.0; double RigidBody::particle_m = INFINITY;
 double RigidBody::m = 0.0; double RigidBody::inv_m = INFINITY;
 mat3 RigidBody::I0 = mat3(0.0); mat3 RigidBody::inv_I0 = mat3(INFINITY);
 double RigidBody::t = 0.0;
 
-void RigidBody::calcConstants(double density, double radius) {
-	r = radius;
-	m = 1.333333 * PI * r*r*r * density, inv_m = 1.0 / m;
-	I0 = mat3(0.4*m*r*r), inv_I0 = inverse(I0);
+#include "triangulate/octatree.h"
+
+void RigidBody::fromMetaball(std::function<double(vec3)> fun, vec3 p0, vec3 p1, int diff, double density) {
+
+	trigs = ScalarFieldTriangulator_octatree::marching_cube(fun, p0, p1, ivec3(diff));
+
+	particles.clear();
+	for (int i = 0; i < diff; i++) for (int j = 0; j < diff; j++) for (int k = 0; k < diff; k++) {
+		vec3 p = mix(p0, p1, (vec3(i, j, k) + vec3(0.5)) / diff);
+		if (fun(p) < 0.0) particles.push_back(p);
+	}
+	particle_r = 0.5 * std::min({ p1.x - p0.x, p1.y - p0.y, p1.z - p0.z }) / diff;
+	particle_m = 8.0 * pow(particle_r, 3.0) * density;
+	const int PN = (int)particles.size();
+
+	vec3 c = vec3(0.0);
+	for (int i = 0; i < PN; i++) c += particles[i];
+	c /= PN;
+	for (int i = 0; i < (int)trigs.size(); i++) trigs[i].translate(-c);
+	for (int i = 0; i < PN; i++) particles[i] -= c;
+
+	m = 0.0; I0 = mat3(0.0);
+	for (vec3 p : particles) {
+		m += particle_m;
+		I0 += particle_m * (mat3(dot(p, p)) - tensor(p, p));
+	}
+	inv_m = 1.0 / m, inv_I0 = inverse(I0);
 }
 
 
@@ -427,6 +452,9 @@ const vec3 g = vec3(0, 0, -9.8);
 
 void calc_force_and_torque() {
 	const int BN = (int)bodies.size();
+	const int PN = (int)RigidBody::particles.size();
+
+	//for (int i = 0; i < BN; i++) bodies[i].force = bodies[i].torque = vec3(0.0); return;
 
 	// gravity
 	for (int i = 0; i < BN; i++) {
@@ -434,74 +462,79 @@ void calc_force_and_torque() {
 		bodies[i].torque = vec3(0.0);
 	}
 
-	const double k_c = 10000.0 * RigidBody::m;  // collision force coefficient
-	const double k_d = 50.0 * RigidBody::m;  // damping coefficient
+	const double k_c = 100000.0 * RigidBody::particle_m;  // collision force coefficient
+	const double k_d = 1000.0 * RigidBody::particle_m;  // damping coefficient
 	const double mu_b = 0.2;  // friction coefficient between sphere and boundary
 	const double mu_s = 0.1;  // friction coefficient between spheres
 
 	// boundary collision
-	auto addCollisionForce = [&](RigidBody &body, vec3 n, vec3 p0) {
-		double depth = -dot(n, body.x - p0) + body.r;
+	auto addCollisionForce = [&](RigidBody &body, vec3 p, vec3 n, vec3 p0) {
+		double depth = -dot(n, p - p0) + body.particle_r;
 		if (depth > 0.0) {
 			vec3 f_c = k_c * depth * n;
-			vec3 f_d = -k_d * dot(body.v, n) * n;  // not sure if this is physically correct
-			vec3 v_f = body.getAbsoluteVelocity(-body.r*n, true);
+			vec3 v_f = body.getAbsoluteVelocity(p - body.x, true);
+			vec3 f_d = -k_d * dot(v_f, n) * n;  // not sure if this is physically correct
 			vec3 f_f = -mu_b * (k_c * depth) * normalize(v_f - dot(v_f, n) * n);
 			if (isnan(f_f.x)) f_f = vec3(0.0);
-			body.force += f_c + f_d + f_f;
-			body.torque += cross(-body.r*n, f_f);
+			vec3 f = f_c + f_d + f_f;
+			body.force += f;
+			body.torque += cross(p - body.x, f);
 		}
 	};
 	for (int i = 0; i < BN; i++) {
-		addCollisionForce(bodies[i], vec3(1, 0, 0), B0);
-		addCollisionForce(bodies[i], vec3(0, 1, 0), B0);
-		addCollisionForce(bodies[i], vec3(0, 0, 1), B0);
-		addCollisionForce(bodies[i], vec3(-1, 0, 0), B1);
-		addCollisionForce(bodies[i], vec3(0, -1, 0), B1);
-		if (has_top) addCollisionForce(bodies[i], vec3(0, 0, -1), B1);
+		for (vec3 p : bodies[i].particles) {
+			p = bodies[i].getAbsolutePos(p);
+			addCollisionForce(bodies[i], p, vec3(1, 0, 0), B0);
+			addCollisionForce(bodies[i], p, vec3(0, 1, 0), B0);
+			addCollisionForce(bodies[i], p, vec3(0, 0, 1), B0);
+			addCollisionForce(bodies[i], p, vec3(-1, 0, 0), B1);
+			addCollisionForce(bodies[i], p, vec3(0, -1, 0), B1);
+			if (has_top) addCollisionForce(bodies[i], p, vec3(0, 0, -1), B1);
+		}
 	}
 
 	// collision between objects
-	auto add_force = [&](int i, int j) {
-		if (i == j) return;
-		vec3 xij = bodies[j].x - bodies[i].x, n = normalize(xij);
-		double penetrate = -(length(xij) - 2.0 * RigidBody::r);
+	auto add_force = [&](int p_i, int p_j) {
+		int bi = p_i / PN, bj = p_j / PN; if (bi == bj) return;
+		int pi = p_i % PN, pj = p_j % PN;
+		vec3 xi = bodies[bi].getAbsolutePos(bodies[bi].particles[pi]);
+		vec3 xj = bodies[bj].getAbsolutePos(bodies[bj].particles[pj]);
+		vec3 xij = xj - xi, n = normalize(xij);
+		double penetrate = -(length(xij) - 2.0 * RigidBody::particle_r);
 		if (penetrate > 0.0) {
+			vec3 vi = bodies[bi].getAbsoluteVelocity(bodies[bi].particles[pi]);
+			vec3 vj = bodies[bj].getAbsoluteVelocity(bodies[bj].particles[pj]);
+			vec3 vij = vj - vi;
 			vec3 f_c = -k_c * penetrate * n;
-			vec3 f_d = -k_d * dot(bodies[i].v, n) * n;
-			vec3 v_f = bodies[i].getAbsoluteVelocity(bodies[i].r*n, true);
-			vec3 f_f = -mu_s * (k_c * penetrate) * normalize(v_f - dot(v_f, n) * n);
+			vec3 f_d = -k_d * dot(vij, n) * n;
+			vec3 f_f = -mu_s * (k_c * penetrate) * normalize(vij - dot(vij, n) * n);
 			if (isnan(f_f.x)) f_f = vec3(0.0);
-			//f_f = vec3(0.0);
-			bodies[i].force += f_c + f_d + f_f;
-			bodies[i].torque += cross(bodies[i].r*n, f_f);
+			vec3 f = f_c;
+			bodies[bi].force += f_c;
+			bodies[bi].torque += cross(xi - bodies[bi].x, f);
 		}
 	};
-#if 0
-	// O(N^2)
-	for (int i = 0; i < BN; i++) {
-		for (int j = 0; j < BN; j++) {
-			add_force(i, j);
-		}
-	}
-#else
 	// grid construction
-	vec3 P0(INFINITY), P1(-INFINITY), dP(2.0 * RigidBody::r);
-	for (int i = 0; i < BN; i++)
-		P0 = min(P0, bodies[i].x), P1 = max(P1, bodies[i].x);
-	if (1) P0 -= vec3(RigidBody::r), P1 += vec3(RigidBody::r);
+	vec3 P0(INFINITY), P1(-INFINITY), dP(2.0 * RigidBody::particle_r);
+	for (int i = 0; i < BN; i++) for (int j = 0; j < PN; j++) {
+		vec3 p = bodies[i].getAbsolutePos(bodies[i].particles[j]);
+		P0 = min(P0, p), P1 = max(P1, p);
+	}
+	if (1) P0 -= vec3(RigidBody::particle_r), P1 += vec3(RigidBody::particle_r);
 	ivec3 GN = ivec3(ceil((P1 - P0) / dP));
 	const int MAX_I = 8;
 	struct cell { int i[MAX_I] = { -1, -1, -1, -1, -1, -1, -1, -1 }; };
 	cell *_G = new cell[GN.x*GN.y*GN.z];
 	auto G = [&](int i, int j, int k) -> cell& { return _G[i + GN.x*(j + GN.y*k)]; };
-	// add spheres to grid
+	// add particles to grid
 	for (int i = 0; i < BN; i++) {
-		vec3 p = bodies[i].x;
-		ivec3 pi = ivec3((p - P0) / dP);
-		cell *g = &G(pi.x, pi.y, pi.z);
-		for (int u = 0; u < MAX_I; u++) {
-			if (g->i[u] == -1) { g->i[u] = i; break; }
+		for (int j = 0; j < PN; j++) {
+			vec3 p = bodies[i].getAbsolutePos(bodies[i].particles[j]);
+			ivec3 pi = ivec3((p - P0) / dP);
+			cell *g = &G(pi.x, pi.y, pi.z);
+			for (int u = 0; u < MAX_I; u++) {
+				if (g->i[u] == -1) { g->i[u] = i * PN + j; break; }
+			}
 		}
 	}
 	// collision detection
@@ -526,7 +559,6 @@ void calc_force_and_torque() {
 		}
 	}
 	delete _G;
-#endif
 
 }
 
@@ -606,31 +638,44 @@ void render() {
 			triangle_3d(vec3(0, 0, -1), vec3(0, -1, 0), vec3(-1, 0, 0)),
 			triangle_3d(vec3(0, 0, -1), vec3(1, 0, 0), vec3(0, -1, 0))
 		};
-		auto draw_triangle = [](triangle_3d t, vec3f color) {
+		auto draw_triangle = [](triangle_3d t) {
 			vec3 n = t.unit_normal();
 			double c = 0.6 + 0.4*dot(n, normalize(vec3(-0.1, 0.3, 1)));
-			drawTriangle_F(t[0], t[1], t[2], toCOLORREF((float)c * color));
+			drawTriangle_F(t[0], t[1], t[2], toCOLORREF(vec3f((float)c)));
 		};
-		const int SUBDIV = 4;
 		for (int i = 0; i < (int)bodies.size(); i++) {
-			vec3f color = bodies[i].color;
 			const RigidBody b = bodies[i];
-			for (int f = 0; f < 8; f++) {
-				for (int ui = 0; ui < SUBDIV; ui++) for (int vi = 0; ui + vi < SUBDIV; vi++) {
-					double u0 = ui / (double)SUBDIV, u1 = (ui + 1) / (double)SUBDIV;
-					double v0 = vi / (double)SUBDIV, v1 = (vi + 1) / (double)SUBDIV;
-					draw_triangle(triangle_3d(
-						b.getAbsolutePos(b.r * normalize((1 - u0 - v0)*octa[f][0] + u0 * octa[f][1] + v0 * octa[f][2])),
-						b.getAbsolutePos(b.r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2])),
-						b.getAbsolutePos(b.r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2]))
-					), color);
-					if (ui + vi + 2 <= SUBDIV) draw_triangle(triangle_3d(
-						b.getAbsolutePos(b.r * normalize((1 - u1 - v1)*octa[f][0] + u1 * octa[f][1] + v1 * octa[f][2])),
-						b.getAbsolutePos(b.r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2])),
-						b.getAbsolutePos(b.r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2]))
-					), color);
+#if 1
+			// draw surface
+			for (triangle_3d t0 : b.trigs) {
+				draw_triangle(triangle_3d(
+					b.getAbsolutePos(t0[0]),
+					b.getAbsolutePos(t0[1]),
+					b.getAbsolutePos(t0[2])
+				));
+			}
+#else
+			// draw particles
+			const int SUBDIV = 2;
+			for (vec3 p : b.particles) {
+				for (int f = 0; f < 8; f++) {
+					for (int ui = 0; ui < SUBDIV; ui++) for (int vi = 0; ui + vi < SUBDIV; vi++) {
+						double u0 = ui / (double)SUBDIV, u1 = (ui + 1) / (double)SUBDIV;
+						double v0 = vi / (double)SUBDIV, v1 = (vi + 1) / (double)SUBDIV;
+						draw_triangle(triangle_3d(
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v0)*octa[f][0] + u0 * octa[f][1] + v0 * octa[f][2])),
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2])),
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2]))
+						));
+						if (ui + vi + 2 <= SUBDIV) draw_triangle(triangle_3d(
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v1)*octa[f][0] + u1 * octa[f][1] + v1 * octa[f][2])),
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2])),
+							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2]))
+						));
+					}
 				}
 			}
+#endif
 		}
 	}
 
@@ -664,11 +709,12 @@ void render() {
 		double Er = 0.5 * dot(bodies[i].w, bodies[i].I * bodies[i].w);
 		E += Eg + Ev + Er;
 	}
-	//printf("(%lg,%.4lg),", RigidBody::t, E);
+	printf("(%lg,%.4lg),", RigidBody::t, E);
 
 	// window title (display time)
 	char text[1024];
-	sprintf(text, "%d bodies   %.3lfs", (int)bodies.size(), RigidBody::t);
+	int BN = (int)bodies.size(), PN = (int)RigidBody::particles.size();
+	sprintf(text, "%d bodies   %dx%d=%d particles   %.3lfs", BN, BN, PN, BN*PN, RigidBody::t);
 	SetWindowTextA(_HWND, text);
 }
 
@@ -678,38 +724,35 @@ void render() {
 
 #include <thread>
 #include "numerical/random.h"
-#include "UI/colors/ColorFunctions.h"
 
 void Init() {
 	rz = PI - 1.2, rx = 0.2;
 
 	// initial configuration
-	const double sc = 0.2;
-	B0 = vec3(-20, -12, 0) * sc, B1 = vec3(20, 12, 18) * sc;
-	RigidBody::calcConstants(1.0, 1.0 * sc);
+	B0 = vec3(-4, -3, 0), B1 = vec3(4, 3, 4);
+	RigidBody::fromMetaball([](vec3 p)->double {
+		double x = p.x, y = p.y, z = p.z;
+		double x2 = x * x, y2 = y * y, z2 = z * z, x3 = x2 * x, y3 = y2 * y, z3 = z2 * z, x4 = x3 * x, y4 = y3 * y, z4 = z3 * z;
+		//return x2 + y2 + z2 - 0.5;
+		//return x2 + y2 + 0.5*z2 - 0.5;
+		//return 10.0 * (x4 + y4 + z4) - 3.0 * (x2 + y2 + z2);
+		return length(vec2(length(p.xy()) - 0.6, p.z)) - 0.3;
+		//return pow(x2 + 2.25*y2 + z2 - 0.5, 3.0) - x2 * z3 - 0.1*y2*z3;
+		//return pow(4.0*x2 + 8.0*y2 + 4.0*z2 - 0.5, 3.0) - 32.0*(9.0*x2 + y2)*z3 - 0.5;
+		//return 4.0*pow(4.0*x2 + 8.0*y2 + 4.0*z2 - 1.0, 2.0) - 32.0*(5.0*x4*z - 10.0*x2*z3 + z4 * z) - 1.0;
+	}, vec3(-1), vec3(1), 10, 1000.0);
 
-	for (int k = 0; k < 8; k++) {
-		for (int j = -5; j <= 5; j++) {
-			for (int i = 0; i < 4; i++) {
-				bodies.push_back(RigidBody(
-					vec3(2 * i, 2 * j, 2 * k + 1)*RigidBody::r,
-					quaternion{ 1.0, vec3(0.0) },
-					vec3(0, 0, 0),
-					vec3(0.0),
-					ColorFunctions<vec3f, float>::LightTerrain(k / 8.0)
-				));
-			}
-		}
-	}
-	bodies.push_back(RigidBody(
-		vec3(-3, 0, RigidBody::r),
-		quaternion{ 1.0, vec3(0.0) },
-		2.0 * vec3(10, 0.1, 5),
-		vec3(0.0),
-		vec3f(1.0f, 0.5f, 0.0f)
-	));
+	//bodies.push_back(RigidBody(vec3(0, 0, 1), quaternion(1, vec3(0)), vec3(0), vec3(0)));
 
-	double zoom_out = 10.0 * sc;
+	for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) for (int k = 0; k <= 0; k++)
+		bodies.push_back(RigidBody(
+			vec3(2 * i, 2 * j, 2 * k + 1),
+			quaternion(vec3(0, 1, 1), 0.5),
+			vec3(5, 0, 0),
+			vec3(0, 5, 5)
+		));
+
+	double zoom_out = 2.0;
 	dist *= zoom_out, Unit /= zoom_out;
 	Center = 0.5*(B0 + B1);
 
@@ -724,7 +767,7 @@ void Init() {
 
 			update_scene(dt);
 			double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() - time;
-			printf("(%lf,%lf),", time, time_elapsed / dt);
+			//printf("(%lf,%lf),", time, time_elapsed / dt);
 
 			double t_remain = time_next - std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
