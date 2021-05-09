@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Wolfram Language Color Schemes (least square fitting)</title>
+    <script src="./colors.min.js"></script>
+</head>
+
+<body>
+    <h2>Wolfram Language Color Schemes (least square fitting)</h2>
+    <p>Apply least square fitting to color images downloaded from <a
+            href='https://reference.wolfram.com/language/guide/ColorSchemes.html'>Wolfram Language Color Schemes</a>.
+    </p>
+    <p>Top row (poly): polynomial functions of varying degree;</p>
+    <p>Middle row (trig): functions in the form <i>color(x) = c₀ + c₁⋅x + a₀⋅cos(π⋅x-u₀) + ∑ₖ[aₖ⋅cos(2kπ⋅x-uₖ)]</i>;</p>
+    <p>Bottom row (cosine): functions in the form <i>color(t) = a + b*t + c*cos(d*t+e)</i>;</p>
+    <p>Coefficients for `cosine` are computed numerically and may not be optimal.</p>
+    <p><b>Disclaimer</b>: I’m not related to Wolfram in anyway. Wolfram reserves the rights of these color schemes.</p>
+    <hr />
+
+    <table id="table"></table>
+    <script>
+        window.onload = function () {
+            var content = "";
+            var i = 0;
+            var canvas = document.createElement("canvas");
+            canvas.width = 256, canvas.height = 32;
+            for (var key in colorFunctions.poly) {
+                if (/[A-Z]/.test(key)) {
+                    content += (i & 1 ? "" : "<tr>") + "<td>" + key + "</td><td style='width:300px;'>";
+                    const ctx = canvas.getContext("2d");
+
+                    for (var u = 0; u < 256; u++) {
+                        ctx.fillStyle = colorFunctions.poly[key](u / 256.);
+                        ctx.fillRect(u, 0, 1, 32);
+                    }
+                    content += "<img src='" + canvas.toDataURL("png") + "'/>";
+
+                    for (var u = 0; u < 256; u++) {
+                        ctx.fillStyle = colorFunctions.trig[key](u / 256.);
+                        ctx.fillRect(u, 0, 1, 32);
+                    }
+                    content += "<img src='" + canvas.toDataURL("png") + "'/>";
+
+                    for (var u = 0; u < 256; u++) {
+                        ctx.fillStyle = colorFunctions.cosine[key](u / 256.);
+                        ctx.fillRect(u, 0, 1, 32);
+                    }
+                    content += "<img src='" + canvas.toDataURL("png") + "'/>";
+
+                    content += "</td>" + (i & 1 ? "</tr>" : "");
+                    i++;
+                }
+            }
+            document.getElementById("table").innerHTML = content;
+        }
+    </script>
+</body>
+
+</html>

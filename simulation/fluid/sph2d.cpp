@@ -556,7 +556,7 @@ void fillTriangle(vec2 A, vec2 B, vec2 C, COLORREF col) {
 	}
 }
 
-#include "ui/colors/ColorFunctions.h"
+#include "ui/color_functions/poly.h"
 
 void render() {
 	// debug
