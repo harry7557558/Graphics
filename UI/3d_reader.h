@@ -1,6 +1,19 @@
 // a very limited STL and PLY file reader for ply_viewer.cpp
 
 
+#ifndef _WINDOWS_
+#include <Windows.h>  // COLORREF
+#undef min
+#undef max
+#endif
+
+#include <stdio.h>
+#include <vector>
+#include <string>
+#include <algorithm>
+
+
+
 struct ply_triangle {
 	int v[3];
 	int& operator[] (int d) {
@@ -10,7 +23,22 @@ struct ply_triangle {
 
 
 
-COLORREF toCOLORREF(vec3f c);
+vec3f fromCOLORREF(COLORREF c) {
+	vec3f r; byte *k = (byte*)&c;
+	r.z = (byte)k[0] / 255.f;
+	r.y = (byte)k[1] / 255.f;
+	r.x = (byte)k[2] / 255.f;
+	return r;
+}
+COLORREF toCOLORREF(vec3f c) {
+	COLORREF r = 0; uint8_t *k = (uint8_t*)&r;
+	k[0] = uint8_t(255.f * clamp(c.z, 0.f, 1.f));
+	k[1] = uint8_t(255.f * clamp(c.y, 0.f, 1.f));
+	k[2] = uint8_t(255.f * clamp(c.x, 0.f, 1.f));
+	return r;
+}
+
+
 
 bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF* &v_col) {
 	if (fp == 0) return false;

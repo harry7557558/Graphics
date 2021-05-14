@@ -130,11 +130,13 @@ struct vec2f {
 	explicit vec2f(const float &x, const float &y) :x(x), y(y) {}
 	//explicit vec2f(const int &x, const int &y) :x((float)x), y((float)y) {}
 	explicit vec2f(vec2 p) :x((float)p.x), y((float)p.y) {};
+	explicit vec2f(ivec2 p) :x((float)p.x), y((float)p.y) {};
 
 	vec2f operator - () const { return vec2f(-x, -y); }
 	vec2f operator + (const vec2f &v) const { return vec2f(x + v.x, y + v.y); }
 	vec2f operator - (const vec2f &v) const { return vec2f(x - v.x, y - v.y); }
 	vec2f operator * (const vec2f &v) const { return vec2f(x * v.x, y * v.y); }
+	vec2f operator / (const vec2f &v) const { return vec2f(x / v.x, y / v.y); }
 	vec2f operator * (const float &a) const { return vec2f(x*a, y*a); }
 	float sqr() const { return x * x + y * y; }
 	friend float length(const vec2f &v) { return sqrtf(v.x*v.x + v.y*v.y); }
@@ -334,6 +336,7 @@ struct vec3f {
 	vec2f xy() const { return vec2f(x, y); }
 	vec2f xz() const { return vec2f(x, z); }
 	vec2f yz() const { return vec2f(y, z); }
+	vec3f zyx() const { return vec3f(z, y, x); }
 };
 
 ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
@@ -536,12 +539,16 @@ struct triangle_3d {
 	double area() const { return 0.5*length(cross(V[1] - V[0], V[2] - V[0])); }
 };
 struct triangle_3d_f {
-	vec3f V[3];
-	vec3f& operator[](int d) { return V[d]; }
-	const vec3f& operator[](int d) const { return V[d]; }
+	vec3f v[3];
+	vec3f& operator[](int d) { return v[d]; }
+	const vec3f& operator[](int d) const { return v[d]; }
 	triangle_3d_f() {}
-	triangle_3d_f(vec3f v0, vec3f v1, vec3f v2) { V[0] = v0, V[1] = v1, V[2] = v2; }
-	triangle_3d_f(std::initializer_list<vec3f> s) { V[0] = *s.begin(), V[1] = *(s.begin() + 1), V[2] = *(s.begin() + 2); }
+	triangle_3d_f(vec3f v0, vec3f v1, vec3f v2) { v[0] = v0, v[1] = v1, v[2] = v2; }
+	triangle_3d_f(std::initializer_list<vec3f> s) { v[0] = *s.begin(), v[1] = *(s.begin() + 1), v[2] = *(s.begin() + 2); }
+	vec3f min_p() const { return min(min(v[0], v[1]), v[2]); }
+	vec3f max_p() const { return max(max(v[0], v[1]), v[2]); }
+	float min_z() const { return min(min(v[0].z, v[1].z), v[2].z); }
+	float max_z() const { return max(max(v[0].z, v[1].z), v[2].z); }
 };
 struct triangle_2d {
 	vec2 v[3];
@@ -554,6 +561,27 @@ struct triangle_2d {
 	void translate(vec2 d) { v[0] += d, v[1] += d, v[2] += d; }
 	void scale(double s) { v[0] *= s, v[1] *= s, v[2] *= s; }
 	double area() const { return 0.5*det(v[1] - v[0], v[2] - v[0]); }  // signed
+};
+
+struct segment_2d_f {
+	vec2f v[2];
+	vec2f& operator[](int d) { return v[d]; }
+	const vec2f& operator[](int d) const { return v[d]; }
+	segment_2d_f() {}
+	segment_2d_f(vec2f v0, vec2f v1) { v[0] = v0, v[1] = v1; }
+	segment_2d_f(std::initializer_list<vec2f> s) { v[0] = *s.begin(), v[1] = *(s.begin() + 1); }
+
+	float len() const { return length(v[1] - v[0]); }
+
+	// distance to the line segment
+	float dist2(vec2f p) const {
+		vec2f q = p - v[0], d = v[1] - v[0];
+		float h = dot(q, d) / dot(d, d);
+		return (q - d * clamp(h, 0.0f, 1.0f)).sqr();
+	}
+	float dist(vec2f p) const {
+		return sqrt(dist2(p));
+	}
 };
 
 
