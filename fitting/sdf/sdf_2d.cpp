@@ -52,25 +52,27 @@ int main() {
 	vec3f p0 = vec3f((float)INFINITY), p1 = -p0;
 	//loadFile("D:\\isosphere.stl", trigs, p0, p1);
 	//loadFile("D:\\blender_suzanne3.stl", trigs, p0, p1);
-	loadFile("D:\\stanford_dragon.ply", trigs, p0, p1);
-	//loadFile("D:\\Coding\\Github\\Graphics\\modeling\\volume\\ct_head.reduced.ply", trigs, p0, p1);
-	//loadFile("D:\\Explore\\Thingi10K\\Thingi10K\\raw_meshes\\35269.stl", trigs, p0, p1);
+	//loadFile("D:\\stanford_dragon.ply", trigs, p0, p1);
+	loadFile("D:\\Coding\\Github\\Graphics\\modeling\\volume\\ct_head.reduced.ply", trigs, p0, p1);
+	//loadFile("D:\\Explore\\Thingi10K\\Thingi10K\\raw_meshes\\34784.stl", trigs, p0, p1);
 
 	std::vector<segment_2d_f> segs = clip_triangle(trigs, mix(p0.z, p1.z, 0.5f + 1e-6f));
 	printf("%d\n", (int)segs.size());
 
-	const int W = 768, H = 512;
+	const int W = 1024, H = 1024;
 	vec2f r = 1.0f * vec2f(max(p1.x - p0.x, p1.y - p0.y)) * normalize(vec2f(W, H));
 	vec2f q0 = 0.5f*(p0 + p1).xy() - r, q1 = q0 + 2.0f*r;
 	float* vals = new float[W*H];
+	for (int i = W * H; i--;) vals[i] = NAN;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
 	//sdf_grid_bruteforce(segs, vals, q0, q1, ivec2(W, H));
-	sdf_grid_rasterize(segs, vals, q0, q1, ivec2(W, H));
+	//sdf_grid_rasterize(segs, vals, q0, q1, ivec2(W, H));
+	sdf_grid_expand(segs, vals, q0, q1, ivec2(W, H));
 	float time_elapsed = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - t0).count();
 	printf("%.1lfms\n", 1000.0f*time_elapsed);
 
-	float s = 0.02f * W / length(q1 - q0);
+	float s = 0.02f * length(vec2f(W, H)) / length(q1 - q0);
 	save_image("D:\\.png", vals, W, H, s);
 
 	delete vals;
@@ -87,6 +89,7 @@ bool loadFile(const char* filename,
 	FILE* fp = fopen(filename, "rb");
 	if (!read3DFile(fp, Vs, Fs, VN, FN, vcol, fcol)) return false;
 	fclose(fp);
+	//for (int i = 0; i < VN; i++) Vs[i] = Vs[i].rz90().ry90().rz270();
 	for (int i = 0; i < VN; i++)
 		p0 = min(p0, Vs[i]), p1 = max(p1, Vs[i]);
 	for (int i = 0; i < FN; i++)

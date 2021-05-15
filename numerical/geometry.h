@@ -220,6 +220,7 @@ struct ivec3 {
 	explicit ivec3(int a) :x(a), y(a), z(a) {}
 	explicit ivec3(int x, int y, int z) : x(x), y(y), z(z) {}
 	explicit ivec3(vec3 p);
+	explicit ivec3(vec3f p);
 	bool operator == (const ivec3 &v) const { return x == v.x && y == v.y && z == v.z; }
 	bool operator != (const ivec3 &v) const { return x != v.x || y != v.y || z != v.z; }
 	ivec3 operator - () const { return ivec3(-x, -y, -z); }
@@ -305,6 +306,7 @@ struct vec3f {
 	explicit vec3f(float x, float y, float z) :x(x), y(y), z(z) {}
 	//explicit vec3f(int x, int y, int z) :x((float)x), y((float)y), z((float)z) {}
 	explicit vec3f(vec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
+	explicit vec3f(ivec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
 
 	vec3f operator - () const { return vec3f(-x, -y, -z); }
 	vec3f operator + (const vec3f &v) const { return vec3f(x + v.x, y + v.y, z + v.z); }
@@ -336,10 +338,25 @@ struct vec3f {
 	vec2f xy() const { return vec2f(x, y); }
 	vec2f xz() const { return vec2f(x, z); }
 	vec2f yz() const { return vec2f(y, z); }
+	vec3f xyz() const { return vec3f(x, y, z); }
+	vec3f xzy() const { return vec3f(x, z, y); }
+	vec3f yzx() const { return vec3f(y, z, x); }
+	vec3f yxz() const { return vec3f(y, x, z); }
+	vec3f zxy() const { return vec3f(z, x, y); }
 	vec3f zyx() const { return vec3f(z, y, x); }
+	vec3f rz90() const { return vec3f(-y, x, z); }
+	vec3f rz180() const { return vec3f(-x, -y, z); }
+	vec3f rz270() const { return vec3f(y, -x, z); }
+	vec3f ry90() const { return vec3f(z, y, -x); }
+	vec3f ry180() const { return vec3f(-x, y, -z); }
+	vec3f ry270() const { return vec3f(-z, y, x); }
+	vec3f rx90() const { return vec3f(x, -z, y); }
+	vec3f rx180() const { return vec3f(x, -y, -z); }
+	vec3f rx270() const { return vec3f(x, z, -y); }
 };
 
 ivec3::ivec3(vec3 p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
+ivec3::ivec3(vec3f p) : x((int)p.x), y((int)p.y), z((int)p.z) {}
 vec3::vec3(vec3f p) : x((double)p.x), y((double)p.y), z((double)p.z) {}
 
 
