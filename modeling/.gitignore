@@ -7,6 +7,7 @@ blender_pipe.stl
 blender_pipe_0.stl
 blender_suzanne.stl
 blender_suzanne3.stl
+bunny_manifold.stl
 bunny_res2.ply
 bunny_res3.ply
 bunny_res4.ply
@@ -18,12 +19,13 @@ drill_shaft_vrip.ply
 stanford_armadillo.stl
 stanford_asian_dragon.stl
 stanford_bunny.ply
-stanford_bunny.stl
 stanford_dragon.ply
 stanford_dragon.stl
 stanford_happy_buddha.stl
 stanford_lucy.ply
 stanford_thai.stl
+suzanne_manifold.stl
+suzanne_manifold_3.stl
 the_thinker.stl
 utah_teapot.stl
 ascii_ply_files/airplane.ply
@@ -93,6 +95,8 @@ blender/abstract_03.blend
 blender/abstract_03.stl
 blender/monkeys.blend
 blender/monkeys.stl
+blender/stanford_bunny_manifold.blend
+blender/suzanne_manifold.blend
 generators/hyperbolic_sticks.stl
 generators/image_height/image_height_1.stl
 generators/image_height/image_height_2.stl

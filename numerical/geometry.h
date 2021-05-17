@@ -521,6 +521,16 @@ public:
 
 
 
+struct vec4f {
+	float x, y, z, w;
+	vec4f() {}
+	explicit vec4f(float a) :x(a), y(a), z(a), w(a) {}
+	explicit vec4f(float x, float y, float z, float w) :x(x), y(y), z(z), w(w) {}
+	explicit vec4f(vec3f p, float w = 0.0f) : x(p.x), y(p.y), z(p.z), w(w) {}
+};
+
+
+
 // recommended over pMax and pMin
 vec2 max(vec2 a, vec2 b) { return vec2(max(a.x, b.x), max(a.y, b.y)); }
 vec2f max(vec2f a, vec2f b) { return vec2f(max(a.x, b.x), max(a.y, b.y)); }

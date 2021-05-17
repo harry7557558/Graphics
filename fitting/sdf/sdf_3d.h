@@ -73,7 +73,15 @@ void sdf_grid_bruteforce(std::vector<triangle_3d_f> trigs,
 void sdf_grid_expand(std::vector<triangle_3d_f> trigs,
 	float* sdf, vec3f p0, vec3f p1, ivec3 dif) {
 
+	// shuffle triangle list, not necessary
 	int n = (int)trigs.size();
+	if (0) {
+		uint32_t seed = 0;
+		for (int i = n - 1; i > 0; i--) {
+			int random = int(rand01(seed) * (i + 1));
+			std::swap(trigs[i], trigs[random]);
+		}
+	}
 
 	// this buffer stores the index of the closest triangle
 	int *indices = new int[dif.x*dif.y*dif.z];
@@ -117,15 +125,23 @@ void sdf_grid_expand(std::vector<triangle_3d_f> trigs,
 		vec3f c = mix(vec3f(0), vec3f(dif - ivec3(1)), (s[2] - p0) / (p1 - p0));
 
 		// initial voxels: samples
-		const int SN = 3;
-		for (int ui = 0; ui <= SN; ui++) {
-			float u = float(ui) / float(SN);
-			for (int vi = 0; ui + vi <= SN; vi++) {
-				float v = float(vi) / float(SN);
-				vec3f p = a + u * (b - a) + v * (c - a);
-				ivec3 pi = ivec3(p + vec3f(0.5));
-				for (int w = -1; w <= 1; w++) for (int v = -1; v <= 1; v++) for (int u = -1; u <= 1; u++) {
-					add_voxel(id, pi.x + u, pi.y + v, pi.z + w, true);
+		if (sqrt(length(cross(b - a, c - a))) < 10) {
+			ivec3 pi = ivec3((a + b + c) / 3.0f + vec3f(0.5));
+			for (int w = -1; w <= 1; w++) for (int v = -1; v <= 1; v++) for (int u = -1; u <= 1; u++) {
+				add_voxel(id, pi.x + u, pi.y + v, pi.z + w, true);
+			}
+		}
+		else {
+			const int SN = 3;
+			for (int ui = 0; ui <= SN; ui++) {
+				float u = float(ui) / float(SN);
+				for (int vi = 0; ui + vi <= SN; vi++) {
+					float v = float(vi) / float(SN);
+					vec3f p = a + u * (b - a) + v * (c - a);
+					ivec3 pi = ivec3(p + vec3f(0.5));
+					for (int w = -1; w <= 1; w++) for (int v = -1; v <= 1; v++) for (int u = -1; u <= 1; u++) {
+						add_voxel(id, pi.x + u, pi.y + v, pi.z + w, true);
+					}
 				}
 			}
 		}
@@ -137,7 +153,7 @@ void sdf_grid_expand(std::vector<triangle_3d_f> trigs,
 		int y1 = min((int)max(max(a.y, b.y), c.y) + 1, dif.y - 1);
 		for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
 			if (in_triangle(vec2f((float)x, (float)y), a.xy(), b.xy(), c.xy())) {
-				vec3f pa = a - vec3f(x, y, 0), ab = b - a, ac = c - a;
+				vec3f pa = a - vec3f(x, y, 0.0f), ab = b - a, ac = c - a;
 				ints[y*dif.x + x].push_back(dot(cross(ab, ac), pa) / det(ab.xy(), ac.xy()));
 			}
 		}
@@ -146,6 +162,7 @@ void sdf_grid_expand(std::vector<triangle_3d_f> trigs,
 
 	// expanding voxels, similar to BFS
 	while (!ps.empty()) {
+	//for (int i = 0; i < 5; i++) {
 		std::vector<ivec3> ps1;
 		for (int i = 0; i < (int)ps.size(); i++) {
 			ivec3 p = ps[i];

@@ -18,7 +18,7 @@
 #include "numerical/geometry.h"
 #endif
 
-#include "ui/colors/ColorFunctions.h"
+#include "ui/color_functions/poly.h"
 
 #pragma pack(push, 1)
 

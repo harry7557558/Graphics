@@ -26,7 +26,7 @@ void save_image(const char* filename, float* sdf, int W, int H, float s) {
 	delete img;
 }
 
-void save_volume(float* sdf, ivec3 S, int step, float sc) {
+void save_volume_image(float* sdf, ivec3 S, int step, float sc) {
 	for (int zi = 0; zi < S.z; zi += step) {
 		char filename[256];
 		sprintf(filename, "D:\\\\sdf_3d\\z_%04d.png", zi);
@@ -34,19 +34,21 @@ void save_volume(float* sdf, ivec3 S, int step, float sc) {
 	}
 }
 
-int main() {
+// ==========================================================================
 
+void test_image() {
 	std::vector<triangle_3d_f> trigs;
 	vec3f p0 = vec3f((float)INFINITY), p1 = -p0;
 	//loadFile("D:\\isosphere.stl", trigs, p0, p1);
-	loadFile("D:\\blender_suzanne3.stl", trigs, p0, p1);
+	//loadFile("D:\\suzanne_manifold_3.stl", trigs, p0, p1);
+	loadFile("D:\\bunny_manifold.stl", trigs, p0, p1);
 	//loadFile("D:\\stanford_dragon.ply", trigs, p0, p1);
 	//loadFile("D:\\Coding\\Github\\Graphics\\modeling\\volume\\ct_head.reduced.ply", trigs, p0, p1);
 	//loadFile("D:\\Explore\\Thingi10K\\Thingi10K\\raw_meshes\\34784.stl", trigs, p0, p1);
 
 	printf("%d\n", (int)trigs.size());
 
-	const ivec3 S = ivec3(128);  // size of voxels
+	const ivec3 S = ivec3(256);  // size of voxels
 	vec3f r = 1.0f * vec3f(std::max({ p1.x - p0.x, p1.y - p0.y, p1.z - p0.z })) * normalize(vec3f(S));
 	vec3f q0 = 0.5f*(p0 + p1) - r, q1 = q0 + 2.0f*r;
 	float* sdf = new float[S.z*S.y*S.x];
@@ -56,12 +58,55 @@ int main() {
 	//sdf_grid_bruteforce(trigs, sdf, q0, q1, S);
 	sdf_grid_expand(trigs, sdf, q0, q1, S);
 	float time_elapsed = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - t0).count();
-	printf("%.1lfms\n", 1000.0f*time_elapsed);
+	printf("%.1lfs\n", time_elapsed);
 
 	float sc = 0.02f * length(vec3f(S)) / length(q1 - q0);
-	save_volume(sdf, S, 1, sc);
+	save_volume_image(sdf, S, 1, sc);
 
 	delete sdf;
+}
+
+
+void write_bunny() {
+	// bunny is defined inside the unit sphere
+	std::vector<triangle_3d_f> trigs;
+	vec3f p0 = vec3f((float)INFINITY), p1 = -p0;
+	loadFile("D:\\bunny_manifold.stl", trigs, p0, p1);
+	p0 = vec3f(-1.0f), p1 = vec3f(1.0f);
+
+	const ivec3 S = ivec3(64);
+	float* sdf = new float[S.z*S.y*S.x];
+	sdf_grid_expand(trigs, sdf, p0, p1, S);
+
+	std::vector<vec4f> samples;
+	for (int zi = 0; zi < S.z; zi++) {
+		for (int yi = 0; yi < S.y; yi++) {
+			for (int xi = 0; xi < S.x; xi++) {
+				vec3f p = mix(p0, p1, vec3f(ivec3(xi, yi, zi)) / vec3f(S - ivec3(1)));
+				float v = sdf[(zi*S.y + yi)*S.x + xi];
+				if (length(p) < 1.0f) samples.push_back(vec4f(p, v));
+				if (abs(v) < 0.1f) samples.push_back(vec4f(p, v));
+			}
+		}
+	}
+	printf("%d\n", samples.size());
+
+	uint32_t seed = 0;
+	for (int i = (int)samples.size() - 1; i > 0; i--) {
+		int random = int(rand01(seed) * (i + 1));
+		std::swap(samples[i], samples[random]);
+	}
+
+	FILE* fp = fopen("D:\\bunny_train.raw", "wb");
+	fwrite(&samples[0], sizeof(vec4f), samples.size(), fp);
+	fclose(fp);
+}
+
+
+int main() {
+	//test_image();
+	write_bunny();
+
 	return 0;
 }
 

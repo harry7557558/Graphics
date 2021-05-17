@@ -323,6 +323,7 @@ struct RigidBody {
 	static double particle_r, particle_m;  // radius and mass of each particle
 	static double m, inv_m;  // the object's mass and its reciprocal
 	static mat3 I0, inv_I0;  // the object's moment of inertia when right oriented
+	vec3f color;
 
 	/* construct rigid body from volume defined by implicit equation */
 	static void fromMetaball(std::function<double(vec3)> fun, vec3 p0, vec3 p1, int diff, double density);
@@ -353,7 +354,7 @@ struct RigidBody {
 
 	/* constructors */
 	RigidBody() {}
-	RigidBody(vec3 x, quaternion q, vec3 v, vec3 w) : x(x), q(q) {
+	RigidBody(vec3 x, quaternion q, vec3 v, vec3 w, vec3f color = vec3f(1.0)) : x(x), q(q), color(color) {
 		calcDerivedQuantities();
 		P = m * v, L = I * w;
 	}
@@ -462,8 +463,8 @@ void calc_force_and_torque() {
 		bodies[i].torque = vec3(0.0);
 	}
 
-	const double k_c = 100000.0 * RigidBody::particle_m;  // collision force coefficient
-	const double k_d = 1000.0 * RigidBody::particle_m;  // damping coefficient
+	const double k_c = 20000.0 * RigidBody::particle_m;  // collision force coefficient
+	const double k_d = 0.01 * k_c;  // damping coefficient
 	const double mu_b = 0.2;  // friction coefficient between sphere and boundary
 	const double mu_s = 0.1;  // friction coefficient between spheres
 
@@ -564,7 +565,7 @@ void calc_force_and_torque() {
 
 void update_scene(double dt) {
 
-	const double max_dt = 0.001;
+	const double max_dt = 0.005;
 	if (dt > max_dt) {
 		int N = (int)ceil(dt / max_dt);
 		for (int i = 0; i < N; i++)
@@ -638,10 +639,10 @@ void render() {
 			triangle_3d(vec3(0, 0, -1), vec3(0, -1, 0), vec3(-1, 0, 0)),
 			triangle_3d(vec3(0, 0, -1), vec3(1, 0, 0), vec3(0, -1, 0))
 		};
-		auto draw_triangle = [](triangle_3d t) {
+		auto draw_triangle = [](triangle_3d t, vec3f color) {
 			vec3 n = t.unit_normal();
 			double c = 0.6 + 0.4*dot(n, normalize(vec3(-0.1, 0.3, 1)));
-			drawTriangle_F(t[0], t[1], t[2], toCOLORREF(vec3f((float)c)));
+			drawTriangle_F(t[0], t[1], t[2], toCOLORREF((float)c * color));
 		};
 		for (int i = 0; i < (int)bodies.size(); i++) {
 			const RigidBody b = bodies[i];
@@ -652,7 +653,7 @@ void render() {
 					b.getAbsolutePos(t0[0]),
 					b.getAbsolutePos(t0[1]),
 					b.getAbsolutePos(t0[2])
-				));
+				), b.color);
 			}
 #else
 			// draw particles
@@ -666,12 +667,12 @@ void render() {
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v0)*octa[f][0] + u0 * octa[f][1] + v0 * octa[f][2])),
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2])),
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2]))
-						));
+						), b.color);
 						if (ui + vi + 2 <= SUBDIV) draw_triangle(triangle_3d(
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v1)*octa[f][0] + u1 * octa[f][1] + v1 * octa[f][2])),
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u0 - v1)*octa[f][0] + u0 * octa[f][1] + v1 * octa[f][2])),
 							b.getAbsolutePos(p + b.particle_r * normalize((1 - u1 - v0)*octa[f][0] + u1 * octa[f][1] + v0 * octa[f][2]))
-						));
+						), b.color);
 					}
 				}
 			}
@@ -724,6 +725,7 @@ void render() {
 
 #include <thread>
 #include "numerical/random.h"
+#include "ui/colors/ColorFunctions.h"
 
 void Init() {
 	rz = PI - 1.2, rx = 0.2;
@@ -744,12 +746,14 @@ void Init() {
 
 	//bodies.push_back(RigidBody(vec3(0, 0, 1), quaternion(1, vec3(0)), vec3(0), vec3(0)));
 
-	for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) for (int k = 0; k <= 0; k++)
+	uint32_t seed = 0;
+	for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) for (int k = 0; k <= 1; k++)
 		bodies.push_back(RigidBody(
 			vec3(2 * i, 2 * j, 2 * k + 1),
 			quaternion(vec3(0, 1, 1), 0.5),
 			vec3(5, 0, 0),
-			vec3(0, 5, 5)
+			vec3(0, 5, 5),
+			ColorFunctions<vec3f, float>::BrightBands(rand01(seed))
 		));
 
 	double zoom_out = 2.0;
