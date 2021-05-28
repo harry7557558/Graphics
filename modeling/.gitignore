@@ -97,6 +97,7 @@ blender/monkeys.blend
 blender/monkeys.stl
 blender/stanford_bunny_manifold.blend
 blender/suzanne_manifold.blend
+generators/glyph_intersection.stl
 generators/hyperbolic_sticks.stl
 generators/image_height/image_height_1.stl
 generators/image_height/image_height_2.stl

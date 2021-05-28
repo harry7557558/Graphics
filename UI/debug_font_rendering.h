@@ -136,20 +136,50 @@ const unsigned char _ASCII_IMAGE_DATA[96][4097] = {
 
 // return the distance to the font with given x and y coordinates
 // top-left:(0,0); top-right:(1,0); bottom-left:(0,1)
-double sdFont(char c, double x, double y) {
-	if (c < 32 || c > 126) return 1.0;
-	x = x < 0. ? 0. : x > 1. ? 1. : x;
-	y = y < 0. ? 0. : y > 1. ? 1. : y;
-	double u = 62.99*x, v = 62.99*y;
+float sdFont(char c, float x, float y, int interpolation = 1) {
+	if (c < 32 || c > 126) return 0.0f;
+	x = clamp(x, 0.0f, 1.0f);
+	y = clamp(y, 0.0f, 1.0f);
+	float u = 62.9999f*x, v = 62.9999f*y;
 	int j = int(u), i = int(v);
 	auto img = _ASCII_IMAGE_DATA[c - ' '];
-	double _00 = (double)img[64 * i + j];
-	double _01 = (double)img[64 * i + j + 1];
-	double _10 = (double)img[64 * i + j + 64];
-	double _11 = (double)img[64 * i + j + 65];
-	u -= j, v -= i;
-	double d = (1. - v)*((1. - u)*_00 + u * _01) + v * ((1. - u)*_10 + u * _11);
-	d = (d - 128.) / 256.;
-	return d;
+
+	float d = 0.0f;
+
+	if (interpolation == 0) {
+		d = (float)img[64 * int(v + 0.5f) + int(u + 0.5f)];
+	}
+
+	if (interpolation == 1) {
+		u -= j, v -= i;
+		float _00 = (float)img[64 * i + j];
+		float _01 = (float)img[64 * i + j + 1];
+		float _10 = (float)img[64 * i + j + 64];
+		float _11 = (float)img[64 * i + j + 65];
+		d = mix(mix(_00, _01, u), mix(_10, _11, u), v);
+	}
+
+	if (interpolation == 3) {
+		u -= j, v -= i;
+		i = clamp(i, 1, 61), j = clamp(j, 1, 61);
+		auto interpolate = [](float s0, float s1, float s2, float s3, float t)->float {
+			float t2 = t * t, t3 = t2 * t;
+			return s0 * (-0.5f*t3 + t2 - 0.5f*t)
+				+ s1 * (1.5f*t3 - 2.5f*t2 + 1)
+				+ s2 * (-1.5f*t3 + 2.f*t2 + 0.5f*t)
+				+ s3 * (0.5f*t3 - 0.5f*t2);
+		};
+		float samples[4][4];
+		for (int ii = -1; ii <= 2;) {
+			for (int ji = -1; ji <= 2; ji++) {
+				samples[ii + 1][ji + 1] = (float)img[64 * (i + ii) + (j + ji)];
+			}
+			ii++;
+			samples[ii][0] = interpolate(samples[ii][0], samples[ii][1], samples[ii][2], samples[ii][3], u);
+		}
+		d = interpolate(samples[0][0], samples[1][0], samples[2][0], samples[3][0], v);
+	}
+
+	return float(1.0 / 255.0) * d - 0.5f;
 }
 
