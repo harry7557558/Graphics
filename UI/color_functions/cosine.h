@@ -17,31 +17,31 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 ArmyColors(Float t) {
-    Float r = .345+.527*t+.109*cos(2.623*t+.641);
+    Float r = .43+.296*t+.017*cos(12.935*t+.408);
     Float g = .427+.427*t+.144*cos(4.132*t+.063);
-    Float b = .386+.174*t+.066*cos(6.358*t-.264);
+    Float b = .886+2.688*t+3.539*cos(.851*t+1.682);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 MintColors(Float t) {
-    Float r = -.619+.176*t+1.394*cos(.93*t-.688);
-    Float g = .426-.597*t+.798*cos(.992*t-.81);
-    Float b = .264+.088*t+.541*cos(1.457*t-.817);
+    Float r = -.968+.087*t+1.813*cos(.817*t-.666);
+    Float g = .699-.492*t+.447*cos(1.321*t-.899);
+    Float b = .071+.083*t+.736*cos(1.242*t-.702);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 AtlanticColors(Float t) {
-    Float r = .118-.518*t+.909*cos(1.609*t-1.577);
+    Float r = -.359-4.384*t+7.369*cos(.729*t-1.507);
     Float g = .309-.072*t+.477*cos(2.921*t-1.956);
     Float b = .464-.507*t+.749*cos(2.484*t-2.026);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 NeonColors(Float t) {
-    Float r = .772+.066*t+.044*cos(5.935*t-3.554);
+    Float r = .772+.066*t+.044*cos(5.935*t+2.729);
     Float g = .832-.792*t+.139*cos(5.937*t+.756);
     Float b = .142+.513*t+.133*cos(5.692*t+.064);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 AuroraColors(Float t) {
-    Float r = .209+.586*t+.05*cos(10.516*t-4.856);
+    Float r = .209+.586*t+.05*cos(10.516*t+1.428);
     Float g = .511-.234*t+.282*cos(5.461*t+2.466);
     Float b = .167+.704*t+.122*cos(7.581*t-.642);
     return vec3(clp(r),clp(g),clp(b));
@@ -60,13 +60,13 @@ public:
   }
   static vec3 PlumColors(Float t) {
     Float r = -1.019+2.938*t+1.008*cos(2.766*t+.148);
-    Float g = -.129+.886*t+.084*cos(6.614*t-.542);
-    Float b = 2.035-4.714*t+3.865*cos(1.482*t+4.159);
+    Float g = -2.843+17.04*t+30.478*cos(.544*t+1.478);
+    Float b = 2.035-4.714*t+3.865*cos(1.482*t-2.124);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 BeachColors(Float t) {
-    Float r = -.179+2.163*t+1.031*cos(2.623*t+.345);
-    Float g = .559+.364*t+.081*cos(7.607*t-2.555);
+    Float r = -40.164+87.818*t+202.129*cos(.4371*t+1.3668);
+    Float g = .559+.364*t+.081*cos(7.608*t-2.555);
     Float b = .149+.801*t+.105*cos(6.822*t+.376);
     return vec3(clp(r),clp(g),clp(b));
   }
@@ -78,7 +78,7 @@ public:
   }
   static vec3 CandyColors(Float t) {
     Float r = .43+.468*t+.213*cos(4.928*t-1.749);
-    Float g = .106+.828*t+.031*cos(11.046*t-.4);
+    Float g = 19.473-36.595*t+79.305*cos(.474*t-1.816);
     Float b = .483+.298*t+.165*cos(4.659*t+2.531);
     return vec3(clp(r),clp(g),clp(b));
   }
@@ -89,33 +89,33 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 CMYKColors(Float t) {
-    Float r = .61+.194*t+.081*cos(10.715*t+.114);
-    Float g = .963-.695*t+.363*cos(6.258*t+1.694);
+    Float r = 21.344-109.661*t+274.797*cos(.4044*t-1.6474);
+    Float g = .963-.695*t+.363*cos(6.257*t+1.694);
     Float b = .857-.536*t+.098*cos(9.08*t-1.018);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 SouthwestColors(Float t) {
-    Float r = .848-2.173*t+1.659*cos(1.874*t-1.808);
+    Float r = 2.153-26.755*t+51.145*cos(.542*t-1.604);
     Float g = .441+.304*t+.174*cos(6.236*t+2.533);
-    Float b = -.269+1.247*t+.315*cos(3.882*t-.317);
+    Float b = .167+.385*t+.124*cos(11.285*t+1.021);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 DeepSeaColors(Float t) {
     Float r = -.452+1.772*t+.586*cos(3.484*t+.168);
     Float g = .395+.166*t+.399*cos(2.951*t+2.859);
-    Float b = .209+.358*t+.487*cos(1.901*t-1.398);
+    Float b = .216+.37*t+.472*cos(1.93*t-1.406);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 StarryNightColors(Float t) {
     Float r = .188+.741*t+.121*cos(5.253*t+2.268);
-    Float g = .494-.068*t+.427*cos(2.988*t+3.806);
+    Float g = .494-.068*t+.427*cos(2.988*t-2.477);
     Float b = .391-.019*t+.267*cos(3.939*t-2.331);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 FallColors(Float t) {
     Float r = .207+.806*t+.041*cos(8.621*t-.258);
     Float g = .262+.403*t+.124*cos(6.28*t+.023);
-    Float b = .307-.118*t+.041*cos(7.41*t-.251);
+    Float b = 6.498-7.166*t+12.763*cos(.571*t-2.069);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 SunsetColors(Float t) {
@@ -127,7 +127,7 @@ public:
   static vec3 FruitPunchColors(Float t) {
     Float r = .895-.02*t+.109*cos(5.773*t-.213);
     Float g = .569-.095*t+.137*cos(5.769*t-2.086);
-    Float b = -.038+.685*t+.136*cos(6.99*t+1.023);
+    Float b = -.038+.685*t+.136*cos(6.989*t+1.023);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 ThermometerColors(Float t) {
@@ -138,14 +138,14 @@ public:
   }
   static vec3 IslandColors(Float t) {
     Float r = .67+.125*t+.142*cos(7.543*t+1.454);
-    Float g = -.363+1.194*t+.825*cos(2.085*t-.458);
-    Float b = -.248+.869*t+.821*cos(2.872*t-.925);
+    Float g = -8.587+7.996*t+12.196*cos(.712*t+.746);
+    Float b = -35.367+32.875*t+68.157*cos(.508*t+1.022);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 WatermelonColors(Float t) {
-    Float r = .171+.9*t+.038*cos(13.945*t-3.805);
-    Float g = .749-2.337*t+1.967*cos(2.013*t-1.894);
-    Float b = .161+.66*t+.085*cos(10.552*t-.376);
+    Float r = 8.384-23.701*t+45.905*cos(.542*t-1.752);
+    Float g = 6.221-56.236*t+127.225*cos(.4551*t-1.6188);
+    Float b = 80.008-209.122*t+639.314*cos(.3292*t-1.696);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 BrassTones(Float t) {
@@ -162,7 +162,7 @@ public:
   }
   static vec3 BrownCyanTones(Float t) {
     Float r = .203+.373*t+.472*cos(3.367*t-1.293);
-    Float g = .307-1.235*t+1.606*cos(1.806*t-1.637);
+    Float g = -1.135-14.824*t+26.533*cos(.626*t-1.521);
     Float b = .587-3.096*t+3.441*cos(1.409*t-1.721);
     return vec3(clp(r),clp(g),clp(b));
   }
@@ -173,19 +173,19 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 CherryTones(Float t) {
-    Float r = -.507+2.128*t+.743*cos(2.704*t-.219);
-    Float g = -.011+.83*t+.103*cos(7.685*t-.517);
-    Float b = -.01+.837*t+.101*cos(7.825*t-.558);
+    Float r = -33.955+52.149*t+107.832*cos(.4822*t+1.2484);
+    Float g = 11.897-9.82*t+19.465*cos(.588*t-2.214);
+    Float b = 13.784-12.632*t+25.214*cos(.562*t-2.139);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 RedBlueTones(Float t) {
     Float r = .649-.248*t+.33*cos(4.743*t-2.171);
     Float g = .46+.013*t+.388*cos(4.495*t-2.538);
-    Float b = .912-1.304*t+.961*cos(2.624*t+3.913);
+    Float b = .912-1.304*t+.961*cos(2.624*t-2.37);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 CoffeeTones(Float t) {
-    Float r = -.275+1.604*t+.75*cos(1.609*t+.425);
+    Float r = -2.682+4.95*t+5.693*cos(.799*t+.997);
     Float g = .32+.635*t+.04*cos(7.862*t-1.389);
     Float b = .064+.864*t+.199*cos(5.276*t-.159);
     return vec3(clp(r),clp(g),clp(b));
@@ -197,14 +197,14 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 FuchsiaTones(Float t) {
-    Float r = .271-.695*t+1.499*cos(1.307*t-1.688);
+    Float r = .387-3.144*t+5.33*cos(.828*t-1.625);
     Float g = .034+.905*t+.05*cos(7.864*t-.057);
-    Float b = .615-1.141*t+1.82*cos(1.25*t-1.857);
+    Float b = 1.444-4.925*t+8.111*cos(.747*t-1.737);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 SiennaTones(Float t) {
     Float r = -.412+1.682*t+.857*cos(2.03*t-.038);
-    Float g = .327+.416*t+.153*cos(3.422*t+3.376);
+    Float g = .327+.416*t+.153*cos(3.422*t-2.907);
     Float b = .397+.093*t+.337*cos(3.09*t+2.801);
     return vec3(clp(r),clp(g),clp(b));
   }
@@ -215,33 +215,33 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 ValentineTones(Float t) {
-    Float r = .515+.491*t+.012*cos(9.911*t-.531);
+    Float r = 2.391-3.682*t+5.193*cos(.817*t-1.937);
     Float g = .135+.605*t+.1*cos(4.255*t+1.819);
     Float b = .173+.657*t+.053*cos(5.679*t+1.147);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 GrayYellowTones(Float t) {
-    Float r = .6-.129*t+.468*cos(2.889*t+3.612);
-    Float g = .257+.751*t+.049*cos(10.88*t-.313);
-    Float b = .458+.293*t+.082*cos(10.715*t-.059);
+    Float r = .6-.129*t+.468*cos(2.889*t-2.671);
+    Float g = 22.003-61.926*t+141.553*cos(.4457*t-1.7253);
+    Float b = 40.32-135.252*t+364.051*cos(.3746*t-1.6809);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 DarkTerrain(Float t) {
-    Float r = -.411+1.77*t+.425*cos(4.184*t-.465);
-    Float g = -5.313+12.05*t+7.18*cos(1.752*t+.736);
-    Float b = -.034+1.018*t+.43*cos(5.044*t-.453);
+    Float r = -119.592+246.859*t+786.342*cos(.3139*t+1.4182);
+    Float g = -5.317+12.06*t+7.188*cos(1.751*t+.736);
+    Float b = -180.095+452.81*t+1665.276*cos(.27247*t+1.4622);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 LightTerrain(Float t) {
     Float r = .585+.263*t+.087*cos(5.119*t+2.234);
-    Float g = .608+.282*t+.058*cos(8.688*t-.184);
-    Float b = .55+.174*t+.129*cos(7.825*t-.327);
+    Float g = 27.294-45.823*t+94.808*cos(.49*t-1.854);
+    Float b = 39.021-51.942*t+114.118*cos(.4623*t-1.9117);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 GreenBrownTerrain(Float t) {
     Float r = .117+.953*t+.119*cos(6.758*t-2.887);
     Float g = .12+.881*t+.181*cos(6.804*t-2.345);
-    Float b = -.34+1.52*t+.402*cos(4.822*t-.711);
+    Float b = -205.56+434.262*t+1593.101*cos(.27279*t+1.44143);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 SandyTerrain(Float t) {
@@ -253,11 +253,11 @@ public:
   static vec3 BrightBands(Float t) {
     Float r = .631+.13*t+.314*cos(7.388*t-.03);
     Float g = .52+.312*t+.288*cos(5.462*t-3.023);
-    Float b = -.129+1.322*t+.767*cos(4.932*t-1.138);
+    Float b = -577.524+1052.6*t+4334.341*cos(.24336*t+1.43714);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 DarkBands(Float t) {
-    Float r = .516+.307*t+.147*cos(11.59*t-5.506);
+    Float r = .516+.307*t+.147*cos(11.59*t+.777);
     Float g = .621+.214*t+.262*cos(4.299*t+.764);
     Float b = 1.077-.984*t+.355*cos(5.115*t+1.765);
     return vec3(clp(r),clp(g),clp(b));
@@ -269,21 +269,21 @@ public:
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 Pastel(Float t) {
-    Float r = .94-.191*t+.054*cos(10.715*t+.139);
-    Float g = 1.695-3.634*t+2.889*cos(1.558*t+4.289);
+    Float r = 5.992-30.909*t+57.315*cos(.549*t-1.662);
+    Float g = 1.695-3.634*t+2.889*cos(1.558*t-1.995);
     Float b = .813-.068*t+.215*cos(5.582*t+.594);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 BlueGreenYellow(Float t) {
-    Float r = 2.081+4.672*t+6.442*cos(.818*t+1.879);
+    Float r = 2.083+4.676*t+6.451*cos(.818*t+1.879);
     Float g = -.467+1.408*t+.504*cos(2.071*t-.424);
     Float b = -1.062+1.975*t+1.607*cos(1.481*t+.447);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 Rainbow(Float t) {
-    Float r = .132+.851*t+.109*cos(9.597*t-.378);
+    Float r = 132.228-245.968*t+755.627*cos(.3275*t-1.7461);
     Float g = .385-1.397*t+1.319*cos(2.391*t-1.839);
-    Float b = .116+.645*t+.54*cos(3.882*t-.475);
+    Float b = -142.825+270.693*t+891.307*cos(.3053*t+1.4092);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 DarkRainbow(Float t) {
@@ -294,13 +294,13 @@ public:
   }
   static vec3 TemperatureMap(Float t) {
     Float r = .372+.707*t+.265*cos(5.201*t-2.515);
-    Float g = .888-2.123*t+1.556*cos(2.483*t+4.324);
-    Float b = 1.182-.943*t+.195*cos(8.032*t-3.409);
+    Float g = .888-2.123*t+1.556*cos(2.483*t-1.959);
+    Float b = 1.182-.943*t+.195*cos(8.032*t+2.875);
     return vec3(clp(r),clp(g),clp(b));
   }
   static vec3 LightTemperatureMap(Float t) {
     Float r = .385+.619*t+.238*cos(4.903*t-2.61);
-    Float g = -.108+.2*t+1.021*cos(2.463*t-1.172);
+    Float g = -5.491+.959*t+6.089*cos(.968*t-.329);
     Float b = 1.107-.734*t+.172*cos(6.07*t-2.741);
     return vec3(clp(r),clp(g),clp(b));
   }

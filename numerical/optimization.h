@@ -73,7 +73,7 @@ template<typename Fun> double GoldenSectionSearch_1d(Fun F, double &x0, double &
 		}
 		if (x1 - x0 < eps) break;
 	}
-	return y0 < t1 ? t0 : t1;
+	return y0 < y1 ? t0 : t1;
 }
 
 // Brent's method for minimizing functions in 1-dimension
