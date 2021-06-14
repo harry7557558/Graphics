@@ -534,12 +534,16 @@ struct vec4f {
 // recommended over pMax and pMin
 vec2 max(vec2 a, vec2 b) { return vec2(max(a.x, b.x), max(a.y, b.y)); }
 vec2f max(vec2f a, vec2f b) { return vec2f(max(a.x, b.x), max(a.y, b.y)); }
+ivec2 max(ivec2 a, ivec2 b) { return ivec2(max(a.x, b.x), max(a.y, b.y)); }
 vec2 min(vec2 a, vec2 b) { return vec2(min(a.x, b.x), min(a.y, b.y)); }
 vec2f min(vec2f a, vec2f b) { return vec2f(min(a.x, b.x), min(a.y, b.y)); }
+ivec2 min(ivec2 a, ivec2 b) { return ivec2(min(a.x, b.x), min(a.y, b.y)); }
 vec3 max(vec3 a, vec3 b) { return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 vec3f max(vec3f a, vec3f b) { return vec3f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
+ivec3 max(ivec3 a, ivec3 b) { return ivec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 vec3 min(vec3 a, vec3 b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 vec3f min(vec3f a, vec3f b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+ivec3 min(ivec3 a, ivec3 b) { return ivec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 vec2 clamp(vec2 p, double a, double b) { return vec2(clamp(p.x, a, b), clamp(p.y, a, b)); }
 vec2f clamp(vec2f p, float a, float b) { return vec2f(clamp(p.x, a, b), clamp(p.y, a, b)); }
 vec3 clamp(vec3 p, double a, double b) { return vec3(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b)); }

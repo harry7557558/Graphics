@@ -28,6 +28,7 @@
 // std::vector<triangle_3d> octatree_cylindrical_x(Fun fun, double r1, double x0, double x1, int rN, int thetaN, int xN, int plot_depth);
 // std::vector<triangle_3d> octatree_cylindrical_y(Fun fun, double r1, double y0, double y1, int rN, int thetaN, int yN, int plot_depth);
 
+// std::vector<Triangle> marching_cube(Float ***data, Float iso, int NZ, int NY, int NX);
 
 
 #include <vector>
@@ -554,6 +555,7 @@ namespace ScalarFieldTriangulator_octatree {
 		return Trigs;
 	}
 
+	// marching cube on discrete sample points, 3D C-style array in ZYX order, results are in [0,NX-1],[0,NY-1],[0,NZ-1]
 	template<typename Float, typename vec, typename Triangle>
 	std::vector<Triangle> marching_cube(Float ***data, Float iso, int NZ, int NY, int NX) {
 
