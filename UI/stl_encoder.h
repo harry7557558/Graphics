@@ -39,25 +39,25 @@ struct stl_triangle {
 	template<typename _trig>
 	stl_triangle(_trig T) {
 		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]), n = stl_vec3(0., 0., 0.);
-		this->setColor(vec3f(NAN));
+		this->__setColor(vec3f(NAN));
 	}
 	template<typename _trig, typename _cvec3>
 	stl_triangle(_trig T, _cvec3 col) {
 		a = stl_vec3(T[0]), b = stl_vec3(T[1]), c = stl_vec3(T[2]), n = stl_vec3(0., 0., 0.);
-		this->setColor(col);
+		this->__setColor(col);
 	}
 	template<typename _vec3>
 	stl_triangle(_vec3 a, _vec3 b, _vec3 c) {
 		this->a = stl_vec3(a), this->b = stl_vec3(b), this->c = stl_vec3(c), n = stl_vec3(0., 0., 0.);
-		this->setColor(vec3f(NAN));
+		this->__setColor(vec3f(NAN));
 	}
 	template<typename _vec3, typename _cvec3>
 	stl_triangle(_vec3 a, _vec3 b, _vec3 c, _cvec3 col) {
 		this->a = stl_vec3(a), this->b = stl_vec3(b), this->c = stl_vec3(c), n = vec3(0.);
-		this->setColor(col);
+		this->__setColor(col);
 	}
 	template<typename _cvec3>
-	void setColor(_cvec3 p) {
+	void __setColor(_cvec3 p) {
 		if (isnan(p.sqr())) { col = 0; return; }
 		uint16_t r = (uint16_t)(31.99f * clamp(p.x, 0.f, 1.f));
 		uint16_t g = (uint16_t)(31.99f * clamp(p.y, 0.f, 1.f));
@@ -259,11 +259,11 @@ int stl_fun2trigs(Fun F, stl_triangle* trigs, double x0, double x1, double y0, d
 			if (isnan(trigs[i].a.z)) trigs[i].a.z = clamp(0.f, (float)minz, (float)maxz);
 			if (isnan(trigs[i].b.z)) trigs[i].b.z = clamp(0.f, (float)minz, (float)maxz);
 			if (isnan(trigs[i].c.z)) trigs[i].c.z = clamp(0.f, (float)minz, (float)maxz);
-			trigs[i].setColor(vec3(0, 0.2, 0));  // dark green means NAN
+			trigs[i].__setColor(vec3(0, 0.2, 0));  // dark green means NAN
 		}
 		else {
 			vec3 col = ColorFunctions::Rainbow((z - minz) * invdz);
-			trigs[i].setColor(col);
+			trigs[i].__setColor(col);
 		}
 	}
 

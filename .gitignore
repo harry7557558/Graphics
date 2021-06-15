@@ -13,6 +13,14 @@
 
 # ========================================================
 
+Debug/*
+Release/*
+x64/*
+Graphics.cpp
+Graphics.vcxproj
+Graphics.vcxproj.filters
+Graphics.vcxproj.user
+
 .idea/*
 .vscode/*
 tempCodeRunnerFile.py

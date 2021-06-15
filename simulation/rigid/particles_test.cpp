@@ -175,13 +175,6 @@ void calcMat() {
 #pragma region Rasterization functions
 
 typedef unsigned char byte;
-COLORREF toCOLORREF(vec3 c) {
-	COLORREF r = 0; byte *k = (byte*)&r;
-	k[0] = byte(255 * clamp(c.z, 0, 1));
-	k[1] = byte(255 * clamp(c.y, 0, 1));
-	k[2] = byte(255 * clamp(c.x, 0, 1));
-	return r;
-}
 
 void drawLine(vec2 p, vec2 q, COLORREF col) {
 	vec2 d = q - p;
@@ -289,13 +282,6 @@ void drawCross3D(vec3 P, double r, COLORREF col = 0xFFFFFF) {
 #include <string>
 
 #include "UI/3d_reader.h"
-COLORREF toCOLORREF(vec3f c) {
-	COLORREF r = 0; byte *k = (byte*)&r;
-	k[0] = byte(255.99f * clamp(c.z, 0.f, 1.f));
-	k[1] = byte(255.99f * clamp(c.y, 0.f, 1.f));
-	k[2] = byte(255.99f * clamp(c.x, 0.f, 1.f));
-	return r;
-}
 
 
 
@@ -725,7 +711,7 @@ void render() {
 
 #include <thread>
 #include "numerical/random.h"
-#include "ui/colors/ColorFunctions.h"
+#include "UI/color_functions/poly.h"
 
 void Init() {
 	rz = PI - 1.2, rx = 0.2;

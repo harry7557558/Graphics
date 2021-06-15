@@ -389,21 +389,6 @@ vec3f *_COLORBUF = 0;
 #define colorbuf(x,y) _COLORBUF[(y)*_WIN_W+(x)]
 
 
-vec3f fromCOLORREF(COLORREF c) {
-	vec3f r; byte *k = (byte*)&c;
-	r.z = (byte)k[0] / 255.f;
-	r.y = (byte)k[1] / 255.f;
-	r.x = (byte)k[2] / 255.f;
-	return r;
-}
-COLORREF toCOLORREF(vec3f c) {
-	COLORREF r = 0; uint8_t *k = (uint8_t*)&r;
-	k[0] = uint8_t(255.f * clamp(c.z, 0.f, 1.f));
-	k[1] = uint8_t(255.f * clamp(c.y, 0.f, 1.f));
-	k[2] = uint8_t(255.f * clamp(c.x, 0.f, 1.f));
-	return r;
-}
-
 vec3f getFaceColor(int i) {
 	if (Fcol) {
 		return fromCOLORREF(Fcol[i]);

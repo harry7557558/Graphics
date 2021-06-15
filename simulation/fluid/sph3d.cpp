@@ -1,10 +1,5 @@
 // Win32 3D GUI template
 
-#include <cmath>
-#include <stdio.h>
-#include <algorithm>
-#pragma warning(disable: 4244)  // data type conversion warning
-
 // ========================================= Win32 Standard =========================================
 
 #pragma region Windows
@@ -86,9 +81,19 @@ int main() {
 
 // ================================== Vector Classes/Functions ==================================
 
+#include <cmath>
+#include <stdio.h>
+#include <algorithm>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include "numerical/geometry.h"
+#include "numerical/random.h"
+#include "triangulate/octatree.h"
+#include "UI/stl_encoder.h"
+
 #pragma region Vector & Matrix
 
-#include "numerical/geometry.h"
 const vec3 vec0(0, 0, 0), veci(1, 0, 0), vecj(0, 1, 0), veck(0, 0, 1);
 #define SCRCTR vec2(0.5*_WIN_W,0.5*_WIN_H)
 
@@ -252,11 +257,12 @@ void projRange_Triangle(vec3 A, vec3 B, vec3 C, vec2 &p0, vec2 &p1) {
 
 // ============================================ Simulation ============================================
 
-#include <vector>
-#include "triangulate/octatree.h"
 
 // faster when set to true
 #define USE_NEIGHBOR 1
+
+// reconstruct surface or draw particles
+#define RECONSTRUCT_SURFACE 1
 
 namespace SPH {
 
@@ -570,7 +576,7 @@ void SPH::reconstructSurface() {
 		vec3 pf = Particles[i].p, p = (pf - p0) / dp;
 		vec3 r = vec3(2.0*h) / dp;
 		ivec3 q0 = max(ivec3(0), ivec3(floor(p - r - vec3(1.))));
-		ivec3 q1 = min(pn - ivec3(1.), ivec3(ceil(p + r + vec3(1.))));
+		ivec3 q1 = min(pn - ivec3(1), ivec3(ceil(p + r + vec3(1.))));
 		//printf("%d %d %d  %d %d %d\n", q0.x, q0.y, q0.z, q1.x, q1.y, q1.z);
 		for (int k = q0.z; k <= q1.z; k++) for (int j = q0.y; j <= q1.y; j++) for (int i = q0.x; i <= q1.x; i++) {
 			vec3 qf = p0 + vec3(i, j, k) * dp;
@@ -706,9 +712,6 @@ void drawTriangle_RT(vec3 A, vec3 B, vec3 C, COLORREF col) {
 #pragma endregion
 
 
-#include <chrono>
-#include "ui/color_functions/poly.h"
-
 void render() {
 
 	// initialize window
@@ -729,25 +732,22 @@ void render() {
 		//drawLine_F(vec3(0, 0, -.6*R), vec3(0, 0, .6*R), 0x4040FF);
 	}
 
-	// draw SPH particles
-	if (0) {
-		for (int i = 0; i < SPH::N; i++) {
-			//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
-			vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
-			drawSphere_RT(SPH::Particles[i].p, 0.5*SPH::h, col);
-		}
-	}
-
+#if RECONSTRUCT_SURFACE
 	// draw surface
-	else {
-		for (int i = 0; i < (int)SPH::Trigs.size(); i++) {
-			triangle_3d t = SPH::Trigs[i];
-			vec3 n = ncross(t[1] - t[0], t[2] - t[0]);
-			vec3 col = mix(vec3(0.2), vec3(0.6, 0.6, 1.0), 0.5*dot(n, light) + 0.5);
-			drawTriangle_RT(t[0], t[1], t[2], toCOLORREF(col));
-		}
+	for (int i = 0; i < (int)SPH::Trigs.size(); i++) {
+		triangle_3d t = SPH::Trigs[i];
+		vec3 n = ncross(t[1] - t[0], t[2] - t[0]);
+		vec3 col = mix(vec3(0.2), vec3(0.6, 0.6, 1.0), 0.5*dot(n, light) + 0.5);
+		drawTriangle_RT(t[0], t[1], t[2], toCOLORREF(col));
 	}
-
+#else
+	// draw SPH particles
+	for (int i = 0; i < SPH::N; i++) {
+		//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
+		vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
+		drawSphere_RT(SPH::Particles[i].p, 0.5*SPH::h, col);
+	}
+#endif
 
 	// momentum and energy calculation
 	vec3 P = vec3(0.);  // total momentum
@@ -768,8 +768,6 @@ void render() {
 
 // ============================================== User ==============================================
 
-
-#include "numerical/random.h"
 
 // preset scenes
 class presetScenes {
@@ -882,7 +880,7 @@ public:  // preset scenes
 				}
 			}
 		}
-		viscosity = 1e-2;
+		viscosity = 1e-4;
 		Boundary = boundary_functions::box_212;
 		Grid_LB = vec3(0, 0, 0);
 		Grid_dp = vec3(2.*h);
@@ -909,7 +907,7 @@ public:  // preset scenes
 				}
 			}
 		}
-		viscosity = 1e-2;
+		viscosity = 1e-4;
 		Boundary = boundary_functions::box_212;
 		Grid_LB = vec3(0, 0, 0);
 		Grid_dp = vec3(2.*h);
@@ -934,13 +932,13 @@ public:  // preset scenes
 				}
 			}
 		}
-		N = particles.size();
+		N = (int)particles.size();
 		Particles = new particle[N];
 		for (int i = 0; i < N; i++) {
 			vec3 p = particles[i];
 			Particles[i] = particle{ p, vec3(0.0) };
 		}
-		viscosity = 1e-3;
+		viscosity = 1e-4;
 		Boundary = boundary_functions::box_212;
 		Grid_LB = vec3(0, 0, 0);
 		Grid_dp = vec3(2.*h);
@@ -949,7 +947,6 @@ public:  // preset scenes
 
 };
 
-#include <thread>
 
 void Init() {
 	//presetScenes::Scene_random(200, 0.1, vec3(1, 0, 0));
@@ -963,7 +960,7 @@ void Init() {
 	//SPH::m *= 0.9;
 
 	//SPH::Boundary = presetScenes::boundary_functions::box_block;
-	//SPH::viscosity = 0.1;
+	SPH::viscosity = 0.01;
 
 	Center = SPH::Grid_LB + 0.5*vec3(SPH::Grid_N)*SPH::Grid_dp;
 
@@ -973,10 +970,16 @@ void Init() {
 		SPH::Trigs.reserve(16 * SPH::Trigs.size());
 		auto t0 = std::chrono::high_resolution_clock::now();
 		const double dt = 0.04;
-		for (;;) {
+		for (int step = 0; ; step++) {
 			double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count();
 
-			SPH::reconstructSurface();
+			if (RECONSTRUCT_SURFACE) {
+				SPH::reconstructSurface();
+				if (0) {
+					char filename[64]; sprintf(filename, "simulation/fluid/sph3d/%04d.stl", step);
+					writeSTL<triangle_3d>(filename, &SPH::Trigs[0], (int)SPH::Trigs.size());
+				}
+			}
 			SPH::updateScene(dt);
 
 			double time_elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - t0).count() - time;
