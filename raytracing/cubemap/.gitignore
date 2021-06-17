@@ -1,0 +1,11 @@
+# some cubemaps are crawled from
+# https://sites.google.com/ycdsb.ca/international-education/programs/esl-secondary-schools-interactive-school-tours
+
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.tif
+*.tiff
+*.hdr

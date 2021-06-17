@@ -281,7 +281,10 @@ struct vec3 {
 
 	vec2 xy() const { return vec2(x, y); }
 	vec2 xz() const { return vec2(x, z); }
+	vec2 yx() const { return vec2(y, x); }
 	vec2 yz() const { return vec2(y, z); }
+	vec2 zx() const { return vec2(z, x); }
+	vec2 zy() const { return vec2(z, y); }
 	vec3 xyz() const { return vec3(x, y, z); }
 	vec3 xzy() const { return vec3(x, z, y); }
 	vec3 yzx() const { return vec3(y, z, x); }
@@ -337,7 +340,10 @@ struct vec3f {
 
 	vec2f xy() const { return vec2f(x, y); }
 	vec2f xz() const { return vec2f(x, z); }
+	vec2f yx() const { return vec2f(y, x); }
 	vec2f yz() const { return vec2f(y, z); }
+	vec2f zx() const { return vec2f(z, x); }
+	vec2f zy() const { return vec2f(z, y); }
 	vec3f xyz() const { return vec3f(x, y, z); }
 	vec3f xzy() const { return vec3f(x, z, y); }
 	vec3f yzx() const { return vec3f(y, z, x); }
