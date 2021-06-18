@@ -1,6 +1,7 @@
 // Monte-Carlo path tracing
 #include "numerical/random.h"
 
+
 // importance sampling
 vec3 randdir_cosWeighted(vec3 n, uint32_t &seed) {
 	vec3 u = ncross(n, vec3(1.2345, 2.3456, -3.4561));
@@ -10,8 +11,11 @@ vec3 randdir_cosWeighted(vec3 n, uint32_t &seed) {
 	double rz = sqrt(1. - rn);
 	return rh.x * u + rh.y * v + rz * n;
 }
+
+
 // the ray comes from a medium with reflective index n1 to a medium with reflective index n2
-vec3 randdir_Fresnel(vec3 rd, vec3 n, double n1, double n2, uint32_t &seed) {
+template<typename vec>
+vec randdir_Fresnel(vec rd, vec n, double n1, double n2, uint32_t &seed) {
 	double eta = n1 / n2;
 	double ci = -dot(n, rd);
 	if (ci < 0.) ci = -ci, n = -n;

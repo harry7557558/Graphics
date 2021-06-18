@@ -112,5 +112,21 @@ vec3 rand3_c(uint32_t &seed) {
 }
 
 
+
+// low-discrepancy sequences
+
+template<typename uint, typename _float>
+_float VanDerCorput_2(uint n) {
+	_float x(0.0), e(0.5);
+	int l = 8 * sizeof(n);
+	for (int k = 0; k < l; k++) {
+		_float d = _float((n >> k) & 1);
+		x += _float(d) * e;
+		e *= _float(0.5);
+	}
+	return x;
+}
+
+
 #endif // __INC_RANDOM_H
 

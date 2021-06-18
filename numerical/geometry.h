@@ -278,6 +278,7 @@ struct vec3 {
 	friend vec3 sqrt(const vec3 &a) { return vec3(sqrt(a.x), sqrt(a.y), sqrt(a.z)); }
 	friend vec3 exp(const vec3 &a) { return vec3(exp(a.x), exp(a.y), exp(a.z)); }
 	friend vec3 log(const vec3 &a) { return vec3(log(a.x), log(a.y), log(a.z)); }
+	friend vec3 pow(const vec3 &a, const double &e) { return vec3(pow(a.x, e), pow(a.y, e), pow(a.z, e)); }
 
 	vec2 xy() const { return vec2(x, y); }
 	vec2 xz() const { return vec2(x, z); }
@@ -306,6 +307,8 @@ struct vec3f {
 	float x, y, z;
 	vec3f() {}
 	explicit vec3f(float a) :x(a), y(a), z(a) {}
+	explicit vec3f(int a) :x((float)a), y((float)a), z((float)a) {}
+	explicit vec3f(double a) :x((float)a), y((float)a), z((float)a) {}
 	explicit vec3f(float x, float y, float z) :x(x), y(y), z(z) {}
 	//explicit vec3f(int x, int y, int z) :x((float)x), y((float)y), z((float)z) {}
 	explicit vec3f(vec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
@@ -337,6 +340,15 @@ struct vec3f {
 	bool operator != (const vec3f &v) const { return x != v.x || y != v.y || z != v.z; }
 	friend vec3f pMax(const vec3f &a, const vec3f &b) { return vec3f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3f pMin(const vec3f &a, const vec3f &b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+	friend vec3f floor(const vec3f &a) { return vec3f(floor(a.x), floor(a.y), floor(a.z)); }
+	friend vec3f ceil(const vec3f &a) { return vec3f(ceil(a.x), ceil(a.y), ceil(a.z)); }
+	friend vec3f fract(const vec3f &a) { return vec3f(fract(a.x), fract(a.y), fract(a.z)); }
+	friend vec3f sin(const vec3f &a) { return vec3f(sin(a.x), sin(a.y), sin(a.z)); }
+	friend vec3f cos(const vec3f &a) { return vec3f(cos(a.x), cos(a.y), cos(a.z)); }
+	friend vec3f sqrt(const vec3f &a) { return vec3f(sqrt(a.x), sqrt(a.y), sqrt(a.z)); }
+	friend vec3f exp(const vec3f &a) { return vec3f(exp(a.x), exp(a.y), exp(a.z)); }
+	friend vec3f log(const vec3f &a) { return vec3f(log(a.x), log(a.y), log(a.z)); }
+	friend vec3f pow(const vec3f &a, const float &e) { return vec3f(pow(a.x, e), pow(a.y, e), pow(a.z, e)); }
 
 	vec2f xy() const { return vec2f(x, y); }
 	vec2f xz() const { return vec2f(x, z); }
