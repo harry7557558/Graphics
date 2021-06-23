@@ -20,6 +20,8 @@
 // std::vector<triangle_3d> marching_cube_cylindrical_x(Fun fun, double r1, double x0, double x1, int rN, int thetaN, int xN);
 // std::vector<triangle_3d> marching_cube_cylindrical_y(Fun fun, double r1, double y0, double y1, int rN, int thetaN, int yN);
 
+// std::vector<triangle_3d> octatree(Fun fun, vec3 p0, vec3 p1, ivec3 dif, int plot_depth);
+
 // std::vector<triangle_3d> octatree_cylindrical_generalized(Fun fun, \
 		vec3 i, vec3 j, vec3 k, double r0, double r1, double theta0, double theta1, double h0, double h1, \
 		int r_N, int theta_N, int h_N, int plot_depth);

@@ -3,6 +3,7 @@
 // Although the name of this header is "font rendering", it stores hard-coded rasterized image data
 // The size of this file exceeds 1.5MB. Consider data compression or use vectorized image
 
+#include "numerical/geometry.h"
 
 #if 0
 #define STB_IMAGE_IMPLEMENTATION
@@ -136,50 +137,94 @@ const unsigned char _ASCII_IMAGE_DATA[96][4097] = {
 
 // return the distance to the font with given x and y coordinates
 // top-left:(0,0); top-right:(1,0); bottom-left:(0,1)
-float sdFont(char c, float x, float y, int interpolation = 1) {
+
+float sdFont_closest(char c, float x, float y) {
 	if (c < 32 || c > 126) return 0.0f;
-	x = clamp(x, 0.0f, 1.0f);
-	y = clamp(y, 0.0f, 1.0f);
-	float u = 62.9999f*x, v = 62.9999f*y;
-	int j = int(u), i = int(v);
 	auto img = _ASCII_IMAGE_DATA[c - ' '];
-
-	float d = 0.0f;
-
-	if (interpolation == 0) {
-		d = (float)img[64 * int(v + 0.5f) + int(u + 0.5f)];
-	}
-
-	if (interpolation == 1) {
-		u -= j, v -= i;
-		float _00 = (float)img[64 * i + j];
-		float _01 = (float)img[64 * i + j + 1];
-		float _10 = (float)img[64 * i + j + 64];
-		float _11 = (float)img[64 * i + j + 65];
-		d = mix(mix(_00, _01, u), mix(_10, _11, u), v);
-	}
-
-	if (interpolation == 3) {
-		u -= j, v -= i;
-		i = clamp(i, 1, 61), j = clamp(j, 1, 61);
-		auto interpolate = [](float s0, float s1, float s2, float s3, float t)->float {
-			float t2 = t * t, t3 = t2 * t;
-			return s0 * (-0.5f*t3 + t2 - 0.5f*t)
-				+ s1 * (1.5f*t3 - 2.5f*t2 + 1)
-				+ s2 * (-1.5f*t3 + 2.f*t2 + 0.5f*t)
-				+ s3 * (0.5f*t3 - 0.5f*t2);
-		};
-		float samples[4][4];
-		for (int ii = -1; ii <= 2;) {
-			for (int ji = -1; ji <= 2; ji++) {
-				samples[ii + 1][ji + 1] = (float)img[64 * (i + ii) + (j + ji)];
-			}
-			ii++;
-			samples[ii][0] = interpolate(samples[ii][0], samples[ii][1], samples[ii][2], samples[ii][3], u);
-		}
-		d = interpolate(samples[0][0], samples[1][0], samples[2][0], samples[3][0], v);
-	}
-
+	int j1 = int(y * 64), i1 = int(x * 64);
+	float d = (float)img[j1 * 64 + i1];
 	return float(1.0 / 255.0) * d - 0.5f;
+}
+
+float sdFont_bilinear(char c, float x, float y) {
+	if (c < 32 || c > 126) return 0.0f;
+	auto img = _ASCII_IMAGE_DATA[c - ' '];
+	y = y * 64 - 0.5f, x = x * 64 - 0.5f;
+	int j0 = clamp(int(y), 0, 63), i0 = clamp(int(x), 0, 63);
+	float jf = clamp(y - j0, 0.0f, 1.0f), if_ = clamp(x - i0, 0.0f, 1.0f);
+	int j1 = min(j0 + 1, 63), i1 = min(i0 + 1, 63);
+	float d = mix(
+		mix((float)img[j0 * 64 + i0], (float)img[j0 * 64 + i1], if_),
+		mix((float)img[j1 * 64 + i0], (float)img[j1 * 64 + i1], if_),
+		jf);
+	return float(1.0 / 255.0) * d - 0.5f;
+}
+
+float sdFont_bicubic(char c, float x, float y) {
+	if (c < 32 || c > 126) return 0.0f;
+	auto img = _ASCII_IMAGE_DATA[c - ' '];
+	auto interp = [](float s0, float s1, float s2, float s3, float t)->float {
+		float t2 = t * t, t3 = t2 * t;
+		return s0 * (-0.5f*t3 + t2 - 0.5f*t)
+			+ s1 * (1.5f*t3 - 2.5f*t2 + 1.0f)
+			+ s2 * (-1.5f*t3 + 2.0f*t2 + 0.5f*t)
+			+ s3 * (0.5f*t3 - 0.5f*t2);
+	};
+	y = y * 64 - 0.5f, x = x * 64 - 0.5f;
+	int j1 = clamp((int)floor(y), -1, 63), i1 = clamp((int)floor(x), -1, 63);
+	float jf = clamp(y - j1, 0.0f, 1.0f), if_ = clamp(x - i1, 0.0f, 1.0f);
+	int j0 = max(j1 - 1, 0), i0 = max(i1 - 1, 0);
+	int j2 = min(j1 + 1, 63), i2 = min(i1 + 1, 63);
+	int j3 = min(j1 + 2, 63), i3 = min(i1 + 2, 63);
+	j1 = max(j1, 0), i1 = max(i1, 0);
+	float d = interp(
+		interp((float)img[j0 * 64 + i0], (float)img[j0 * 64 + i1], (float)img[j0 * 64 + i2], (float)img[j0 * 64 + i3], if_),
+		interp((float)img[j1 * 64 + i0], (float)img[j1 * 64 + i1], (float)img[j1 * 64 + i2], (float)img[j1 * 64 + i3], if_),
+		interp((float)img[j2 * 64 + i0], (float)img[j2 * 64 + i1], (float)img[j2 * 64 + i2], (float)img[j2 * 64 + i3], if_),
+		interp((float)img[j3 * 64 + i0], (float)img[j3 * 64 + i1], (float)img[j3 * 64 + i2], (float)img[j3 * 64 + i3], if_),
+		jf);
+	return float(1.0 / 255.0) * d - 0.5f;
+}
+
+float sdFont_biquintic(char c, float x, float y) {
+	if (c < 32 || c > 126) return 0.0f;
+	auto img = _ASCII_IMAGE_DATA[c - ' '];
+	auto interp = [](float s0, float s1, float s2, float s3, float t)->float {
+		float t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t;
+		float d0 = 0.5f*(s2 - s0), d1 = 0.5f*(s3 - s1);
+		float l0 = s0 + s2 - 2.0f*s1, l1 = s1 + s3 - 2.0f*s2;
+		return s1 * (-6.0f*t5 + 15.0f*t4 - 10.0f*t3 + 1.0f)
+			+ s2 * (6.0f*t5 - 15.0f*t4 + 10.0f*t3)
+			+ d0 * (-3.0f*t5 + 8.0f*t4 - 6.0f*t3 + t)
+			+ d1 * (-3.0f*t5 + 7.0f*t4 - 4.0f*t3)
+			+ l0 * (-0.5f*t5 + 1.5f*t4 - 1.5f*t3 + 0.5f*t2)
+			+ l1 * (0.5f*t5 - 1.0f*t4 + 0.5f*t3);
+	};
+	y = y * 64 - 0.5f, x = x * 64 - 0.5f;
+	int j1 = clamp((int)floor(y), -1, 63), i1 = clamp((int)floor(x), -1, 63);
+	float jf = clamp(y - j1, 0.0f, 1.0f), if_ = clamp(x - i1, 0.0f, 1.0f);
+	int j0 = max(j1 - 1, 0), i0 = max(i1 - 1, 0);
+	int j2 = min(j1 + 1, 63), i2 = min(i1 + 1, 63);
+	int j3 = min(j1 + 2, 63), i3 = min(i1 + 2, 63);
+	j1 = max(j1, 0), i1 = max(i1, 0);
+	float d = interp(
+		interp((float)img[j0 * 64 + i0], (float)img[j0 * 64 + i1], (float)img[j0 * 64 + i2], (float)img[j0 * 64 + i3], if_),
+		interp((float)img[j1 * 64 + i0], (float)img[j1 * 64 + i1], (float)img[j1 * 64 + i2], (float)img[j1 * 64 + i3], if_),
+		interp((float)img[j2 * 64 + i0], (float)img[j2 * 64 + i1], (float)img[j2 * 64 + i2], (float)img[j2 * 64 + i3], if_),
+		interp((float)img[j3 * 64 + i0], (float)img[j3 * 64 + i1], (float)img[j3 * 64 + i2], (float)img[j3 * 64 + i3], if_),
+		jf);
+	return float(1.0 / 255.0) * d - 0.5f;
+}
+
+float sdFont(char c, float x, float y, int interpolation = 1) {
+	if (interpolation == 0)
+		return sdFont_closest(c, x, y);
+	if (interpolation == 1)
+		return sdFont_bilinear(c, x, y);
+	if (interpolation == 3)
+		return sdFont_bicubic(c, x, y);
+	if (interpolation == 5)
+		return sdFont_biquintic(c, x, y);
+	return 0.0;
 }
 

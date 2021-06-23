@@ -13,7 +13,7 @@ float smax(float d1, float d2, float k) {
 float sd_glyph(char c1, char c2, vec3f p) {
 	float d1 = sdFont(c1, p.x, 1.0f - p.z, 1);
 	float d2 = sdFont(c2, p.y, 1.0f - p.z, 1);
-	return smax(d1, d2, 0.01);
+	return smax(d1, d2, 0.01f);
 }
 
 int main(int argc, char* argv[]) {
@@ -30,6 +30,6 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	writeSTL(argv[1], &Trigs[0], Trigs.size());
+	writeSTL(argv[1], &Trigs[0], (int)Trigs.size());
 	return 0;
 }
