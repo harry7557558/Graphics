@@ -62,8 +62,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	case WM_SYSKEYUP:; case WM_KEYUP: { KeyUp(wParam); _RDBK }
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
-int main() {
-	HINSTANCE hInstance = NULL; int nCmdShow = SW_RESTORE;
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	WNDCLASSEX wc; wc.cbSize = sizeof(WNDCLASSEX), wc.style = 0, wc.lpfnWndProc = WndProc, wc.cbClsExtra = wc.cbWndExtra = 0, wc.hInstance = hInstance; wc.hIcon = wc.hIconSm = 0, wc.hCursor = LoadCursor(NULL, IDC_ARROW), wc.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)), wc.lpszMenuName = NULL, wc.lpszClassName = _T(WIN_NAME); if (!RegisterClassEx(&wc)) return -1;
 	_HWND = CreateWindow(_T(WIN_NAME), _T(WIN_NAME), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, WinW_Default, WinH_Default, NULL, NULL, hInstance, NULL); ShowWindow(_HWND, nCmdShow); UpdateWindow(_HWND);
 	MSG message; while (GetMessage(&message, 0, 0, 0)) { TranslateMessage(&message); DispatchMessage(&message); } return (int)message.wParam;
@@ -180,7 +179,7 @@ namespace SPH {
 		int Ns[MAX_NEIGHBOR_P];  // index of neighbors
 	} *Neighbors = 0;
 #endif
-	void find_neighbors();  // update neighbors for each particle
+	void findNeighbors();  // update neighbors for each particle
 
 	// simulation
 	void updateScene(double dt);
@@ -232,7 +231,7 @@ void SPH::calcGrid() {
 }
 
 // find neighbors of each particle
-void SPH::find_neighbors() {
+void SPH::findNeighbors() {
 	calcGrid();
 
 #if USE_NEIGHBOR
@@ -293,7 +292,7 @@ void SPH::updateScene(double dt) {
 
 // SPH with state equation
 void SPH::non_iterative_state_equation(double dt) {
-	find_neighbors();
+	findNeighbors();
 
 	// calculate the density and pressure at each particle
 	for (int i = 0; i < N; i++) {
@@ -366,7 +365,7 @@ void SPH::non_iterative_state_equation(double dt) {
 
 // SPH with state equation and splitting
 void SPH::non_iterative_splitting(double dt) {
-	find_neighbors();
+	findNeighbors();
 
 	// calculate the acceleration caused by other forces
 	for (int i = 0; i < N; i++)
@@ -490,7 +489,7 @@ void SPH::non_iterative_splitting(double dt) {
 
 // Iterative equation of state solver with splitting
 void SPH::iterative_splitting(double dt, double eta) {
-	find_neighbors();
+	findNeighbors();
 
 	// calculate the acceleration caused by other forces
 	for (int i = 0; i < N; i++)
@@ -564,7 +563,7 @@ void SPH::iterative_splitting(double dt, double eta) {
 		if (sqrt(sum_err / N) < eta*density_0 || i >= 10) {
 			break;
 		}
-		find_neighbors();
+		findNeighbors();
 	}
 
 	for (int i = 0; i < N; i++) Particles[i].p += Particles[i].v*dt;
@@ -719,8 +718,8 @@ void render() {
 	// draw SPH particles
 	if (1) {
 		for (int i = 0; i < SPH::N; i++) {
-			//vec3 col = ColorFunctions::ThermometerColors(clamp(SPH::Particles[i].density, 0., 1.));
-			vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
+			vec3 col = ColorFunctions<vec3, double>::BlueGreenYellow(0.5 + 0.5*tanh(10.0*(SPH::Particles[i].density / SPH::density_0 - 1.0)));
+			//vec3 col = ColorFunctions<vec3, double>::TemperatureMap(tanh(0.1*length(SPH::Particles[i].v)));
 			drawDotF(SPH::Particles[i].p, 0.5*SPH::h*Unit,
 				COLORREF(col.z * 255) | (COLORREF(col.y * 255) << 8) | (COLORREF(col.x * 255) << 16));
 		}
@@ -753,9 +752,10 @@ void render() {
 
 
 #include "numerical/random.h"
+#include <functional>
 
 // preset scenes
-class presetScenes {
+class PresetScenes {
 
 public:  // boundary functions
 
@@ -826,6 +826,8 @@ public:  // boundary functions
 		}
 
 	};
+
+	static void iterative_density(std::function<double(vec2)> sdf, double step, double tol);
 
 public:  // preset scenes
 
@@ -915,7 +917,7 @@ public:  // preset scenes
 				if (dist < 0.) particles.push_back(p);
 			}
 		}
-		N = particles.size();
+		N = (int)particles.size();
 		Particles = new particle[N];
 		for (int i = 0; i < N; i++) {
 			vec2 p = particles[i];
@@ -929,23 +931,147 @@ public:  // preset scenes
 		Grid_N = ivec2(ceil((vec2(2, 1) - Grid_LB) / Grid_dp));
 	}
 
+#if USE_NEIGHBOR
+
+	static void Scene_left_lds(double dist) {
+		using namespace SPH;
+		h = dist;
+		m = density_0 / (4.*W(h) + 4.*W(1.414214*h) + W(0.));
+		const double area = 0.5;
+		N = int(area / (h*h) + 0.5);
+		Particles = new particle[N];
+		for (int i = 0, s = 9990; i < N; i++) {
+			double x = 0.5 * VanDerCorput<double>(s, 2);
+			double y = 1.0 * VanDerCorput<double>(s, 3);
+			Particles[i] = particle{ vec2(x, y), vec2(0.0) };
+			s++;
+		}
+		viscosity = 1e-4;
+		Boundary = boundary_functions::box_21;
+		Grid_LB = vec2(0, 0);
+		Grid_dp = vec2(2.*h);
+		Grid_N = ivec2(ceil((vec2(2, 1) - Grid_LB) / Grid_dp));
+
+		const double den_sc = 1.0;
+		density_0 *= den_sc;
+		iterative_density([](vec2 p) {
+			return max(abs(p.x - 0.25) - 0.25, abs(p.y - 0.5) - 0.5);
+		}, 0.1, 0.05);
+		density_0 /= den_sc;
+	}
+
+
+	static void Scene_fall_lds(double dist) {
+		using namespace SPH;
+		h = dist;
+		m = density_0 / (4.*W(h) + 4.*W(1.414214*h) + W(0.));
+		auto sdf = [](vec2 p) {
+			double base = max(abs(p.x - 1.0) - 1.0, abs(p.y - 0.1) - 0.1);  // 0.4
+			double circ = length(p - vec2(1, 0.8)) - 0.2;  // 0.04*pi
+			return min(base, circ);
+		};
+		const double area = 0.525663706144;
+		N = int(area / (h*h) + 0.5);
+		Particles = new particle[N];
+		for (int i = 0, s = 9999; i < N; i++) {
+			vec2 p;
+			do {
+				double x = VanDerCorput<double>(s, 2);
+				double y = VanDerCorput<double>(s, 3);
+				p = vec2(2.0*x, 1.0*y);
+				s++;
+			} while (sdf(p) > 0.0);
+			Particles[i] = particle{ p, vec2(0.0) };
+		}
+		viscosity = 1e-4;
+		Boundary = boundary_functions::box_21;
+		Grid_LB = vec2(0, 0);
+		Grid_dp = vec2(2.*h);
+		Grid_N = ivec2(ceil((vec2(2, 1) - Grid_LB) / Grid_dp));
+		const double den_sc = 0.9;
+		density_0 *= den_sc;
+		iterative_density(sdf, 0.1, 0.05);
+		density_0 /= den_sc;
+	}
+
+#endif
 };
 
+
+void PresetScenes::iterative_density(std::function<double(vec2)> sdf, double step, double tol) {
+	using namespace SPH;
+	const int MAX_ITER = 256;
+	for (int iter = 0; iter < MAX_ITER; iter++) {
+		SPH::findNeighbors();
+		// calculate density deviation
+		double sumerr = 0.0;
+		for (int i = 0; i < N; i++) {
+			double rho = 0.0;
+			for (int ji = 0; ji < Neighbors[i].N; ji++) {
+				int j = Neighbors[i].Ns[ji];
+				rho += m * W(length(Particles[j].p - Particles[i].p));
+			}
+			sumerr += (rho - density_0)*(rho - density_0);
+		}
+		double err = sqrt(sumerr / N);
+		if (err < tol) {
+			printf("%d iterations\n", iter);
+			return;
+		}
+		if (iter == MAX_ITER - 1) {
+			printf("Density error: %lf\n", err);
+		}
+		// move particles
+		vec2 *dP = new vec2[N];
+		for (int i = 0; i < N; i++) {
+			auto E = [&](vec2 p0) {
+				double rho = 0.0;
+				for (int ji = 0; ji < Neighbors[i].N; ji++) {
+					int j = Neighbors[i].Ns[ji];
+					//if (j != i)
+					rho += m * W(length(Particles[j].p - p0));
+				}
+				double e = (rho - density_0) * (rho - density_0);
+				//return e;
+				return e + max(sdf(p0) + 0.0*h, 0.0) / h;
+			};
+			const double eps = 1e-4;
+			vec2 p = Particles[i].p;
+			double e0 = E(p),
+				ex1 = E(p + vec2(eps, 0)), ex0 = E(p - vec2(eps, 0)),
+				ey1 = E(p + vec2(0, eps)), ey0 = E(p - vec2(0, eps));
+			double dEdx = (ex1 - ex0) / (2.0*eps), dEdy = (ey1 - ey0) / (2.0*eps),
+				dEdxx = (ex1 + ex0 - 2.0*e0) / eps, dEdyy = (ey1 + ey0 - 2.0*e0) / eps;
+			//vec2 dp = -vec2(dEdx, dEdy) / vec2(dEdxx, dEdyy);
+			vec2 dp = -vec2(dEdx, dEdy) * m;
+			//printf("%lf\n", length(dp) / h);
+			if (isnan(length(dp))) dp = vec2(0.0);
+			if (length(dp) > h) dp = h * normalize(dp);
+			dP[i] = step * dp;
+		}
+		for (int i = 0; i < N; i++) {
+			Particles[i].p += dP[i];
+		}
+		delete dP;
+	}
+}
 
 #include <thread>
 
 void WindowCreate(int _W, int _H) {
-	//presetScenes::Scene_random(500, 0.02, vec2(1, 0));
-	//presetScenes::Scene_left(0.04);
-	//presetScenes::Scene_left(0.02);
-	//presetScenes::Scene_left(0.01);
-	//presetScenes::Scene_right(0.02);
-	presetScenes::Scene_fall(0.02);
+	//PresetScenes::Scene_random(500, 0.02, vec2(1, 0));
+	//PresetScenes::Scene_left(0.04);
+	//PresetScenes::Scene_left(0.02);
+	//PresetScenes::Scene_left(0.01);
+	//PresetScenes::Scene_right(0.02);
+	//PresetScenes::Scene_fall(0.02);
+	//PresetScenes::Scene_left_lds(0.02);
+	PresetScenes::Scene_fall_lds(0.02);
 
 	SPH::max_step = SPH::h >= 0.02 ? 0.001 : 0.0005;
 	//SPH::max_step *= 0.1;
 
-	SPH::Boundary = presetScenes::boundary_functions::box_block;
+	SPH::Boundary = PresetScenes::boundary_functions::box_block;
 	//SPH::viscosity = 0.01;
 
 	vec2 Center = SPH::Grid_LB + 0.5*vec2(SPH::Grid_N)*SPH::Grid_dp;

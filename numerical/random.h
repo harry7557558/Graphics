@@ -127,6 +127,18 @@ _float VanDerCorput_2(uint n) {
 	return x;
 }
 
+template<typename _float>
+_float VanDerCorput(int n, int b) {
+	_float x = _float(0.0), e = _float(1.0 / b);
+	while (n) {
+		int d = n % b;
+		x += _float(d) * e;
+		e *= _float(1.0 / b);
+		n /= b;
+	}
+	return x;
+}
+
 
 #endif // __INC_RANDOM_H
 
