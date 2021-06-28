@@ -1,7 +1,7 @@
 #pragma once
 
 #define STB_IMAGE_IMPLEMENTATION
-#include ".libraries/stb_image.h"
+#include "libraries/stb_image.h"
 
 class Cubemap {
 	ivec2 size[6];
