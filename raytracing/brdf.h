@@ -1,8 +1,8 @@
-// Monte-Carlo path tracing
+// generate BRDF rays for importance sampling
 #include "numerical/random.h"
 
 
-// importance sampling
+// cosine weighted hemisphere direction
 vec3 randdir_cosWeighted(vec3 n, uint32_t &seed) {
 	vec3 u = ncross(n, vec3(1.2345, 2.3456, -3.4561));
 	vec3 v = cross(u, n);
@@ -12,6 +12,13 @@ vec3 randdir_cosWeighted(vec3 n, uint32_t &seed) {
 	return rh.x * u + rh.y * v + rz * n;
 }
 
+// uniform random sphere distribution
+vec3 randdir_uniform(uint32_t &seed) {
+	double u = 2.0*PI * rand01(seed);
+	double v = 2.0*rand01(seed) - 1.0;
+	double r = sqrt(1.0 - v * v);
+	return vec3(r*cossin(u), v);
+}
 
 // the ray comes from a medium with reflective index n1 to a medium with reflective index n2
 template<typename vec>
