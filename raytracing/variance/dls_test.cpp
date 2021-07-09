@@ -196,6 +196,20 @@ bool intersectEllipsoid(vec3 r, vec3 ro, vec3 rd, double &t, vec3 &n) {
 	return true;
 }
 
+bool intersectParallelogram(vec3 p, vec3 a, vec3 b, vec3 ro, vec3 rd, IntersectionObject &io) {  // relative with precomputer normal cross(a,b)
+	vec3 rp = ro - p;
+	vec3 n = cross(a, b);
+	double d = 1.0 / dot(rd, n);
+	vec3 q = cross(rp, rd);
+	double u = -d * dot(q, b); if (u<0. || u>1.) return false;
+	double v = d * dot(q, a); if (v<0. || v>1.) return false;
+	double t = -d * dot(n, rp);
+	if (t > 0.0 && t < io.t) {
+		io.t = t, io.n = normalize(n);
+		return true;
+	}
+	return false;
+}
 
 
 // direct light sampling
@@ -223,19 +237,11 @@ void DLS_Parallelogram(vec3 p, vec3 a, vec3 b, vec3 n, DLS_Object &dls_obj, uint
 	vec3 q = p + u * a + v * b;
 	dls_obj.rd = normalize(q);
 
-	auto phi_theta = [&](double u, double v)->vec2 {
-		vec3 q = p + u * a + v * b;
-		double theta = atan2(q.y, q.x);
-		double phi = atan2(length(q.xy()), q.z);
-		return vec2(phi, theta);
-	};
-	const double eps = 1e-5;
-	vec2 phitheta = phi_theta(u, v);
-	vec2 dphitheta_du = (phi_theta(u + eps, v) - phi_theta(u - eps, v)) / (2.0*eps);
-	vec2 dphitheta_dv = (phi_theta(u, v + eps) - phi_theta(u, v - eps)) / (2.0*eps);
-	double jacobian = abs(det(dphitheta_du, dphitheta_dv));
-
-	dls_obj.weight = dot(dls_obj.rd, n) * jacobian / PI;
+	vec3 w = dls_obj.rd;
+	vec3 proj_a = a - dot(a, w)*w;
+	vec3 proj_b = b - dot(b, w)*w;
+	double pdf = q.sqr() / length(cross(proj_a, proj_b));
+	dls_obj.weight = dot(dls_obj.rd, n) / (PI*pdf);
 }
 
 
@@ -287,10 +293,16 @@ void initScene() {
 		}
 		return false;
 	}, [](vec3 ro, vec3 n, DLS_Object &dlso, uint32_t &seed) {
-		dlso.rd = randdir_cosWeighted(n, seed);
-		dlso.weight = 1.0;
 		DLS_Parallelogram(vec3(-2, -3, 3) - ro, vec3(4, 0, 0), vec3(0, 6, 0),
 			n, dlso, seed);
+	});
+	SceneObject square_light(SceneObject::sotLight,
+		[](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		if (!intersectParallelogram(vec3(3, 0, 4), vec3(0, 0.7, 0), vec3(0.5, 0, -0.5), ro, rd, io)) return false;
+		io.color = vec3(80.0); return true;
+		return false;
+	}, [](vec3 ro, vec3 n, DLS_Object &dlso, uint32_t &seed) {
+		DLS_Parallelogram(vec3(3, 0, 4) - ro, vec3(0, 0.7, 0), vec3(0.5, 0, -0.5), n, dlso, seed);
 	});
 	SceneObject bulb_middle(SceneObject::sotLight,
 		[](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
@@ -326,6 +338,26 @@ void initScene() {
 		io.color = vec3(20000.0); return true;
 	}, [](vec3 ro, vec3 n, DLS_Object &dlso, uint32_t &seed) {
 		DLS_Sphere(6.957e+8, ro - 152.09e+9*normalize(vec3(8, -1, 10)), n, dlso, seed);
+	});
+
+	// "uneven" lights
+	SceneObject bulb_cosine = SceneObject(SceneObject::sotLight,
+		[](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		if (!intersectSphere(2.0, ro - vec3(5, -3, 6), rd, io)) return false;
+		io.color = vec3(12.0)*max(-dot(rd, io.n), 0.0); return true;  // cosine-weighted light
+	}, [](vec3 ro, vec3 n, DLS_Object &dlso, uint32_t &seed) {
+		DLS_Sphere(2.0, ro - vec3(5, -3, 6), n, dlso, seed);
+	});
+	SceneObject bulb_spotlight = SceneObject(SceneObject::sotLight,
+		[](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		const vec3 pos = vec3(10, 0, 2);
+		const vec3 dir = normalize(vec3(0, 0, 1) - pos);
+		if (!intersectSphere(1.0, ro - pos, rd, io)) return false;
+		double s = pow(max(dot(io.n, dir), 0.0), 40.0) * pow(max(-dot(rd, dir), 0.0), 40.0);  // focus in one direction
+		io.color = vec3(2000.0)*s; return true;
+	}, [](vec3 ro, vec3 n, DLS_Object &dlso, uint32_t &seed) {
+		const vec3 pos = vec3(10, 0, 2);
+		DLS_Sphere(1.0, ro - pos, n, dlso, seed);
 	});
 
 	// diffuse surfaces
@@ -376,19 +408,57 @@ void initScene() {
 		return false;
 	});
 
-	scene.push_back(ceiling_light);
+	// refractive surfaces
+	SceneObject ball_glass(SceneObject::sotRefractive, [](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		if (intersectSphere(1.0, ro - vec3(0, 0, 1), rd, io)) {
+			io.color = vec3(0.0);  // no absorption
+			return true;
+		}
+		return false;
+	});
+	SceneObject ball_glass_stained(SceneObject::sotRefractive, [](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		if (intersectSphere(1.0, ro - vec3(0, 0, 1), rd, io)) {
+			io.color = vec3(0.0, 0.0, 1.0);  // yellow
+			return true;
+		}
+		return false;
+	});
+	SceneObject egg_glass(SceneObject::sotRefractive, [](vec3 ro, vec3 rd, IntersectionObject &io)->bool {
+		double t = io.t; vec3 n;
+		if (intersectEllipsoid(vec3(1.0, 1.0, 1.4), ro - vec3(0, 0, 1.4), rd, t, n)) {
+			io.t = t, io.n = n;
+			io.color = vec3(0.1, 0.05, 0.0);  // slightly blue
+			return true;
+		}
+		return false;
+	});
+
+	//scene.push_back(ceiling_light);
+	scene.push_back(square_light);
 	//scene.push_back(bulb_middle);
 	//scene.push_back(bulb_large);
 	//scene.push_back(bulb_far);
 	//scene.push_back(bulb_dot);
 	//scene.push_back(bulb_sun);
+	//scene.push_back(bulb_cosine);
+	//scene.push_back(bulb_spotlight);
 
 	scene.push_back(plane);
+	//scene.push_back(SceneObject(SceneObject::sotSpecular, plane.intersector));
 	scene.push_back(wall_x0);
 	scene.push_back(wall_y0);
+	//scene.push_back(SceneObject(SceneObject::sotSpecular, wall_x0.intersector));
+	//scene.push_back(SceneObject(SceneObject::sotSpecular, wall_y0.intersector));
 	//scene.push_back(wall_x1);
-	//scene.push_back(ball);
-	scene.push_back(oval);
+	//scene.push_back(SceneObject(SceneObject::sotSpecular, wall_x1.intersector));
+
+	scene.push_back(ball);
+	//scene.push_back(oval);
+	//scene.push_back(SceneObject(SceneObject::sotSpecular, ball.intersector));
+	//scene.push_back(ball_glass);
+	//scene.push_back(ball_glass_stained);
+	//scene.push_back(egg_glass);
+
 }
 
 
@@ -422,6 +492,8 @@ int colorBuffer_N = 0;
 vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed, bool dls) {
 
 	vec3 m_col = vec3(1.0), t_col = vec3(0.0);
+	bool sample_lightsource = true;  // false if already DLS
+	bool is_inside = false;  // whether it is inside an object or not, assume false initially
 
 	for (int iter = 0; iter < 64; iter++) {
 		ro += 1e-6*rd;
@@ -449,12 +521,12 @@ vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed, bool dls) {
 		// update ray
 		n = dot(rd, n) < 0. ? n : -n;  // ray hits into the surface
 		ro = ro + rd * t;
-		m_col *= col;
 		if (intersect_type == SceneObject::sotLight) {
-			if (dls && iter != 0) return t_col;
-			return t_col + m_col;
+			if (sample_lightsource) return t_col + m_col * col;
+			return t_col;
 		}
 		if (intersect_type == SceneObject::sotDiffuseLambert) {
+			m_col *= col;
 			// direct light sample
 			if (dls) {
 				for (int dls_light_id = 0; dls_light_id < (int)scene.size(); dls_light_id++) {
@@ -483,10 +555,26 @@ vec3 calcCol(vec3 ro, vec3 rd, uint32_t &seed, bool dls) {
 						}
 					}
 				}
+				sample_lightsource = false;
 			}
+			else sample_lightsource = true;
 			// update ray
 			rd = randdir_cosWeighted(n, seed);
 		}
+		if (intersect_type == SceneObject::sotSpecular) {
+			m_col *= col;
+			rd = rd - 2.0*dot(rd, n)*n;
+			sample_lightsource = true;
+		}
+		if (intersect_type == SceneObject::sotRefractive) {
+			if (is_inside) m_col *= exp(-col * t);
+			double n0 = 1.0, n1 = 1.0;
+			if (is_inside) n0 = 1.5, n1 = 1.0;
+			else n0 = 1.0, n1 = 1.5;
+			rd = randdir_Fresnel<vec3>(rd, n, n0, n1, seed);
+			sample_lightsource = true;
+		}
+		if (dot(rd, n) < 0.0) is_inside ^= true;
 	}
 	return t_col;
 }
@@ -606,13 +694,17 @@ std::vector<vec3> testConverge(std::function<vec3(uint32_t)> sample) {
 
 	vec3 sigma = vl.getStandardDeviation();
 	printf("sigma = (%lf,%lf,%lf)\n", sigma.x, sigma.y, sigma.z);
+	//vec3 var = vl.getVariance();
+	//printf("var = (%lf,%lf,%lf)\n", var.x, var.y, var.z);
 
 	return avrs;
 }
 
 
 void testConsistency() {
+	_WIN_W = 640, _WIN_H = 360;
 	getScreen(CamP, ScrO, ScrA, ScrB);
+
 	vec3 rd = normalize((ScrO + 0.5*ScrA + 0.5*ScrB) - CamP);
 	vec3 ro = CamP + 1.0*rd;
 
@@ -625,7 +717,7 @@ void testConsistency() {
 
 	printf("Without DLS\n");
 	std::vector<vec3> avr_without = testConverge(without_dls);
-	printf("With DLS\n");
+	printf("\nWith DLS\n");
 	std::vector<vec3> avr_with = testConverge(with_dls);
 
 	printf("\n[");
@@ -650,7 +742,7 @@ void Init() {
 	initScene();
 	Center = vec3(0, 0, 1);
 
-	testConsistency();
+	//testConsistency();
 
 }
 
