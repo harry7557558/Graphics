@@ -20,6 +20,15 @@ vec3 randdir_uniform(uint32_t &seed) {
 	return vec3(r*cossin(u), v);
 }
 
+// uniform random sphere distribution
+vec3 randdir_hemisphere(vec3 n, uint32_t &seed) {
+	vec3 u = ncross(n, vec3(1.2345, 2.3456, -3.4561));
+	vec3 v = cross(u, n);
+	double rn = rand01(seed);
+	vec2 rh = sqrt(1. - rn * rn) * cossin(2.0*PI*rand01(seed));
+	return rh.x * u + rh.y * v + rn * n;
+}
+
 // the ray comes from a medium with reflective index n1 to a medium with reflective index n2
 template<typename vec>
 vec randdir_Fresnel(vec rd, vec n, double n1, double n2, uint32_t &seed) {
