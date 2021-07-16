@@ -267,7 +267,7 @@ public:
 	LightEmitter light_emitter;
 
 	SceneObject(SceneObjectType type, Intersector intersector,
-		DLS_Sampler dls_sampler = nullptr, LightEmitter light_emittor = nullptr) {
+		DLS_Sampler dls_sampler = nullptr, LightEmitter light_emitter = nullptr) {
 		this->type = type;
 		this->intersector = intersector;
 		if (this->type == sotLight) {
@@ -332,7 +332,7 @@ void initScene() {
 	}, [](vec3 &ro, vec3 &rd, vec3 &col, uint32_t &seed) {
 		vec3 n = randdir_uniform(seed);
 		ro = vec3(8, 1, 10) + 2.0*n;
-		rd = randdir_hemisphere(n, seed);
+		rd = randdir_cosWeighted(n, seed);
 		col = vec3(12.0);
 	});
 	SceneObject bulb_dot = SceneObject(SceneObject::sotLight,
@@ -523,6 +523,7 @@ bool intersectScene(vec3 ro, vec3 rd, int &intersect_id, IntersectionObject &io)
 
 // test if the direct path from p to q is occluded
 bool isOccluded(vec3 p, vec3 q) {
+	// must have dot(pn,q-p)>0 and dot(qn,p-q)>0 for this to work
 	vec3 rd = normalize(q - p);
 	p += 1e-6*length(p)*rd, q -= 1e-6*length(q)*rd;
 
@@ -620,6 +621,7 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 
 	struct Vertex {
 		int id;  // object id
+		double d;  // distance light travelled
 		vec3 p;  // position
 		vec3 n;  // normal
 		vec3 rd;  // incoming eye/light path, goes "into" the surface
@@ -632,23 +634,26 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 	// pass 1 - eyepath
 
 	vec3 col_weight = vec3(1.0);
-	for (; eyepath_length < 32; eyepath_length++) {
+	double dist = 0.0;
+	for (eyepath_length = 0; eyepath_length < 32; eyepath_length++) {
 		ro += 1e-6*rd;
 
 		IntersectionObject io; int intersect_id;
-		if (!intersectScene(ro, rd, intersect_id, io)) {
-			break;
-		}
+		if (!intersectScene(ro, rd, intersect_id, io)) break;
 		SceneObject::SceneObjectType intersect_type = scene[intersect_id].type;
 
+		if (dot(rd, io.n) > 0.0) io.n *= -1.0;
+		if (eyepath_length != 0) dist += io.t;
+
 		if (intersect_type == SceneObject::sotLight) {
-			// not implemented
-			break;
+			if (eyepath_length == 0) return io.color;
+			break;  // not implemented
 		}
 		else if (intersect_type == SceneObject::sotDiffuseLambert) {
 			ro += rd * io.t;
 			col_weight *= io.color;
 			eyepath[eyepath_length].id = intersect_id;
+			eyepath[eyepath_length].d = dist;
 			eyepath[eyepath_length].p = ro;
 			eyepath[eyepath_length].n = io.n;
 			eyepath[eyepath_length].rd = rd;
@@ -662,6 +667,7 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 
 	int light_id = -1;
 	for (int id = 0; id < (int)scene.size(); id++) {
+		// assume only one light in the scene
 		if (scene[id].type == SceneObject::sotLight) {
 			light_id = id;
 			break;
@@ -669,6 +675,7 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 	}
 	scene[light_id].light_emitter(ro, rd, col_weight, seed);
 	lightpath[0].id = light_id;
+	lightpath[0].d = dist = 0.0;
 	lightpath[0].p = ro;
 	lightpath[0].rd = rd;
 	lightpath[0].w = col_weight;
@@ -676,10 +683,11 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 		ro += 1e-6 * rd;
 
 		IntersectionObject io; int intersect_id;
-		if (!intersectScene(ro, rd, intersect_id, io)) {
-			break;
-		}
+		if (!intersectScene(ro, rd, intersect_id, io)) break;
 		SceneObject::SceneObjectType intersect_type = scene[intersect_id].type;
+
+		if (dot(rd, io.n) > 0.0) io.n *= -1.0;
+		dist += io.t;
 
 		if (intersect_type == SceneObject::sotLight) {
 			break;
@@ -688,23 +696,33 @@ vec3 CalcCol_BDPT(vec3 ro, vec3 rd, uint32_t &seed) {
 			ro += rd * io.t;
 			col_weight *= io.color;
 			lightpath[lightpath_length].id = intersect_id;
+			lightpath[lightpath_length].d = dist;
 			lightpath[lightpath_length].p = ro;
 			lightpath[lightpath_length].n = io.n;
 			lightpath[lightpath_length].rd = rd;
+			col_weight *= 2.0 * abs(dot(rd, io.n));
+			rd = randdir_hemisphere(io.n, seed);
 			lightpath[lightpath_length].w = col_weight;
-			rd = randdir_cosWeighted(io.n, seed);
 		}
 		else break;  // not implemented
 	}
 
 	// connect paths
 
-	double cols[32][32];  // eyepath_i, lightpath_j
+	vec3 cols[32][32];  // eyepath_i, lightpath_j
+	vec3 totcol = vec3(0.0);
 	for (int i = 0; i < eyepath_length; i++) {
 		for (int j = 0; j < lightpath_length; j++) {
-			// incomplete
+			vec3 ro = eyepath[i].p, rd = normalize(lightpath[j].p - eyepath[i].p);
+			double d = eyepath[i].d + lightpath[j].d + length(lightpath[j].p - eyepath[i].p);
+			cols[i][j] = dot(eyepath[i].n, rd) < 0.0 || dot(lightpath[j].n, rd) > 0.0
+				|| isOccluded(eyepath[i].p, lightpath[j].p) ? vec3(0.0) :
+				eyepath[i].w * lightpath[j].w * (2.0 * dot(eyepath[i].n, rd)) / (d*d);
+			totcol += cols[i][j];
 		}
 	}
+	//return cols[0][0];
+	return totcol;
 
 }
 
@@ -731,7 +749,8 @@ void render_RT() {
 				vec3 rd = scrDir(vec2(i + rand01(seed), j + rand01(seed)));
 				vec3 ro = CamP + 1.0*rd;
 				//col += CalcCol_PT(ro, rd, seed, false);
-				col += CalcCol_PT(ro, rd, seed, true);
+				//col += CalcCol_PT(ro, rd, seed, true);
+				col += CalcCol_BDPT(ro, rd, seed);
 			}
 			if (colorBuffer_N == 1) colorBuffer[i][j] = VarianceObject<vec3>();
 			colorBuffer[i][j].addElement(col / N);
