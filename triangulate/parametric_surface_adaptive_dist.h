@@ -44,10 +44,17 @@ class AdaptiveParametricSurfaceTriangulator_dist {
 		vec3 p;
 	};
 
+	// "global" variables used in triangulation
+	double u0, u1, v0, v1;
+	bool isUClose, isVClose;
+	double tolerance;
+
 	// data structure to store samples for surface reconstruction and to void duplicate samples
 	std::map<vec2, vec3, std::function<bool(vec2, vec2)>> *samples_map;
 	sample sample_m(vec2 uv) {
 		sample s; s.uv = uv;
+		if (isUClose && uv.x == u1) uv.x = u0;
+		if (isVClose && uv.y == v1) uv.y = v0;
 		auto d = samples_map->find(uv);
 		if (d != samples_map->end()) s.p = d->second;
 		else samples_map->operator[](uv) = s.p = fun(uv.x, uv.y);
@@ -70,13 +77,13 @@ class AdaptiveParametricSurfaceTriangulator_dist {
 		return (0.5*(a + b) - m).sqr() < tol*tol;
 	}
 
-	// parametric equation, P=fun(u,v)
-	Fun fun;
-
 	// store triangles
 	std::vector<triangle_3d> Trigs;
 
 public:
+
+	// parametric equation, P=fun(u,v)
+	Fun fun;
 
 	// constructor and destructor
 	AdaptiveParametricSurfaceTriangulator_dist(const Fun func) {
@@ -93,7 +100,7 @@ public:
 private:
 
 	// recursive part in subdividing a patch
-	void subdivide_quad(const sample s0[4], int remain_recurse, double tol);
+	void subdivide_quad(const sample s0[4], int remain_recurse);
 
 	// recursive part in triangulating patches
 	void addQuadPatch(const sample s[4]);
@@ -104,6 +111,9 @@ private:
 template<typename Fun>
 std::vector<triangle_3d> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triangulate_adaptive(
 	double u0, double u1, double v0, double v1, int un, int vn, int max_depth, double tolerance, bool isUClose, bool isVClose) {
+	this->u0 = u0, this->u1 = u1, this->v0 = v0, this->v1 = v1;
+	this->isUClose = isUClose, this->isVClose = isVClose;
+	this->tolerance = tolerance;
 	samples_map->clear();
 	Trigs.clear();
 
@@ -119,7 +129,7 @@ std::vector<triangle_3d> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triang
 			double v_1 = v0 * (1. - vt1) + v1 * vt1;
 			// subdivide patch adaptively
 			sample s[4] = { sample_m(vec2(u_0,v_0)), sample_m(vec2(u_1,v_0)), sample_m(vec2(u_1,v_1)), sample_m(vec2(u_0,v_1)) };
-			subdivide_quad(s, max_depth, tolerance);
+			subdivide_quad(s, max_depth);
 		}
 	}
 
@@ -139,7 +149,7 @@ std::vector<triangle_3d> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triang
 		samples_map->operator[](it->uv) = it->p;
 
 	// triangulate patches
-	int PN = Patches.size();
+	int PN = (int)Patches.size();
 	for (int i = 0; i < PN; i++) {
 		addQuadPatch(Patches[i].s);
 	}
@@ -148,7 +158,7 @@ std::vector<triangle_3d> AdaptiveParametricSurfaceTriangulator_dist<Fun>::triang
 }
 
 template<typename Fun>
-void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sample s0[4], int remain_recurse, double tol) {
+void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sample s0[4], int remain_recurse) {
 
 	// recursion limit exceeded - construct triangles
 	if (!(remain_recurse > 0)) {
@@ -178,7 +188,9 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sampl
 	// check the "double edges" to see if their errors are small enough
 	bool isAccurateEnough[6];
 	for (int i = 0; i < 6; i++)
-		isAccurateEnough[i] = isGoodEnough_line(ss[double_edges[i][0]].p, ss[double_edges[i][1]].p, ss[double_edges[i][2]].p, tol);
+		isAccurateEnough[i] = isGoodEnough_line(
+			ss[double_edges[i][0]].p, ss[double_edges[i][1]].p, ss[double_edges[i][2]].p,
+			tolerance);
 
 	// calculate the current situation for lookup table
 	int situation_index = 0;
@@ -244,8 +256,8 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sampl
 	// prevent termination condition satisfaction caused by coincidence
 	// (some coincidence cases still passes)
 	if (situation_index == 0 && !(
-		isGoodEnough_line(ss[0].p, ss[8].p, ss[2].p, 1.4142*tol)
-		&& isGoodEnough_line(ss[1].p, ss[8].p, ss[3].p, 1.4142*tol))) {
+		isGoodEnough_line(ss[0].p, ss[8].p, ss[2].p, 1.4142*tolerance)
+		&& isGoodEnough_line(ss[1].p, ss[8].p, ss[3].p, 1.4142*tolerance))) {
 		situation_index = 15;
 	}
 
@@ -255,7 +267,7 @@ void AdaptiveParametricSurfaceTriangulator_dist<Fun>::subdivide_quad(const sampl
 	auto subsquares = subsquare_table[situation_index];
 	for (int c = 0; c < 16 && subsquares[c] != -1; c += 4) {
 		sample sd[4] = { ss[subsquares[c]], ss[subsquares[c + 1]], ss[subsquares[c + 2]], ss[subsquares[c + 3]] };
-		subdivide_quad(sd, remain_recurse - 1, tol);
+		subdivide_quad(sd, remain_recurse - 1);
 	}
 
 	// fill empty spaces
