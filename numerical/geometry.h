@@ -25,6 +25,10 @@ template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1)
 template<typename T> inline T mod(T x, T y) { return x - y * floor(x / y); }
 template<typename T> inline T fract(T x) { return x - floor(x); }
 template<typename T> inline T sign(T x) { return (T)(x > 0.0 ? 1.0 : x < 0.0 ? -1.0 : 0.0); }
+template<typename T> inline T smoothstep(T edge0, T edge1, T x) {
+	T t = clamp((x - edge0) / (edge1 - edge0), T(0.0), T(1.0));
+	return t * t * (T(3.0) - T(2.0) * t);
+}
 
 // for double precision
 #define invsqrt(x) (1.0/sqrt(x))
@@ -155,6 +159,16 @@ struct vec2f {
 	vec2f yx() const { return vec2f(y, x); }
 	vec2f rot() const { return vec2f(-y, x); }
 	vec2f rotr() const { return vec2f(y, -x); }
+
+	friend vec2f abs(const vec2f &a) { return vec2f(abs(a.x), abs(a.y)); }
+	friend vec2f floor(const vec2f &a) { return vec2f(floor(a.x), floor(a.y)); }
+	friend vec2f ceil(const vec2f &a) { return vec2f(ceil(a.x), ceil(a.y)); }
+	friend vec2f fract(const vec2f &a) { return vec2f(fract(a.x), fract(a.y)); }
+	friend vec2f sin(const vec2f &a) { return vec2f(sin(a.x), sin(a.y)); }
+	friend vec2f cos(const vec2f &a) { return vec2f(cos(a.x), cos(a.y)); }
+	friend vec2f sqrt(const vec2f &a) { return vec2f(sqrt(a.x), sqrt(a.y)); }
+	friend vec2f exp(const vec2f &a) { return vec2f(exp(a.x), exp(a.y)); }
+	friend vec2f log(const vec2f &a) { return vec2f(log(a.x), log(a.y)); }
 };
 
 ivec2::ivec2(vec2 p) :x((int)p.x), y((int)p.y) {}
@@ -208,6 +222,45 @@ mat2 rotationMatrix2d(double a) {
 }
 
 
+struct mat2f {
+public:
+	float v[2][2];
+	mat2f() {}
+	explicit mat2f(float k) {
+		v[0][0] = v[1][1] = k, v[1][0] = v[0][1] = 0;
+	}
+	explicit mat2f(vec2f lambda) {
+		v[0][0] = lambda.x, v[1][1] = lambda.y;
+		v[1][0] = v[0][1] = 0;
+	}
+	explicit mat2f(vec2f col1, vec2f col2) {
+		v[0][0] = col1.x, v[1][0] = col1.y;
+		v[0][1] = col2.x, v[1][1] = col2.y;
+	}
+	explicit mat2f(float _00, float _10, float _01, float _11) {  // by columns
+		v[0][0] = _00, v[0][1] = _01, v[1][0] = _10, v[1][1] = _11;
+	}
+	vec2f row(int i) const { return vec2f(v[i][0], v[i][1]); }
+	vec2f column(int i) const { return vec2f(v[0][i], v[1][i]); }
+	vec2f diag() const { return vec2f(v[0][0], v[1][1]); }
+	mat2f operator - () const { return mat2f(-v[0][0], -v[1][0], -v[0][1], -v[1][1]); }
+	void operator += (const mat2f &m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] += (&m.v[0][0])[i]; }
+	void operator -= (const mat2f &m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] -= (&m.v[0][0])[i]; }
+	void operator *= (float m) { for (int i = 0; i < 4; i++) (&v[0][0])[i] *= m; }
+	mat2f operator + (const mat2f &m) const { mat2f r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = (&v[0][0])[i] + (&m.v[0][0])[i]; return r; }
+	mat2f operator - (const mat2f &m) const { mat2f r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = (&v[0][0])[i] - (&m.v[0][0])[i]; return r; }
+	mat2f operator * (float m) const { mat2f r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = (&v[0][0])[i] * m; return r; }
+	friend mat2f operator * (float a, const mat2f &m) { mat2f r; for (int i = 0; i < 4; i++) (&r.v[0][0])[i] = a * (&m.v[0][0])[i]; return r; }
+	mat2f operator * (const mat2f &m) const { return mat2f(v[0][0] * m.v[0][0] + v[0][1] * m.v[1][0], v[1][0] * m.v[0][0] + v[1][1] * m.v[1][0], v[0][0] * m.v[0][1] + v[0][1] * m.v[1][1], v[1][0] * m.v[0][1] + v[1][1] * m.v[1][1]); }
+	friend float determinant(const mat2f &m) { return m.v[0][0] * m.v[1][1] - m.v[0][1] * m.v[1][0]; }
+	mat2f transpose() const { mat2f r; for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) r.v[i][j] = v[j][i]; return r; }
+	mat2f inverse() const { float d = 1.0f / (v[0][0] * v[1][1] - v[0][1] * v[1][0]); return mat2f(d*v[1][1], -d * v[1][0], -d * v[0][1], d*v[0][0]); }
+	friend float trace(const mat2f &m) { return m.v[0][0] + m.v[1][1]; }
+	vec2f operator * (const vec2f &a) const { return vec2f(v[0][0] * a.x + v[0][1] * a.y, v[1][0] * a.x + v[1][1] * a.y); }
+};
+
+
+
 
 // a more sketchy 3d vector template
 
@@ -244,8 +297,12 @@ struct vec3 {
 	vec3 operator - () const { return vec3(-x, -y, -z); }
 	vec3 operator + (const vec3 &v) const { return vec3(x + v.x, y + v.y, z + v.z); }
 	vec3 operator - (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
-	vec3 operator * (const vec3 &v) const { return vec3(x*v.x, y*v.y, z*v.z); }  // element wise
-	vec3 operator * (const double &k) const { return vec3(k * x, k * y, k * z); }
+	vec3 operator * (const vec3 &v) const { return vec3(x * v.x, y * v.y, z * v.z); }  // element wise
+	vec3 operator / (const vec3 &v) const { return vec3(x / v.x, y / v.y, z / v.z); }
+	vec3 operator + (const double &k) const { return vec3(x + k, y + k, z + k); }
+	vec3 operator - (const double &k) const { return vec3(x - k, y - k, z - k); }
+	vec3 operator * (const double &k) const { return vec3(x * k, y * k, z * k); }
+	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
 	double sqr() const { return x * x + y * y + z * z; }
 	friend double length(vec3 v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
 	friend vec3 normalize(vec3 v) { double m = invsqrt(v.x*v.x + v.y*v.y + v.z*v.z); return vec3(v.x*m, v.y*m, v.z*m); }
@@ -258,11 +315,11 @@ struct vec3 {
 	void operator += (const vec3 &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3 &v) { x -= v.x, y -= v.y, z -= v.z; }
 	void operator *= (const vec3 &v) { x *= v.x, y *= v.y, z *= v.z; }
-	vec3 operator / (const vec3 &v) const { return vec3(x / v.x, y / v.y, z / v.z); }
 	void operator /= (const vec3 &v) { x /= v.x, y /= v.y, z /= v.z; }
 	friend vec3 operator * (const double &a, const vec3 &v) { return vec3(a*v.x, a*v.y, a*v.z); }
+	void operator += (const double &a) { x += a, y += a, z += a; }
+	void operator -= (const double &a) { x -= a, y -= a, z -= a; }
 	void operator *= (const double &a) { x *= a, y *= a, z *= a; }
-	vec3 operator / (const double &a) const { return vec3(x / a, y / a, z / a); }
 	void operator /= (const double &a) { x /= a, y /= a, z /= a; }
 
 	bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
@@ -311,14 +368,19 @@ struct vec3f {
 	explicit vec3f(double a) :x((float)a), y((float)a), z((float)a) {}
 	explicit vec3f(float x, float y, float z) :x(x), y(y), z(z) {}
 	//explicit vec3f(int x, int y, int z) :x((float)x), y((float)y), z((float)z) {}
+	explicit vec3f(vec2f p, float z = 0.0f) :x(p.x), y(p.y), z(z) {}
 	explicit vec3f(vec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
 	explicit vec3f(ivec3 p) : x((float)p.x), y((float)p.y), z((float)p.z) {}
 
 	vec3f operator - () const { return vec3f(-x, -y, -z); }
 	vec3f operator + (const vec3f &v) const { return vec3f(x + v.x, y + v.y, z + v.z); }
 	vec3f operator - (const vec3f &v) const { return vec3f(x - v.x, y - v.y, z - v.z); }
-	vec3f operator * (const vec3f &v) const { return vec3f(x*v.x, y*v.y, z*v.z); }  // element wise
-	vec3f operator * (const float &k) const { return vec3f(k * x, k * y, k * z); }
+	vec3f operator * (const vec3f &v) const { return vec3f(x * v.x, y * v.y, z * v.z); }  // element wise
+	vec3f operator / (const vec3f &v) const { return vec3f(x / v.x, y / v.y, z / v.z); }
+	vec3f operator + (const float &k) const { return vec3f(x + k, y + k, z + k); }
+	vec3f operator - (const float &k) const { return vec3f(x - k, y - k, z - k); }
+	vec3f operator * (const float &k) const { return vec3f(x * k, y * k, z * k); }
+	vec3f operator / (const float &a) const { return vec3f(x / a, y / a, z / a); }
 	float sqr() const { return x * x + y * y + z * z; }
 	friend float length(vec3f v) { return sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); }
 	friend vec3f normalize(vec3f v) { float m = 1.0f / sqrtf(v.x*v.x + v.y*v.y + v.z*v.z); return vec3f(v.x*m, v.y*m, v.z*m); }
@@ -329,11 +391,11 @@ struct vec3f {
 	void operator += (const vec3f &v) { x += v.x, y += v.y, z += v.z; }
 	void operator -= (const vec3f &v) { x -= v.x, y -= v.y, z -= v.z; }
 	void operator *= (const vec3f &v) { x *= v.x, y *= v.y, z *= v.z; }
-	vec3f operator / (const vec3f &v) const { return vec3f(x / v.x, y / v.y, z / v.z); }
 	void operator /= (const vec3f &v) { x /= v.x, y /= v.y, z /= v.z; }
 	friend vec3f operator * (const float &a, const vec3f &v) { return vec3f(a*v.x, a*v.y, a*v.z); }
+	void operator += (const float &a) { x += a, y += a, z += a; }
+	void operator -= (const float &a) { x -= a, y -= a, z -= a; }
 	void operator *= (const float &a) { x *= a, y *= a, z *= a; }
-	vec3f operator / (const float &a) const { return vec3f(x / a, y / a, z / a); }
 	void operator /= (const float &a) { x /= a, y /= a, z /= a; }
 
 	bool operator == (const vec3f &v) const { return x == v.x && y == v.y && z == v.z; }
@@ -350,12 +412,15 @@ struct vec3f {
 	friend vec3f log(const vec3f &a) { return vec3f(log(a.x), log(a.y), log(a.z)); }
 	friend vec3f pow(const vec3f &a, const float &e) { return vec3f(pow(a.x, e), pow(a.y, e), pow(a.z, e)); }
 
+	vec2f xx() const { return vec2f(x, x); }
 	vec2f xy() const { return vec2f(x, y); }
 	vec2f xz() const { return vec2f(x, z); }
 	vec2f yx() const { return vec2f(y, x); }
+	vec2f yy() const { return vec2f(y, y); }
 	vec2f yz() const { return vec2f(y, z); }
 	vec2f zx() const { return vec2f(z, x); }
 	vec2f zy() const { return vec2f(z, y); }
+	vec2f zz() const { return vec2f(z, z); }
 	vec3f xyz() const { return vec3f(x, y, z); }
 	vec3f xzy() const { return vec3f(x, z, y); }
 	vec3f yzx() const { return vec3f(y, z, x); }
