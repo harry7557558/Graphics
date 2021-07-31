@@ -1,4 +1,6 @@
 // https://www.shadertoy.com/view/4djSRW
+// All hash functions return value between 0 and 1
+
 #include "numerical/geometry.h"
 
 

@@ -4,34 +4,58 @@
 #include "UI/stl_encoder.h"
 
 
-float Fbm1(float(*noise)(vec2f), vec2f xy) {
+// FBM functions
+
+// Simple FBM
+float Fbm1(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	float h = 0.0f;
 	float ampl = 1.0f;
-	for (int k = 0; k < 8; k++) {
-		h += ampl * noise(xy);
+	for (int k = 0; k < n; k++) {
 		ampl *= 0.5f;
+		h += ampl * noise(xy);
 		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
 	}
 	return h;
 }
 
-float Fbm2(float(*noise)(vec2f), vec2f xy) {
-	float h = 0.0;
-	float ampl = 1.0;
-	for (int i = 0; i < 8; i++) {
+// Often used to model terrain
+float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
+	float h = 0.0f;
+	float ampl = 1.0f;
+	vec2f sum_grad(0.0f);
+	for (int i = 0; i < n; i++) {
 		const float eps = 0.01f;
 		float val = noise(xy);
-		vec2f grad = vec2f(noise(xy + vec2f(eps, 0.f)) - noise(xy - vec2f(eps, 0.f)), noise(xy + vec2f(0.f, eps)) - noise(xy - vec2f(0.f, eps))) / (2.0f*eps);
-		h += ampl * val / (1.0f + grad.sqr());
-		ampl *= 0.5;
+		sum_grad += vec2f(
+			noise(xy + vec2f(eps, 0.f)) - noise(xy - vec2f(eps, 0.f)),
+			noise(xy + vec2f(0.f, eps)) - noise(xy - vec2f(0.f, eps))) / (2.0f*eps);
+		ampl *= 0.5f;
+		h += ampl * val / (1.0f + sum_grad.sqr());
 		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
 	}
-	return h;
+	return h * (1.0f - 0.5f) / (1.0f - 0.5f);
 }
 
 
+// Scenes
+
+// Pure FBM
+float Scene0(vec2f p) {
+	float v = Fbm1(GradientNoise2D, p, 1);
+	return v;
+}
+
+// Terrain and water
+float Scene1(vec2f p) {
+	float v = Fbm2(ValueNoise2D, p);
+	return max(v, 0.0f);
+}
+
+
+// Visualization
+
 void DiscretizeSquare(
-	std::function<float(vec2f)> fun, vec2f b0, vec2f b1, ivec2 dif,
+	float(*fun)(vec2f), vec2f b0, vec2f b1, ivec2 dif,
 	std::vector<vec3f> &points, std::vector<ivec3> &trigs) {
 
 	const int ti0 = (int)points.size();
@@ -58,13 +82,7 @@ void DiscretizeSquare(
 int main(int argc, char* argv[]) {
 	std::vector<vec3f> points;
 	std::vector<ivec3> trigs;
-	DiscretizeSquare([](vec2f p)->float {
-		float v = Fbm2(ValueNoise2D, p);
-		//v += 0.2 * (p.x - 3.0);
-		//return v;
-		return max(v - 1.0f, 0.0f);
-		//return max(v - 0.8f, 0.0f);
-	}, vec2f(0.0), vec2f(6, 4), 10 * ivec2(60, 40), points, trigs);
+	DiscretizeSquare(Scene0, vec2f(0.0), vec2f(6, 4), 10 * ivec2(60, 40), points, trigs);
 	WritePLY("D:\\.ply", (float*)&points[0], (int)points.size(), (int*)&trigs[0], (int)trigs.size());
 	return 0;
 }
