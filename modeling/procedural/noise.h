@@ -29,6 +29,18 @@ float ValueNoise2D(vec2f xy) {
 float GradientNoise2D(vec2f xy) {
 	float i0 = floor(xy.x), i1 = i0 + 1.0f;
 	float j0 = floor(xy.y), j1 = j0 + 1.0f;
+	float v00 = dot(2.0f*hash22(vec2f(i0, j0)) - vec2f(1.0f), xy - vec2f(i0, j0));
+	float v01 = dot(2.0f*hash22(vec2f(i0, j1)) - vec2f(1.0f), xy - vec2f(i0, j1));
+	float v10 = dot(2.0f*hash22(vec2f(i1, j0)) - vec2f(1.0f), xy - vec2f(i1, j0));
+	float v11 = dot(2.0f*hash22(vec2f(i1, j1)) - vec2f(1.0f), xy - vec2f(i1, j1));
+	float xf = xy.x - i0; xf = xf * xf * xf * (10.0f + xf * (-15.0f + xf * 6.0f));
+	float yf = xy.y - j0; yf = yf * yf * yf * (10.0f + yf * (-15.0f + yf * 6.0f));
+	return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf);
+}
+
+float NormalizedGradientNoise2D(vec2f xy) {
+	float i0 = floor(xy.x), i1 = i0 + 1.0f;
+	float j0 = floor(xy.y), j1 = j0 + 1.0f;
 	float v00 = dot(UnitVector2D(hash12(vec2f(i0, j0))), xy - vec2f(i0, j0));
 	float v01 = dot(UnitVector2D(hash12(vec2f(i0, j1))), xy - vec2f(i0, j1));
 	float v10 = dot(UnitVector2D(hash12(vec2f(i1, j0))), xy - vec2f(i1, j0));
@@ -38,3 +50,32 @@ float GradientNoise2D(vec2f xy) {
 	float v = mix(mix(v00, v01, yf), mix(v10, v11, yf), xf);
 	return v * 1.414214f;
 }
+
+float WaveNoise2D(vec2f xy) {
+	float i0 = floor(xy.x), i1 = i0 + 1.0f;
+	float j0 = floor(xy.y), j1 = j0 + 1.0f;
+	const float freq = 2.0f;
+	float v00 = sin(freq*dot(2.0f*hash22(vec2f(i0, j0)) - vec2f(1.0f), xy));
+	float v01 = sin(freq*dot(2.0f*hash22(vec2f(i0, j1)) - vec2f(1.0f), xy));
+	float v10 = sin(freq*dot(2.0f*hash22(vec2f(i1, j0)) - vec2f(1.0f), xy));
+	float v11 = sin(freq*dot(2.0f*hash22(vec2f(i1, j1)) - vec2f(1.0f), xy));
+	float xf = xy.x - i0; xf = xf * xf * xf * (10.0f + xf * (-15.0f + xf * 6.0f));
+	float yf = xy.y - j0; yf = yf * yf * yf * (10.0f + yf * (-15.0f + yf * 6.0f));
+	return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf);
+}
+
+float NormalizedWaveNoise2D(vec2f xy) {
+	float i0 = floor(xy.x), i1 = i0 + 1.0f;
+	float j0 = floor(xy.y), j1 = j0 + 1.0f;
+	const float freq = 2.0f;
+	float v00 = sin(freq*dot(UnitVector2D(hash12(vec2f(i0, j0))), xy));
+	float v01 = sin(freq*dot(UnitVector2D(hash12(vec2f(i0, j1))), xy));
+	float v10 = sin(freq*dot(UnitVector2D(hash12(vec2f(i1, j0))), xy));
+	float v11 = sin(freq*dot(UnitVector2D(hash12(vec2f(i1, j1))), xy));
+	float xf = xy.x - i0; xf = xf * xf * xf * (10.0f + xf * (-15.0f + xf * 6.0f));
+	float yf = xy.y - j0; yf = yf * yf * yf * (10.0f + yf * (-15.0f + yf * 6.0f));
+	return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf);
+}
+
+// Simplex noise: ???
+

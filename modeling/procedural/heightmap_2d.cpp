@@ -36,6 +36,27 @@ float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	return h * (1.0f - 0.5f) / (1.0f - 0.5f);
 }
 
+// Water??!
+float Fbm3(float(*noise)(vec2f), vec2f xy, int n = 4) {
+	const float vt = 9.75f;
+	float h = 0.0f;
+	vec2f p = xy + vec2f(vt);
+	float ampl = 1.0f;
+	for (int k = 0; k < n; k++) {
+		ampl *= 0.25f;
+		h += ampl * noise(p);
+		p = 1.9f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * p + vec2f(2.0);
+	}
+	p = xy - vec2f(vt);
+	ampl = 1.0f;
+	for (int k = 0; k < n; k++) {
+		ampl *= 0.25f;
+		h += ampl * noise(p);
+		p = 1.9f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * p + vec2f(2.0);
+	}
+	return 0.5f * h;
+}
+
 
 // Scenes
 
@@ -45,10 +66,17 @@ float Scene0(vec2f p) {
 	return v;
 }
 
-// Terrain and water
+// Terrain and flat water
 float Scene1(vec2f p) {
 	float v = Fbm2(ValueNoise2D, p);
 	return max(v, 0.0f);
+}
+
+// Terrain and organic water - looks terrible?
+float Scene2(vec2f p) {
+	float vt = Fbm2(ValueNoise2D, p);
+	float vw = Fbm3(GradientNoise2D, 10.0f * p) / 20.0f;
+	return max(vt, vw);
 }
 
 
@@ -82,7 +110,7 @@ void DiscretizeSquare(
 int main(int argc, char* argv[]) {
 	std::vector<vec3f> points;
 	std::vector<ivec3> trigs;
-	DiscretizeSquare(Scene0, vec2f(0.0), vec2f(6, 4), 10 * ivec2(60, 40), points, trigs);
+	DiscretizeSquare(Scene2, vec2f(0.0), vec2f(6, 4), 10 * ivec2(60, 40), points, trigs);
 	WritePLY("D:\\.ply", (float*)&points[0], (int)points.size(), (int*)&trigs[0], (int)trigs.size());
 	return 0;
 }
