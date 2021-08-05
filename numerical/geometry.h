@@ -13,6 +13,9 @@
 #ifndef PI
 #define PI 3.1415926535897932384626
 #endif
+#ifndef PIf
+#define PIf 3.1415926535897932384626f
+#endif
 
 // defining max and min as macros may cause problems in standard libraries
 // NO `using namespace std;`
@@ -141,7 +144,10 @@ struct vec2f {
 	vec2f operator - (const vec2f &v) const { return vec2f(x - v.x, y - v.y); }
 	vec2f operator * (const vec2f &v) const { return vec2f(x * v.x, y * v.y); }
 	vec2f operator / (const vec2f &v) const { return vec2f(x / v.x, y / v.y); }
-	vec2f operator * (const float &a) const { return vec2f(x*a, y*a); }
+	vec2f operator + (const float &a) const { return vec2f(x + a, y + a); }
+	vec2f operator - (const float &a) const { return vec2f(x - a, y - a); }
+	vec2f operator * (const float &a) const { return vec2f(x * a, y * a); }
+	vec2f operator / (const float &a) const { return vec2f(x / a, y / a); }
 	float sqr() const { return x * x + y * y; }
 	friend float length(const vec2f &v) { return sqrtf(v.x*v.x + v.y*v.y); }
 	friend vec2f normalize(const vec2f &v) { float m = 1.f / sqrtf(v.x*v.x + v.y*v.y); return vec2f(v.x*m, v.y*m); }
@@ -152,8 +158,9 @@ struct vec2f {
 	void operator -= (const vec2f &v) { x -= v.x, y -= v.y; }
 	void operator *= (const vec2f &v) { x *= v.x, y *= v.y; }
 	friend vec2f operator * (const float &a, const vec2f &v) { return vec2f(a*v.x, a*v.y); }
+	void operator += (const float &a) { x += a, y += a; }
+	void operator -= (const float &a) { x -= a, y -= a; }
 	void operator *= (const float &a) { x *= a, y *= a; }
-	vec2f operator / (const float &a) const { return vec2f(x / a, y / a); }
 	void operator /= (const float &a) { x /= a, y /= a; }
 
 	vec2f yx() const { return vec2f(y, x); }

@@ -2,6 +2,7 @@
 #include <functional>
 #include "noise.h"
 #include "UI/stl_encoder.h"
+#include <chrono>
 
 
 // FBM functions
@@ -13,6 +14,18 @@ float Fbm1(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	for (int k = 0; k < n; k++) {
 		ampl *= 0.5f;
 		h += ampl * noise(xy);
+		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
+	}
+	return h;
+}
+
+// Simple FBM with gradient
+vec3f Fbm1g(vec3f(*noiseg)(vec2f), vec2f xy, int n = 8) {
+	vec3f h = vec3f(0.0f);
+	float ampl = 1.0f;
+	for (int k = 0; k < n; k++) {
+		ampl *= 0.5f;
+		h += ampl * noiseg(xy);
 		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
 	}
 	return h;
@@ -33,7 +46,22 @@ float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
 		h += ampl * val / (1.0f + sum_grad.sqr());
 		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
 	}
-	return h * (1.0f - 0.5f) / (1.0f - 0.5f);
+	return h;
+}
+
+// Often used to model terrain, uses noise with analytical gradient
+float Fbm2g(vec3f(*noiseg)(vec2f), vec2f xy, int n = 8) {
+	float h = 0.0f;
+	float ampl = 1.0f;
+	vec2f sum_grad(0.0f);
+	for (int i = 0; i < n; i++) {
+		vec3f gradval = noiseg(xy);
+		sum_grad += gradval.xy();
+		ampl *= 0.5f;
+		h += ampl * gradval.z / (1.0f + sum_grad.sqr());
+		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
+	}
+	return h;
 }
 
 // Water??!
@@ -57,24 +85,33 @@ float Fbm3(float(*noise)(vec2f), vec2f xy, int n = 4) {
 	return 0.5f * h;
 }
 
+// Swirling fluid ??
+float Effect1(vec3f(*noiseg)(vec2f), vec2f xy, int n = 4) {
+	for (int i = 0; i < n; i++) {
+		xy += Fbm1g(noiseg, xy + 100.0f, 3).xy().rot() / float(n);
+	}
+	return Fbm1g(noiseg, xy, 5).z;
+}
+
 
 // Scenes
 
 // Pure FBM
 float Scene0(vec2f p) {
-	float v = Fbm1(GradientNoise2D, p, 1);
-	return v;
+	return Fbm1(ValueNoise2D, p, 8);
+	return Effect1(ValueNoise2Dg, p, 4);
 }
 
 // Terrain and flat water
 float Scene1(vec2f p) {
-	float v = Fbm2(ValueNoise2D, p);
+	//float v = Fbm2(ValueNoise2D, p, 8);  // 2.0s
+	float v = Fbm2g(ValueNoise2Dg, p, 8);  // 0.5s
 	return max(v, 0.0f);
 }
 
 // Terrain and organic water - looks terrible?
 float Scene2(vec2f p) {
-	float vt = Fbm2(ValueNoise2D, p);
+	float vt = Fbm2g(ValueNoise2Dg, p);
 	float vw = Fbm3(GradientNoise2D, 10.0f * p) / 20.0f;
 	return max(vt, vw);
 }
@@ -110,7 +147,12 @@ void DiscretizeSquare(
 int main(int argc, char* argv[]) {
 	std::vector<vec3f> points;
 	std::vector<ivec3> trigs;
-	DiscretizeSquare(Scene2, vec2f(0.0), vec2f(6, 4), 10 * ivec2(60, 40), points, trigs);
+
+	auto t0 = std::chrono::high_resolution_clock::now();
+	DiscretizeSquare(Scene1, vec2f(0.0), vec2f(6, 4), ivec2(600, 400), points, trigs);
+	auto t1 = std::chrono::high_resolution_clock::now();
+	printf("%f secs elapsed\n", std::chrono::duration<float>(t1 - t0).count());
+
 	WritePLY("D:\\.ply", (float*)&points[0], (int)points.size(), (int*)&trigs[0], (int)trigs.size());
 	return 0;
 }
