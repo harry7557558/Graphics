@@ -98,14 +98,14 @@ float Effect1(vec3f(*noiseg)(vec2f), vec2f xy, int n = 4) {
 
 // Pure FBM
 float Scene0(vec2f p) {
+	return 0.5 * SimplexValueNoise2D(p);
 	return Fbm1(ValueNoise2D, p, 8);
 	return Effect1(ValueNoise2Dg, p, 4);
 }
 
 // Terrain and flat water
 float Scene1(vec2f p) {
-	//float v = Fbm2(ValueNoise2D, p, 8);  // 2.0s
-	float v = Fbm2g(ValueNoise2Dg, p, 8);  // 0.5s
+	float v = Fbm2g(ValueNoise2Dg, p, 8);
 	return max(v, 0.0f);
 }
 
@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
 	std::vector<ivec3> trigs;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	DiscretizeSquare(Scene1, vec2f(0.0), vec2f(6, 4), ivec2(600, 400), points, trigs);
+	DiscretizeSquare(Scene0, vec2f(0.0), vec2f(6, 4), ivec2(600, 400), points, trigs);
 	auto t1 = std::chrono::high_resolution_clock::now();
 	printf("%f secs elapsed\n", std::chrono::duration<float>(t1 - t0).count());
 
