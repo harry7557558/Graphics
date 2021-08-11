@@ -78,8 +78,6 @@ vec3f GradientNoise2Dg(vec2f xy) {
 	vec2f intp = ((xyf * 6.0f - 15.0f) * xyf + 10.0f) * xyf * xyf * xyf;
 	vec2f intpd = ((xyf * 30.0f - 60.0f) * xyf + 30.0f) * xyf * xyf;
 	return vec3f(
-		//g00 + ((g10 - g00)*intp.x + (v10 - v00)*vec2f(intpd.x, 0.0f)) + ((g01 - g00)*intp.y + (v01 - v00)*vec2f(0.0f, intpd.y))
-		//+ (g00 + g11 - g01 - g10) * intp.x*intp.y + (v00 + v11 - v01 - v10) * intp.yx() * intpd,
 		g00 + (g10 - g00)*intp.x + (g01 - g00)*intp.y + (g00 + g11 - g01 - g10)*intp.x*intp.y
 		+ (vec2f(v10 - v00, v01 - v00) + (v00 + v11 - v01 - v10)*intp.yx()) * intpd,
 		v00 + (v10 - v00)*intp.x + (v01 - v00)*intp.y + (v00 + v11 - v01 - v10) * intp.x*intp.y
@@ -211,7 +209,29 @@ float SimplexNoise2D(vec2f xy) {
 	vec2f n3 = 2.0f * hash22(i + 1.0) - 1.0f;
 	vec3f v = vec3f(dot(f1, n1), dot(f2, n2), dot(f3, n3));
 	vec3f w = max(-vec3f(dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec3f(0.0f));
-	return dot((w*w*w*w) * v, vec3f(70.0f));
+	return dot((w*w*w*w) * v, vec3f(32.0f));
+}
+
+vec3f SimplexNoise2Dg(vec2f xy) {
+	const float K1 = 0.3660254038f;  // (sqrt(3)-1)/2
+	const float K2 = 0.2113248654f;  // (-sqrt(3)+3)/6
+	vec2f p = xy + (xy.x + xy.y)*K1;
+	vec2f i = floor(p);
+	vec2f f1 = xy - (i - (i.x + i.y)*K2);
+	vec2f s = f1.x < f1.y ? vec2f(0.0f, 1.0f) : vec2f(1.0f, 0.0f);
+	vec2f f2 = f1 - s + K2;
+	vec2f f3 = f1 - 1.0f + 2.0f*K2;
+	vec2f n1 = 2.0f * hash22(i) - 1.0f;
+	vec2f n2 = 2.0f * hash22(i + s) - 1.0f;
+	vec2f n3 = 2.0f * hash22(i + 1.0) - 1.0f;
+	vec3f v = vec3f(dot(f1, n1), dot(f2, n2), dot(f3, n3));
+	vec3f w = max(-vec3f(dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec3f(0.0f));
+	vec3f w3 = w * w * w, w4 = w3 * w;
+	return 32.0f * vec3f(
+		(w.x == 0.0f ? vec2f(0.0f) : -8.0f * w3.x * f1 * v.x + w4.x * n1) +
+		(w.y == 0.0f ? vec2f(0.0f) : -8.0f * w3.y * f2 * v.y + w4.y * n2) +
+		(w.z == 0.0f ? vec2f(0.0f) : -8.0f * w3.z * f3 * v.z + w4.z * n3),
+		w4.x * v.x + w4.y * v.y + w4.z * v.z);
 }
 
 float NormalizedSimplexNoise2D(vec2f xy) {
@@ -228,18 +248,39 @@ float NormalizedSimplexNoise2D(vec2f xy) {
 	vec2f n3 = uniform_unit_circle(hash22(i + 1.0));
 	vec3f v = vec3f(dot(f1, n1), dot(f2, n2), dot(f3, n3));
 	vec3f w = max(-vec3f(dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec3f(0.0f));
-	return dot((w*w*w*w) * v, vec3f(70.0f));
+	return dot((w*w*w*w) * v, vec3f(32.0f));
+}
+
+vec3f NormalizedSimplexNoise2Dg(vec2f xy) {
+	const float K1 = 0.3660254038f;  // (sqrt(3)-1)/2
+	const float K2 = 0.2113248654f;  // (-sqrt(3)+3)/6
+	vec2f p = xy + (xy.x + xy.y)*K1;
+	vec2f i = floor(p);
+	vec2f f1 = xy - (i - (i.x + i.y)*K2);
+	vec2f s = f1.x < f1.y ? vec2f(0.0f, 1.0f) : vec2f(1.0f, 0.0f);
+	vec2f f2 = f1 - s + K2;
+	vec2f f3 = f1 - 1.0f + 2.0f*K2;
+	vec2f n1 = uniform_unit_circle(hash22(i));
+	vec2f n2 = uniform_unit_circle(hash22(i + s));
+	vec2f n3 = uniform_unit_circle(hash22(i + 1.0));
+	vec3f v = vec3f(dot(f1, n1), dot(f2, n2), dot(f3, n3));
+	vec3f w = max(-vec3f(dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec3f(0.0f));
+	vec3f w3 = w * w * w, w4 = w3 * w;
+	return 32.0f * vec3f(
+		(w.x == 0.0f ? vec2f(0.0f) : -8.0f * w3.x * f1 * v.x + w4.x * n1) +
+		(w.y == 0.0f ? vec2f(0.0f) : -8.0f * w3.y * f2 * v.y + w4.y * n2) +
+		(w.z == 0.0f ? vec2f(0.0f) : -8.0f * w3.z * f3 * v.z + w4.z * n3),
+		w4.x * v.x + w4.y * v.y + w4.z * v.z);
 }
 
 // Note that the gradient of this thing is discontinuous
 float SimplexValueNoise2D(vec2f xy) {
-	// simplex noise
+	// simplex grid
 	const float K1 = 0.3660254038f;  // (sqrt(3)-1)/2
 	const float K2 = 0.2113248654f;  // (-sqrt(3)+3)/6
 	vec2f p = xy + (xy.x + xy.y)*K1;
 	vec2f p1 = floor(p);
-	vec2f f1 = xy - (p1 - (p1.x + p1.y)*K2);
-	vec2f s = f1.x < f1.y ? vec2f(0.0f, 1.0f) : vec2f(1.0f, 0.0f);
+	vec2f s = xy.x - p1.x < xy.y - p1.y ? vec2f(0.0f, 1.0f) : vec2f(1.0f, 0.0f);
 	vec2f p2 = p1 + s;
 	vec2f p3 = p1 + 1.0;
 	float v1 = 2.0f * hash12(p1) - 1.0f;
@@ -249,6 +290,30 @@ float SimplexValueNoise2D(vec2f xy) {
 	vec2f f = p - p1, c = -s + 1.0;
 	float m = 1.0f / det(s, c);
 	float u = m * det(f, c);
-	float v = m * det(s, f) / u;
-	return mix(mix(v1, v2, u), mix(v1, v3, u), v);
+	float uv = m * det(s, f);
+	return v1 + u * (v2 - v1) + uv * (v3 - v2);  // mix(v1, mix(v2, v3, v), u)
+}
+
+vec3f SimplexValueNoise2Dg(vec2f xy) {
+	// simplex grid
+	const float K1 = 0.3660254038f;  // (sqrt(3)-1)/2
+	const float K2 = 0.2113248654f;  // (-sqrt(3)+3)/6
+	vec2f p = xy + (xy.x + xy.y)*K1;
+	vec2f p1 = floor(p);
+	vec2f s = xy.x - p1.x < xy.y - p1.y ? vec2f(0.0f, 1.0f) : vec2f(1.0f, 0.0f);
+	vec2f p2 = p1 + s;
+	vec2f p3 = p1 + 1.0;
+	float v1 = 2.0f * hash12(p1) - 1.0f;
+	float v2 = 2.0f * hash12(p2) - 1.0f;
+	float v3 = 2.0f * hash12(p3) - 1.0f;
+	// interpolation
+	vec2f f = p - p1, c = -s + 1.0;
+	float m = 1.0f / det(s, c);
+	float u = m * det(f, c);
+	float uv = m * det(s, f);
+	vec2f grad_u = m * vec2f(c.y, -c.x);
+	vec2f grad_uv = m * vec2f(-s.y, s.x);
+	float val = v1 + u * (v2 - v1) + uv * (v3 - v2);
+	vec2f grad = grad_u * (v2 - v1) + grad_uv * (v3 - v2);
+	return vec3f(grad + (grad.x + grad.y)*K1, val);
 }

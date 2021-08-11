@@ -5,6 +5,15 @@
 #include <chrono>
 
 
+// Numerical gradient
+vec2f nGrad(float(*fun)(vec2f), vec2f xy) {
+	const float eps = 0.005f;
+	return vec2f(
+		fun(xy + vec2f(eps, 0.f)) - fun(xy - vec2f(eps, 0.f)),
+		fun(xy + vec2f(0.f, eps)) - fun(xy - vec2f(0.f, eps))) / (2.0f*eps);
+}
+
+
 // FBM functions
 
 // Simple FBM
@@ -31,7 +40,7 @@ vec3f Fbm1g(vec3f(*noiseg)(vec2f), vec2f xy, int n = 8) {
 	return h;
 }
 
-// Often used to model terrain
+// Terrain with faked (poor?) erosion
 float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	float h = 0.0f;
 	float ampl = 1.0f;
@@ -39,9 +48,7 @@ float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	for (int i = 0; i < n; i++) {
 		const float eps = 0.01f;
 		float val = noise(xy);
-		sum_grad += vec2f(
-			noise(xy + vec2f(eps, 0.f)) - noise(xy - vec2f(eps, 0.f)),
-			noise(xy + vec2f(0.f, eps)) - noise(xy - vec2f(0.f, eps))) / (2.0f*eps);
+		sum_grad += nGrad(noise, xy);
 		ampl *= 0.5f;
 		h += ampl * val / (1.0f + sum_grad.sqr());
 		xy = 2.0f * mat2f(0.6f, -0.8f, 0.8f, 0.6f) * xy + vec2f(2.0);
@@ -49,7 +56,7 @@ float Fbm2(float(*noise)(vec2f), vec2f xy, int n = 8) {
 	return h;
 }
 
-// Often used to model terrain, uses noise with analytical gradient
+// Terrain with faked erosion, uses noise with analytical gradient
 float Fbm2g(vec3f(*noiseg)(vec2f), vec2f xy, int n = 8) {
 	float h = 0.0f;
 	float ampl = 1.0f;
@@ -96,20 +103,28 @@ float Effect1(vec3f(*noiseg)(vec2f), vec2f xy, int n = 4) {
 
 // Scenes
 
-// Pure FBM
+// Pure FBM / Debug
 float Scene0(vec2f p) {
-	return 0.5 * SimplexValueNoise2D(p);
-	return Fbm1(ValueNoise2D, p, 8);
+	return SimplexNoise2D(p);
+	//return nGrad(NormalizedSimplexNoise2D, p).y - NormalizedSimplexNoise2Dg(p).y;
+	//return Fbm2(SimplexNoise2D, p, 1) - Fbm2g(SimplexNoise2Dg, p, 1);
+	//return Fbm2g(ValueNoise2Dg, p);
+	//return Fbm2g(NormalizedGradientNoise2Dg, p);
+	return 2.0f*Fbm2g(NormalizedSimplexNoise2Dg, 0.5f*p);
+	//return Fbm1(ValueNoise2D, p, 8);
+	//return Fbm1(ValueNoise2D, p, 3) - Fbm1(ValueNoise2D, p - 0.05f, 3);
 	return Effect1(ValueNoise2Dg, p, 4);
+	return Effect1(NormalizedSimplexNoise2Dg, p, 4);
 }
 
 // Terrain and flat water
 float Scene1(vec2f p) {
-	float v = Fbm2g(ValueNoise2Dg, p, 8);
+	//float v = Fbm2g(ValueNoise2Dg, p, 8);
+	float v = 2.0f*Fbm2g(SimplexNoise2Dg, 0.5f*p, 8);
 	return max(v, 0.0f);
 }
 
-// Terrain and organic water - looks terrible?
+// Terrain and organic water
 float Scene2(vec2f p) {
 	float vt = Fbm2g(ValueNoise2Dg, p);
 	float vw = Fbm3(GradientNoise2D, 10.0f * p) / 20.0f;
@@ -149,7 +164,7 @@ int main(int argc, char* argv[]) {
 	std::vector<ivec3> trigs;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	DiscretizeSquare(Scene0, vec2f(0.0), vec2f(6, 4), ivec2(600, 400), points, trigs);
+	DiscretizeSquare(Scene1, vec2f(0.0), 1.0f*vec2f(6, 4), ivec2(600, 400), points, trigs);
 	auto t1 = std::chrono::high_resolution_clock::now();
 	printf("%f secs elapsed\n", std::chrono::duration<float>(t1 - t0).count());
 
