@@ -14,6 +14,8 @@ import tensorflow_probability as tfp  # why
 from random import random
 from math import *
 
+from polyint import *
+
 
 def mix(a, b, x):
     return a + (b-a) * x
@@ -32,7 +34,7 @@ def vandercorput_base(n, b):
 
 def halton_sequence(dim, N):
     # fast but sometimes cause crash
-    x = tfp.mcmc.sample_halton_sequence(dim, num_results=N)
+    x = tfp.mcmc.sample_halton_sequence(dim, num_results=N, seed=1)
     return np.transpose(x.numpy())
 
     # slow
@@ -49,12 +51,14 @@ def halton_sequence(dim, N):
 
 ss0 = lambda x: 0.5
 ss1 = lambda x: x
-ss3 = lambda x: x*x*(3.0-2.0*x)
-ss5 = lambda x: x*x*x*(10.0+x*(-15.0+x*6.0))
+ss3 = lambda x: x*x*(3-2*x)
+ss5 = lambda x: x*x*x*(10+x*(-15+x*6))
 
 invss3 = lambda x: 0.5 - np.sin(np.arcsin(1.0-2.0*x)/3.0)
 invss5 = np.vectorize(
     lambda x: scipy.optimize.brentq(lambda t: ss5(t)-x, 0.0, 1.0))
+
+ss5_grad = lambda x: ((x*30-60)*x+30)*x*x
 
 
 # random/noise functions
@@ -76,9 +80,9 @@ def rand_ss3(N):
     """
         pdf(x) = 1/(6*invss3(x)*(1-invss3(x))), 0, 1
         mu = 1/2
-        var = 0.121428571 (17/140 ?)
-        sigma = 0.348466026 (sqrt(17/35)/2 ?)
-        mad = 0.3125 (5/16 ?)
+        var = 17/140
+        sigma = sqrt(17/140)
+        mad = 5/16
     """
     x = halton_sequence(1, N)[0]
     return ss3(x)
@@ -88,9 +92,9 @@ def rand_ss5(N):
     """
         pdf(x) = 1/(30*invss5(x)**2*(1+invss5(x)*(invss5(x)-2))), 0, 1
         mu = 1/2
-        var = 0.1417749
-        sigma = 0.3765301
-        mad = 0.34375 (11/32 ?)
+        var = 131/924
+        sigma = sqrt(131/924)
+        mad = 11/32
     """
     x = halton_sequence(1, N)[0]
     return ss5(x)
@@ -115,8 +119,8 @@ def valuenoise1d_1(N):
     """
         pdf(x) = ??
         mu = 0
-        var = 0.222222
-        sigma = 0.471404
+        var = 2/9
+        sigma = sqrt(2)/3
         mad = 0.397715
     """
     halton = halton_sequence(3, N)
@@ -130,8 +134,8 @@ def valuenoise1d_3(N):
     """
         pdf(x) = ??
         mu = 0
-        var = 0.247619
-        sigma = 0.497613
+        var = 26/105
+        sigma = sqrt(26/105)
         mad = 0.422133
     """
     halton = halton_sequence(3, N)
@@ -145,8 +149,8 @@ def valuenoise1d_5(N):
     """
         pdf(x) = ??
         mu = 0
-        var = 0.261183
-        sigma = 0.511061
+        var = 181/693
+        sigma = sqrt(181/693)
         mad = 0.434771
     """
     halton = halton_sequence(3, N)
@@ -156,19 +160,50 @@ def valuenoise1d_5(N):
     return y0 + (y1-y0) * ss5(t)
 
 
+def cosinenoise2d(N):
+    """
+        pdf(x) = ??
+        mu = 0
+        var = 1/4
+        sigma = 1/2
+        mad = 0.4052847 (4/pi**2 ?)
+        max = 1
+    """
+    halton = halton_sequence(2, N)
+    x, y = halton
+    return np.cos(pi*x)*np.cos(pi*y)
+
+
+def cosinenoise2d_grad(N):
+    """
+        pdf(x) = ??
+        mu = 0
+        var = 1/4
+        sigma = 1/2
+        mad = 0.4052847 (4/pi**2 ?)
+        max = 1
+    """
+    halton = halton_sequence(2, N)
+    x, y = halton
+    return np.array([
+        -pi*np.sin(pi*x)*np.cos(pi*y),
+        -pi*np.cos(pi*x)*np.sin(pi*y)
+        ])
+
+
 def valuenoise2d_1(N):
     """
         pdf(x) = ??
         mu = 0
-        var = 0.14815
-        sigma = 0.38490
-        mad = 0.31802
+        var = 4/27
+        sigma = 2/sqrt(27)
+        max = 1
     """
     halton = halton_sequence(6, N)
-    z00 = 2.0*halton[0]-1.0
-    z01 = 2.0*halton[1]-1.0
-    z10 = 2.0*halton[2]-1.0
-    z11 = 2.0*halton[3]-1.0
+    z00 = 2*halton[0]-1
+    z01 = 2*halton[1]-1
+    z10 = 2*halton[2]-1
+    z11 = 2*halton[3]-1
     x = ss1(halton[4])
     y = ss1(halton[5])
     return mix(mix(z00, z01, x), mix(z10, z11, x), y)
@@ -177,34 +212,81 @@ def valuenoise2d_1(N):
 def valuenoise2d_5(N):
     """
         pdf(x) =
-        mu =
-        var =
-        sigma =
-        mad =
+        mu = 0
+        var = 32761/160083
+        sigma = sqrt(32761/160083)
+        max = 1
     """
-    z00 = 2.0*np.random.random(N)-1.0
-    z01 = 2.0*np.random.random(N)-1.0
-    z10 = 2.0*np.random.random(N)-1.0
-    z11 = 2.0*np.random.random(N)-1.0
-    x = ss5(np.random.random(N))
-    y = ss5(np.random.random(N))
+    halton = halton_sequence(6, N)
+    z00 = 2*halton[0]-1
+    z01 = 2*halton[1]-1
+    z10 = 2*halton[2]-1
+    z11 = 2*halton[3]-1
+    x = ss5(halton[4])
+    y = ss5(halton[5])
     return mix(mix(z00, z01, x), mix(z10, z11, x), y)
+
+
+def valuenoise2d_5_grad(N):
+    """
+        mu = [0, 0]
+        var = diag(2.98506)
+    """
+    halton = halton_sequence(6, N)
+    z00 = 2*halton[0]-1
+    z01 = 2*halton[1]-1
+    z10 = 2*halton[2]-1
+    z11 = 2*halton[3]-1
+    intpx = ss5(halton[4])
+    intpy = ss5(halton[5])
+    intpdx = ss5_grad(halton[4])
+    intpdy = ss5_grad(halton[5])
+    return np.array([
+        mix(z10-z00, z11-z01, intpy)*intpdx,
+        mix(z01-z00, z11-z10, intpx)*intpdy
+        ])
+
+
+def gradientnoise2d_5(N):
+    """
+        mu = 0
+        var = 193670/6243237
+        max >= 0.716239
+    """
+    halton = halton_sequence(10, N)
+    g00x, g00y = 2*halton[0]-1, 2*halton[1]-1
+    g01x, g01y = 2*halton[2]-1, 2*halton[3]-1
+    g10x, g10y = 2*halton[4]-1, 2*halton[5]-1
+    g11x, g11y = 2*halton[6]-1, 2*halton[7]-1
+    x, y = halton[8:10]
+    v00 = g00x*(x-0) + g00y*(y-0)
+    v01 = g01x*(x-0) + g01y*(y-1)
+    v10 = g10x*(x-1) + g10y*(y-0)
+    v11 = g11x*(x-1) + g11y*(y-1)
+    xf, yf = ss5(x), ss5(y)
+    return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf)
+
+
+
+# Testing
 
 
 def randtest(func):
 
-    N = 2 << 20
+    print("Monte Carlo")
+
+    N = 2 << 18
     x = func(N)
 
     mu = np.average(x)
     var = np.sum((x-mu)**2)/(N-1)
     sigma = sqrt(var)
     mad = np.average(abs(x-mu))
-    print("Monte Carlo")
     print('mu =', mu)
     print('var =', var)
     print('sigma =', sigma)
     print('mad =', mad)
+    print('max =', max(np.amax(x), -np.amin(x)))
     print()
 
     bins = np.linspace(-2, 2, 100)
@@ -212,6 +294,21 @@ def randtest(func):
     bin_centers = 0.5*(bins[1:]+bins[:-1])
     plt.plot(bin_centers, hist)
     plt.show()
+
+
+def randtest_grad(func):
+
+    print("Monte Carlo")
+
+    N = 2 << 18
+    x = func(N)
+
+    mu = np.average(x, axis=1)
+    var = np.cov(x)
+    print('mu =', mu.tolist())
+    print('var =', var.tolist(), pow(np.linalg.det(var), 1.0/var.shape[0]))
+    print('max =', max(np.amax(x), -np.amin(x)))
+    print()
 
 
 def stattest(pdf, x0, x1):
@@ -230,8 +327,38 @@ def stattest(pdf, x0, x1):
     print()
 
 
+def calc_variance():
+    print("Analytical Integration")
+    
+    NUMCOMP = 10
+    varnames = [f's{i}' for i in range(NUMCOMP)]
+    halton = [Polynomial(s) for s in varnames]
+    diffs = [(s, 0, 1) for s in varnames]
+
+    # copy-paste code here
+    z00 = 2*halton[0]-1
+    z01 = 2*halton[1]-1
+    z10 = 2*halton[2]-1
+    z11 = 2*halton[3]-1
+    intpx = ss5(halton[4])
+    intpy = ss5(halton[5])
+    intpdx = ss5_grad(halton[4])
+    intpdy = ss5_grad(halton[5])
+    f = np.array([
+        mix(z10-z00, z11-z01, intpy)*intpdx,
+        mix(z01-z00, z11-z10, intpx)*intpdy
+        ])
+    # 0.7462655277496465
+
+    fun = f[1]**2
+    ans = integrate(fun, diffs)
+    print(ans)
+
 
 if __name__=="__main__":
 
-    #stattest(lambda x: 1-abs(x), -1, 1)
-    randtest(valuenoise2d_5)
+    #randtest(gradientnoise2d_5)
+    #randtest_grad(valuenoise2d_5_grad)
+
+    calc_variance()
+    
