@@ -208,6 +208,6 @@ def integrate(poly, args):
 if __name__ == "__main__":
 
     p = Polynomial("x+y")*1
-    q = 4+Polynomial("x*y**2")
-    ans = integrate((2*p-q)**7, [('x', 0, 2), ('y', -1, 1)])
+    q = 4+Polynomial("x*y")
+    ans = integrate((2*p-q)**2, [('x', 0, 2), ('y', -1, 1), ('z', -1, 1)])
     print(ans)
