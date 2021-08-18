@@ -1,8 +1,11 @@
 # A file created to be used instead of sympy.integrate
 # Expected to be faster than SymPy
 
+# Calculate the integral of the product of polynomials and trigometric series
+
 from fractions import Fraction
 from copy import deepcopy
+import re
 
 
 def split_str_bracket(s: str, sep: str, clear_bracket: bool):
@@ -44,58 +47,327 @@ def split_str_bracket(s: str, sep: str, clear_bracket: bool):
     return res
 
 
+class PolyPi():
+
+    """ sum(c*pi^p), pows[p]=c """
+
+    def __init__(self, s={}):
+        self.pows = {}
+        if type(s) == PolyPi:
+            self.pows = deepcopy(s.pows)
+        elif type(s) == dict:
+            self.pows = deepcopy(s)
+        elif type(s) == str:
+            s = s.replace('**', '^')
+            s = re.sub(r"pi([^\^])", r"pi^1\g<1>", s+' ').replace(' ', '')
+            s = s.replace('^-', '^_')
+            s = s.replace('-', '+-').replace('++', '+')
+            s = s.replace('_', '-')
+            s = s.split('+')
+            for t in s:
+                if not '*' in t:
+                    if 'pi' in t:
+                        f = Fraction(1)
+                        p = int(t.split('^')[1])
+                    else:
+                        f = Fraction(t)
+                        p = 0
+                else:
+                    f, p = t.split('*')
+                    f = Fraction(f)
+                    p = int(p.split('^')[1])
+                if p not in self.pows:
+                    self.pows[p] = Fraction(0)
+                self.pows[p] += f
+        else:
+            s = Fraction(s)
+            if s != 0:
+                self.pows[0] = s
+
+    def __str__(self):
+        ts = []
+        for p in self.pows:
+            if p == 0:
+                s = str(self.pows[p])
+            elif p == 1:
+                s = str(self.pows[p]) + "*pi"
+            else:
+                s = str(self.pows[p]) + "*pi**" + str(p)
+            ts.append(s)
+        if len(ts) == 0:
+            return '0'
+        if len(ts) == 1:
+            return ts[0]
+        return '(' + '+'.join(ts) + ')'
+
+    def simplify(self):
+        res = PolyPi()
+        for p in self.pows:
+            if self.pows[p] != 0:
+                res.pows[p] = self.pows[p]
+        return res
+
+    def __eq__(a, b):
+        if type(b) in [Constant, TrigMonomial, TrigPolynomial]:
+            return b.__eq__(a)
+        if type(b) not in [int, float, Fraction, PolyPi]:
+            return False
+        a = a.simplify()
+        b = PolyPi(b)
+        return a.pows == b.pows
+
+    def __add__(a, b):
+        c = deepcopy(a)
+        b = PolyPi(b)
+        for p in b.pows:
+            if p not in c.pows:
+                c.pows[p] = Fraction(0)
+            c.pows[p] += b.pows[p]
+        return c
+
+    def __neg__(a):
+        c = deepcopy(a)
+        for p in c.pows:
+            c.pows[p] *= -1
+        return c
+
+    def __sub__(a, b):
+        return a.__add__(b.__neg__())
+
+    def __mul__(a, b):
+        b = PolyPi(b)
+        c = PolyPi()
+        for pa in a.pows:
+            for pb in b.pows:
+                p = pa + pb
+                val = a.pows[pa] * b.pows[pb]
+                if p not in c.pows:
+                    c.pows[p] = val
+                else:
+                    c.pows[p] += val
+        return c
+
+    def __truediv__(a, b):
+        if type(b) == PolyPi:
+            if len(b.pows) != 1:
+                raise ValueError("Dividing by PolyPi is not supported.")
+            for pb in b.pows:
+                m = 1 / b.pows[pb]
+                c = PolyPi()
+                for pa in a.pows:
+                    p = pa - pb
+                    val = m * a.pows[pa]
+                    c.pows[p] = val
+            return c
+        else:
+            b = 1 / Fraction(b)
+            c = deepcopy(a)
+            for p in c.pows:
+                c.pows[p] *= b
+            return c
+
+    def __radd__(p, q):
+        return p.__add__(q)
+
+    def __rmul__(p, q):
+        return p.__mul__(q)
+
+    def n(self):
+        """ Numerical evaluation """
+        PI = 3.1415926535897932384626
+        ans = 0
+        for p in self.pows:
+            v = float(self.pows[p])
+            ans += v * PI**p
+        return ans
+
+    def normalize_0_2pi(self):
+        """ Normalize the pi^1 term to [0,2) """
+        q = deepcopy(self)
+        if 1 in self.pows:
+            q.pows[1] = self.pows[1] % 2
+        return q
+
+    def __abs__(self):
+        if self.n() >= 0.0:
+            return self
+        else:
+            return self.__neg__()
+
+    def is_integer(self):
+        if len(self.pows) == 0:
+            return True
+        if len(self.pows) > 1:
+            return False
+        return (0 in self.pows) and (self.pows[0].denominator == 1)
+
+    def __int__(self):
+        if 0 not in self.pows:
+            return 0
+        return self.pows[0].numerator // self.pows[0].denominator
+
+
+PI_12 = PolyPi('1/2*pi')
+PI_22 = PolyPi('2/2*pi')
+PI_32 = PolyPi('1/2*pi')
+
+
 class Constant():
 
     """
-        Sum of terms in the form a/b*pi^n and a/b*sin(pi*u+v)
+        f + sm * cos(sk)
     """
 
-    def __init__(self, s=1):
-        if type(s) in [int, float, Fraction]:
-            self.f = Fraction(s)
+    def __init__(self, s=0):
+        self.f = PolyPi()
+        self.cm = []
+        self.ck = []
+        if type(s) in [int, float, Fraction, PolyPi]:
+            self.f = PolyPi(s)
+            return
         elif type(s) == Constant:
-            self.f = s.f
-        elif type(s) == str:
-            self.f = Fraction(s)
-        else:
+            self.f = deepcopy(s.f)
+            self.cm = deepcopy(s.cm)
+            self.ck = deepcopy(s.ck)
+            return
+        elif type(s) != str:
             raise TypeError("Unsupported Constant type: " + str(type(s)))
 
+        try:
+            self.f = PolyPi(s)
+        except:
+            raise NotImplementedError("Unsupported Constant string parsing")
+
     def __str__(self):
-        return str(self.f)
+        terms = []
+        if self.f != 0:
+            terms.append(str(self.f))
+        for i in range(len(self.cm)):
+            s = str(self.cm[i]) + "*cos(" + str(self.ck[i]) + ")"
+            if s[0] != '-':
+                s = '+' + s
+            terms.append(s)
+        return (''.join(terms)).lstrip('+')
+
+    def simplify(self):
+        n = min(len(self.cm), len(self.ck))
+        m1 = self.cm[:n]
+        k1 = self.ck[:n]
+        for i in range(n):
+            k1[i] = abs(k1[i]).normalize_0_2pi().simplify()
+            if k1[i] in [PI_12, PI_32]:
+                k1[i] = PolyPi(0)
+                m1[i] = 0
+            if k1[i] == PI_22:
+                k1[i] = PolyPi(0)
+                m1[i] = -1
+        res = Constant(self.f)
+        for i in range(n):
+            if m1[i] == None:
+                continue
+            val = m1[i]
+            for j in range(i+1, n):
+                if k1[i] == k1[j]:
+                    val += m1[j]
+                    m1[j] = None
+            if k1[i] == 0:
+                res.f += val
+            else:
+                res.cm.append(deepcopy(val))
+                res.ck.append(deepcopy(k1[i]))
+        return res
 
     def __eq__(self, s):
-        s = Constant(s)
-        return self.f == s.f
+        s = Constant(s).simplify()
+        t = self.simplify()
+        return t.f == s.f and t.cm == s.cm and t.ck == s.ck
 
     def __add__(a, b):
         c = Constant()
-        c.f = a.f+b.f
-        return c
-
-    def __mul__(a, b):
-        c = Constant()
-        c.f = a.f * b.f
-        return c
+        if type(b) in [TrigMonomial, TrigPolynomial]:
+            return b.__add__(a)
+        b = Constant(b)
+        c.f = a.f + b.f
+        c.cm = a.cm + b.cm
+        c.ck = a.ck + b.ck
+        return c.simplify()
 
     def __neg__(a):
         c = Constant()
         c.f = -a.f
+        c.cm = [-_ for _ in a.cm]
+        c.ck = a.ck[:]
         return c
 
     def __sub__(a, b):
-        c = Constant()
-        c.f = a.f - b.f
-        return c
+        return a.__add__(b.__neg__())
 
-    def __div__(a, b):
+    def __mul__(a, b):
+        if type(b) in [TrigMonomial, TrigPolynomial]:
+            return b.__mul__(a)
+        b = Constant(b)
         c = Constant()
+        # a.f * b.f
+        c.f = a.f * b.f
+        # a.f * b.c
+        for i in range(len(b.ck)):
+            c.cm.append(a.f * b.cm[i])
+            c.ck.append(b.ck[i])
+        # b.f * a.c
+        for i in range(len(a.ck)):
+            c.cm.append(b.f * a.cm[i])
+            c.ck.append(a.ck[i])
+        # a.c * b.c
+        for i in range(len(a.ck)):
+            ka, ma = a.ck[i], a.cm[i]
+            for j in range(len(b.ck)):
+                kb, mb = b.ck[j], b.cm[j]
+                # cos(x)*cos(y) = 1/2*cos(x+y) + 1/2*cos(x-y)
+                c.cm.append(ma*mb * Fraction(1, 2))
+                c.ck.append(ka + kb)
+                c.cm.append(ma*mb * Fraction(1, 2))
+                c.ck.append(ka - kb)
+        return c.simplify()
+
+    def __truediv__(a, b):
+        b = Constant(b)
+        c = Constant()
+        if len(b.cm) != 0 or len(b.ck) != 0:
+            raise ValueError("Unable to divide by trigonometric function")
         c.f = a.f / b.f
+        c.cm = [m/b.f for m in a.cm]
+        c.ck = deepcopy(a.ck)
         return c
 
-    def __pow__(a, b:int):
-        c = Constant
-        c.f = a**b
-        return c
+    def __pow__(self, e: int):
+        if e < 0:
+            if self.cm == [] and self.ck == []:
+                return pow(self.f, e)
+            raise ValueError("Exponent must non-negative")
+        r = Constant(1)
+        x = deepcopy(self)
+        while e:
+            if e & 1:
+                r = r * x
+            e >>= 1
+            if e:
+                x = x * x
+        return r
+
+    def __radd__(p, q):
+        return p.__add__(q)
+
+    def __rmul__(p, q):
+        return p.__mul__(q)
+
+    def is_integer(self):
+        return len(self.ck) == 0 and self.f.is_integer()
+
+    def __int__(self):
+        return self.f.__int__()
+
+
+PI = Constant('pi')
 
 
 class TrigMonomial():
@@ -109,7 +381,7 @@ class TrigMonomial():
         self.coe = Constant(1)
         self.symbols = {}
 
-        if type(s) in [int, float, Fraction]:
+        if type(s) in [int, float, Fraction, PolyPi, Constant]:
             self.coe *= Constant(s)
             return
         elif type(s) == TrigMonomial:
@@ -155,14 +427,16 @@ class TrigMonomial():
                     t = t[4:len(t)-1]
                     if '*' in t:  # sin(3*x), cos(6*x)
                         if t.count('*') != 1:
-                            raise NotImplementedError("Multiple multiplication signs inside trigonometric")
+                            raise NotImplementedError(
+                                "Multiple multiplication signs inside trigonometric")
                         u, v = t.split('*')
                         if u.lstrip('-').isnumeric() and v.isalnum():
                             k, x = int(u), v
                         elif u.isalnum() and v.lstrip('-').isnumeric():
                             k, x = int(v), u
                         else:
-                            raise ValueError("Expect one integer and one variable name")
+                            raise ValueError(
+                                "Expect one integer and one variable name")
                         if not x in self.symbols:
                             self.symbols[x] = [0, [], []]
                         self.symbols[x][index] += [k]*p
@@ -170,7 +444,8 @@ class TrigMonomial():
                         k = -1 if t[0] == '-' else 1
                         t = t.lstrip('-')
                         if t.isnumeric():
-                            raise NotImplementedError("Unsupported number inside trigonometric")
+                            raise NotImplementedError(
+                                "Unsupported number inside trigonometric")
                         if not t.isalnum():
                             raise ValueError(f"Expect a variable name ({t})")
                         if not t in self.symbols:
@@ -193,12 +468,13 @@ class TrigMonomial():
 
     def __mul__(a, b):
         c = TrigMonomial()
+        b = TrigMonomial(b)
         c.coe = a.coe * b.coe
         for s in a.symbols:
-            v = a.symbols[s]
+            v = deepcopy(a.symbols[s])
             for t in b.symbols:
                 if s == t:
-                    w = b.symbols
+                    w = b.symbols[t]
                     v[0] += w[0]
                     v[1] += w[1]
                     v[2] += w[2]
@@ -236,16 +512,19 @@ class TrigMonomial():
             res.symbols = {}
         return res
 
+    def __rmul__(p, q):
+        return p.__mul__(q)
+
 
 class TrigPolynomial():
 
     def __init__(self, s=0):
         self.terms = []
-        
+
         if type(s) == TrigPolynomial:
             self.terms = deepcopy(s.terms)
             return
-        elif type(s) in [int, float, Fraction, TrigMonomial]:
+        elif type(s) in [int, float, Fraction, PolyPi, Constant, TrigMonomial]:
             if s != 0:
                 self.terms.append(TrigMonomial(s))
             return
@@ -255,8 +534,10 @@ class TrigPolynomial():
             raise TypeError("Unsupported TrigMonomial type: " + str(type(s)))
 
         # just lazy
-        s = '('+s+')'
+        s = '(' + s + ')'
+        s = s.replace('**', '^').replace('^-', '^_')
         s = s.replace('-', '+-').replace('(+', '(').replace('++', '+')
+        s = s.replace('_', '-')
         s = split_str_bracket(s[1:len(s)-1], '+', True)
         self.terms = [TrigMonomial(t) for t in s]
 
@@ -274,6 +555,21 @@ class TrigPolynomial():
             t = t.simplify()
             if t.coe != 0:
                 q.terms.append(t)
+        p = q
+        q = TrigPolynomial()
+        i = 0
+        while i < len(p.terms):
+            s = p.terms[i]
+            j = i+1
+            while j < len(p.terms):
+                if s.symbols == p.terms[j].symbols:
+                    s.coe += p.terms[j].coe
+                    p.terms = p.terms[0:j]+p.terms[j+1:len(p.terms)]
+                else:
+                    j += 1
+            if s.coe != 0:
+                q.terms.append(s)
+            i += 1
         return q
 
     def __add__(p, q):
@@ -321,19 +617,87 @@ class TrigPolynomial():
         return TrigPolynomial(q).__mul__(p)
 
 
-def fourier_series(c:list, s:list):
+def sin(x):
+    if type(x) in [int, float, Fraction, PolyPi]:
+        res = Constant()
+        res.cm.append(1)
+        res.ck.append(PI.f/2 - PolyPi(x))
+        return TrigPolynomial(res)
+    elif type(x) == Constant:
+        if len(x.cm) != 0:
+            raise ValueError("Unable to represent sin")
+        return sin(x.f)
+    elif type(x) == TrigMonomial:
+        if len(x.symbols) == 0:
+            return sin(x.coe)
+        elif len(x.symbols) == 1:
+            if not x.coe.is_integer():
+                raise ValueError("Unable to represent sin")
+            res = TrigMonomial()
+            res.coe = Constant(1)
+            for s in x.symbols:
+                if x.symbols[s] != [1, [], []]:
+                    raise ValueError("Unable to represent sin")
+                res.symbols[s] = [0, [int(x.coe)], []]
+            return TrigPolynomial(res)
+        else:
+            raise ValueError("Unable to represent sin")
+    elif type(x) == TrigPolynomial:
+        if len(x.terms) == 0:
+            return 0
+        elif len(x.terms) == 1:
+            return sin(x.terms[0])
+        else:
+            raise NotImplementedError("Unsupported sin of sum of functions")
+
+
+def cos(x):
+    if type(x) in [int, float, Fraction, PolyPi]:
+        res = Constant()
+        res.cm.append(1)
+        res.ck.append(PolyPi(x))
+        return TrigPolynomial(res)
+    elif type(x) == Constant:
+        if len(x.cm) != 0:
+            raise ValueError("Unable to represent cos")
+        return cos(x.f)
+    elif type(x) == TrigMonomial:
+        if len(x.symbols) == 0:
+            return cos(x.coe)
+        elif len(x.symbols) == 1:
+            if not x.coe.is_integer():
+                raise ValueError("Unable to represent cos")
+            res = TrigMonomial()
+            res.coe = Constant(1)
+            for s in x.symbols:
+                if x.symbols[s] != [1, [], []]:
+                    raise ValueError("Unable to represent cos")
+                res.symbols[s] = [0, [], [int(x.coe)]]
+            return TrigPolynomial(res)
+        else:
+            raise ValueError("Unable to represent cos")
+    elif type(x) == TrigPolynomial:
+        if len(x.terms) == 0:
+            return 0
+        elif len(x.terms) == 1:
+            return cos(x.terms[0])
+        else:
+            raise NotImplementedError("Unsupported cos of sum of functions")
+
+
+def fourier_series(c: list, s: list):
     """
         Not really.
         Rewrite: prod(cos(c*x))*prod(sin(s*x))
         To: sum(rc*cos(i*x))+sum(rs*sin(i*x))
-        Return ac and as.
+        Return rc and rs.
         I believe this function has an O(N^2) time complexity.
     """
     for _ in c+s:
         if not (type(_) == int and _ > 0):
             raise ValueError("Harmonic must be positive integer")
 
-    is_odd = len(s)%2 == 1  # odd or even function
+    is_odd = len(s) % 2 == 1  # odd or even function
     deg = sum(c)+sum(s)
 
     # the weights of every cos "harmonic"
@@ -378,16 +742,16 @@ def fourier_series(c:list, s:list):
         return r, []
 
 
-def integrate_polycos(p:int, k:int):
+def integrate_polycos(p: int, k: int):
     """
         \int x^p \cos(kx) dx
         return two polynomial lists (pc, ps); pc(x)*cos(k*x)+ps(x)*sin(k*x)
     """
-    if p == 0:
-        return ([0], [Fraction(1, k)])
     if k == 0:
         pc = [Fraction(0)]*(p+1) + [Fraction(1, p+1)]
         return (pc, [0])
+    if p == 0:
+        return ([0], [Fraction(1, k)])
 
     # \int x^p\cos(kx)dx = \frac{1}{k} x^p\sin(kx) - \frac{p}{k} \int x^{p-1}\sin(kx)dx
     pc, ps = [Fraction(0)]*(p+1), [Fraction(0)]*(p+1)
@@ -397,17 +761,17 @@ def integrate_polycos(p:int, k:int):
         pc[i] -= Fraction(p, k) * rc[i]
         ps[i] -= Fraction(p, k) * rs[i]
     return (pc, ps)
-        
 
-def integrate_polysin(p:int, k:int):
+
+def integrate_polysin(p: int, k: int):
     """
         \int x^p \sin(kx) dx
         return two polynomial lists (pc, ps); pc(x)*cos(k*x)+ps(x)*sin(k*x)
     """
-    if p == 0:
-        return ([Fraction(-1, k)], [0])
     if k == 0:
         return ([0], [0])
+    if p == 0:
+        return ([Fraction(-1, k)], [0])
 
     # \int x^p\sin(kx)dx = -\frac{1}{k} x^p\cos(kx) + \frac{p}{k} \int x^{p-1}\cos(kx)dx
     pc, ps = [Fraction(0)]*(p+1), [Fraction(0)]*(p+1)
@@ -419,7 +783,7 @@ def integrate_polysin(p:int, k:int):
     return (pc, ps)
 
 
-def integrate_monomial(varname:str, symbol:list):
+def integrate_monomial(varname: str, symbol: list):
     """
         Receive something like ('x', [3, [1], [2]]) representing x**3*sin(x)*cos(2*x)
         Return a TrigPolynomial, its indefinite integral
@@ -427,7 +791,7 @@ def integrate_monomial(varname:str, symbol:list):
     p = symbol[0]
     ans = TrigPolynomial()
     if symbol[1] == [] and symbol[2] == []:
-        a = Monomial()
+        a = TrigMonomial()
         a.coe = Constant(Fraction(1, p+1))
         a.symbols[varname] = [p+1, [], []]
         ans.terms.append(deepcopy(a))
@@ -436,25 +800,29 @@ def integrate_monomial(varname:str, symbol:list):
     fc, fs = fourier_series(symbol[2], symbol[1])
     if len(fc) > 0:
         f = fc
-        integrate = integrate_polycos
+        integrate_polytrig = integrate_polycos
     if len(fs) > 0:
         f = fs
-        integrate = integrate_polysin
+        integrate_polytrig = integrate_polysin
     for k in range(len(f)):
         if f[k] == 0:
             continue
         a = TrigMonomial()
-        rc, rs = integrate(p, k)
+        rc, rs = integrate_polytrig(p, k)
         for i in range(len(rc)):
+            if rc[i] == 0:
+                continue
             a.coe = Constant(rc[i]*f[k])
             a.symbols[varname] = [i, [], [k]]
             ans.terms.append(deepcopy(a))
         for i in range(len(rs)):
+            if rs[i] == 0:
+                continue
             a.coe = Constant(rs[i]*f[k])
             a.symbols[varname] = [i, [k], []]
             ans.terms.append(deepcopy(a))
     return ans.simplify()
-    
+
 
 def integrate(poly, args):
     if type(poly) == TrigMonomial:
@@ -472,6 +840,8 @@ def integrate(poly, args):
                 m.symbols[a] = [1, [], []]
                 ans.terms.append(m)
         elif type(a) == tuple:
+            a, x0, x1 = a
+            x0, x1 = Constant(x0), Constant(x1)
             raise NotImplementedError()
         else:
             raise TypeError('Integral argument must be variable name or tuple')
@@ -485,15 +855,22 @@ def integrate(poly, args):
         return ans
     else:
         return integrate(TrigPolynomial(poly), args)
-    
 
 
 # testing
 
 if __name__ == "__main__":
 
-    s = "x^2*sin(x)*cos(2*x)+cos(3*x)*sin(-x)^2+sin(7*x)*x^5"
-    p = TrigPolynomial(s)
+    from time import perf_counter
+    t0 = perf_counter()
+
+    x, y = TrigPolynomial('x'), TrigPolynomial('y')
+    p = sin(PI/2)+sin(PI)+2*cos(PI)*x*cos(x)+x**2*y
     print(p)
-    i = integrate(s, 'x')
+    p = p.simplify()
+    print(p)
+    i = integrate(p, 'x')
     print(i)
+
+    t1 = perf_counter()
+    print("Time elapsed:", t1-t0, "secs")
