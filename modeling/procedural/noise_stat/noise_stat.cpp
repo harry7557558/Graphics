@@ -53,8 +53,8 @@ void noiseStat2Dg(vec3f (*noiseg)(vec2f)) {
 	// Name - Variance
 	// CosineNoise2Dg - (2.387, 2.414, 0.249) (pi^2/4, pi^2/4, 1/4)
 	// ValueNoise2Dg - (0.740, 0.750, 0.206) (3620/4851, 3620/4851, 32761/160083)
-	// GradientNoise2Dg - (0.262, 0.260, 0.030)
-	// NormalizedGradientNoise2Dg - (0.196, 0.196, 0.023)
+	// GradientNoise2Dg - (0.262, 0.260, 0.030) (77320/297297, 77320/297297, 193670/6243237)
+	// NormalizedGradientNoise2Dg - (0.196, 0.196, 0.023) (19330/99099, 19330/99099, 96835/4162158)
 	// WaveNoise2Dg - (1.495, 1.511, 0.303)
 	// NormalizedWaveNoise2Dg - (1.404, 1.397, 0.305)
 	// SimplexNoise2Dg - (0.461, 0.466, 0.020)

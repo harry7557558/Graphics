@@ -1,5 +1,4 @@
 # Mathematically analyze the distribution of noise outputs
-# Not a successful experiment :(
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,14 +6,19 @@ import scipy.optimize
 import scipy.integrate
 
 __import__('os').environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
-tf.get_logger().setLevel('INFO')
+__import__('warnings').filterwarnings("ignore")
 import tensorflow_probability as tfp  # why
 
 from random import random
 from math import *
 
-from polyint import *
+# Note that polytrigint for pure polynomial functions
+# is 30 times slower than polyint
+import polyint
+import polytrigint
+import sympy
+
+from time import perf_counter
 
 
 def mix(a, b, x):
@@ -59,6 +63,22 @@ invss5 = np.vectorize(
     lambda x: scipy.optimize.brentq(lambda t: ss5(t)-x, 0.0, 1.0))
 
 ss5_grad = lambda x: ((x*30-60)*x+30)*x*x
+
+
+# reparameterization functions
+
+
+def uniform_unit_circle(u, v):
+    # for u,v in [0,1), return (x,y)
+    u = np.sqrt(u)
+    v = 2*pi*v
+    return (u*np.cos(v), u*np.sin(v))
+
+
+def uniform_unit_circle_int(u, v):
+    # for analytical integration, return (x, y, ∂(x,y)/∂(u,v))
+    # v in [0, 2*PI)
+    return (u*polytrigint.cos(v), u*polytrigint.sin(v), u)
 
 
 # random/noise functions
@@ -230,7 +250,8 @@ def valuenoise2d_5(N):
 def valuenoise2d_5_grad(N):
     """
         mu = [0, 0]
-        var = diag(2.98506)
+        cov = diag(3620/4851)
+        max >= 3.7311058
     """
     halton = halton_sequence(6, N)
     z00 = 2*halton[0]-1
@@ -267,6 +288,76 @@ def gradientnoise2d_5(N):
     return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf)
 
 
+def gradientnoise2d_5_grad(N):
+    """
+        mu = [0, 0]
+        var = diag(77320/297297)
+        max >= 2.2122107
+    """
+    halton = halton_sequence(10, N)
+    g00x, g00y = 2*halton[0]-1, 2*halton[1]-1
+    g01x, g01y = 2*halton[2]-1, 2*halton[3]-1
+    g10x, g10y = 2*halton[4]-1, 2*halton[5]-1
+    g11x, g11y = 2*halton[6]-1, 2*halton[7]-1
+    x, y = halton[8:10]
+    v00 = g00x*(x-0) + g00y*(y-0)
+    v01 = g01x*(x-0) + g01y*(y-1)
+    v10 = g10x*(x-1) + g10y*(y-0)
+    v11 = g11x*(x-1) + g11y*(y-1)
+    intpx, intpy = ss5(x), ss5(y)
+    intpdx, intpdy = ss5_grad(x), ss5_grad(y)
+    dfdx = g00x+(g10x-g00x)*intpx+(g01x-g00x)*intpy+(g00x+g11x-g01x-g10x)*intpx*intpy \
+           + ((v10-v00)+(v00+v11-v01-v10)*intpy)*intpdx
+    dfdy = g00y+(g10y-g00y)*intpx+(g01y-g00y)*intpy+(g00y+g11y-g01y-g10y)*intpx*intpy \
+           + ((v01-v00)+(v00+v11-v01-v10)*intpx)*intpdy
+    return np.array([dfdx, dfdy])
+
+
+def normalizedgradientnoise2d_5(N):
+    """
+        mu = 0
+        var = 96835/4162158
+        max >= 0.5958338
+    """
+    halton = halton_sequence(10, N)
+    g00x, g00y = uniform_unit_circle(halton[0], halton[1])
+    g01x, g01y = uniform_unit_circle(halton[2], halton[3])
+    g10x, g10y = uniform_unit_circle(halton[4], halton[5])
+    g11x, g11y = uniform_unit_circle(halton[6], halton[7])
+    x, y = halton[8:10]
+    v00 = g00x*(x-0) + g00y*(y-0)
+    v01 = g01x*(x-0) + g01y*(y-1)
+    v10 = g10x*(x-1) + g10y*(y-0)
+    v11 = g11x*(x-1) + g11y*(y-1)
+    xf, yf = ss5(x), ss5(y)
+    return v00
+    return mix(mix(v00, v01, yf), mix(v10, v11, yf), xf)
+
+
+def normalizedgradientnoise2d_5_grad(N):
+    """
+        mu = [0, 0]
+        var = diag(19330/99099)
+        max >= 1.7525575
+    """
+    halton = halton_sequence(10, N)
+    g00x, g00y = uniform_unit_circle(halton[0], halton[1])
+    g01x, g01y = uniform_unit_circle(halton[2], halton[3])
+    g10x, g10y = uniform_unit_circle(halton[4], halton[5])
+    g11x, g11y = uniform_unit_circle(halton[6], halton[7])
+    x, y = halton[8:10]
+    v00 = g00x*(x-0) + g00y*(y-0)
+    v01 = g01x*(x-0) + g01y*(y-1)
+    v10 = g10x*(x-1) + g10y*(y-0)
+    v11 = g11x*(x-1) + g11y*(y-1)
+    intpx, intpy = ss5(x), ss5(y)
+    intpdx, intpdy = ss5_grad(x), ss5_grad(y)
+    dfdx = g00x+(g10x-g00x)*intpx+(g01x-g00x)*intpy+(g00x+g11x-g01x-g10x)*intpx*intpy \
+           + ((v10-v00)+(v00+v11-v01-v10)*intpy)*intpdx
+    dfdy = g00y+(g10y-g00y)*intpx+(g01y-g00y)*intpy+(g00y+g11y-g01y-g10y)*intpx*intpy \
+           + ((v01-v00)+(v00+v11-v01-v10)*intpx)*intpdy
+    return np.array([dfdx, dfdy])
+
 
 # Testing
 
@@ -300,7 +391,7 @@ def randtest_grad(func):
 
     print("Monte Carlo")
 
-    N = 2 << 18
+    N = 2 << 19
     x = func(N)
 
     mu = np.average(x, axis=1)
@@ -328,37 +419,55 @@ def stattest(pdf, x0, x1):
 
 
 def calc_variance():
-    print("Analytical Integration")
     
+    def uniform_unit_circle(u, v):
+        u = sympy.sqrt(u)
+        v = 2*sympy.pi*v
+        return (u*sympy.cos(v), u*sympy.sin(v))
+
+    print("Analytical Integration")
+
     NUMCOMP = 10
     varnames = [f's{i}' for i in range(NUMCOMP)]
-    halton = [Polynomial(s) for s in varnames]
-    diffs = [(s, 0, 1) for s in varnames]
+    #halton = [polyint.Polynomial(s) for s in varnames]
+    halton = [sympy.Symbol(s) for s in varnames]
+    diffs = [(varnames[i], 0, 1) for i in range(NUMCOMP)]
 
     # copy-paste code here
-    z00 = 2*halton[0]-1
-    z01 = 2*halton[1]-1
-    z10 = 2*halton[2]-1
-    z11 = 2*halton[3]-1
-    intpx = ss5(halton[4])
-    intpy = ss5(halton[5])
-    intpdx = ss5_grad(halton[4])
-    intpdy = ss5_grad(halton[5])
-    f = np.array([
-        mix(z10-z00, z11-z01, intpy)*intpdx,
-        mix(z01-z00, z11-z10, intpx)*intpdy
-        ])
-    # 0.7462655277496465
+    g00x, g00y = uniform_unit_circle(halton[0], halton[1])
+    g01x, g01y = uniform_unit_circle(halton[2], halton[3])
+    g10x, g10y = uniform_unit_circle(halton[4], halton[5])
+    g11x, g11y = uniform_unit_circle(halton[6], halton[7])
+    x, y = halton[8:10]
+    v00 = g00x*(x-0) + g00y*(y-0)
+    v01 = g01x*(x-0) + g01y*(y-1)
+    v10 = g10x*(x-1) + g10y*(y-0)
+    v11 = g11x*(x-1) + g11y*(y-1)
+    intpx, intpy = ss5(x), ss5(y)
+    intpdx, intpdy = ss5_grad(x), ss5_grad(y)
+    dfdx = g00x+(g10x-g00x)*intpx+(g01x-g00x)*intpy+(g00x+g11x-g01x-g10x)*intpx*intpy \
+           + ((v10-v00)+(v00+v11-v01-v10)*intpy)*intpdx
+    dfdy = g00y+(g10y-g00y)*intpx+(g01y-g00y)*intpy+(g00y+g11y-g01y-g10y)*intpx*intpy \
+           + ((v01-v00)+(v00+v11-v01-v10)*intpx)*intpdy
+    f = np.array([dfdx, dfdy])
 
-    fun = f[1]**2
-    ans = integrate(fun, diffs)
+    fun = f[0]**2
+    print(fun)
+    #ans = polyint.integrate(fun, diffs)
+    ans = sympy.integrate(fun, *diffs)
     print(ans)
+    print(float(ans))
 
 
 if __name__=="__main__":
 
-    #randtest(gradientnoise2d_5)
-    #randtest_grad(valuenoise2d_5_grad)
+    t0 = perf_counter()
+
+    #randtest(normalizedgradientnoise2d_5)
+    #randtest_grad(normalizedgradientnoise2d_5_grad)
 
     calc_variance()
+
+    t1 = perf_counter()
+    print("Time elapsed:", t1-t0, "secs")
     
