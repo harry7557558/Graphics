@@ -59,13 +59,14 @@ void noiseStat2Dg(vec3f (*noiseg)(vec2f)) {
 	// NormalizedWaveNoise2Dg - (1.404, 1.397, 0.305)
 	// SimplexNoise2Dg - (0.461, 0.466, 0.020)
 	// NormalizedSimplexNoise2Dg - (0.348, 0.346, 0.015)
+	// SimplexValueNoise2Dg - (0.979, 1.006, 0.170)
 }
 
 
 
 int main(int argc, char* argv[]) {
 
-	noiseStat2Dg(NormalizedSimplexNoise2Dg);
+	noiseStat2Dg(SimplexValueNoise2Dg);
 
 	return 0;
 }
