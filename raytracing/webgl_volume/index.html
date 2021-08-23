@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Volume Rendering Test</title>
+    <meta name="description" content="Explore volume rendering in WebGL." />
+
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js"></script>
+
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="fps">fps</div>
+
+    <div id="control">
+        <p>
+            <span id="volume-title"><a href=''>&nbsp;</a></span><br />
+            <select id="volume-select"></select>
+        </p>
+        <p>
+            Rendering:&nbsp;<select id="visual-select">
+                <option>Thin slice</option>
+                <option>MIP</option>
+                <option>X-ray</option>
+                <option selected>Isosurface</option>
+            </select>
+        </p>
+        <p>
+            <span title="front/back, brightness, completeness">uIso:</span>&nbsp;<span id="iso-val"></span><br />
+            <input type="range" min="0.001" max="0.999" value="0.5" step="0.001" id="iso-slider" />
+        </p>
+    </div>
+
+</body>
+
+</html>

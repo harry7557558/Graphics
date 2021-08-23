@@ -1,0 +1,41 @@
+#canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+#fps {
+    position: fixed;
+    left: 10px;
+    top: 10px;
+    font-family: Consolas;
+    font-size: 20px;
+    color: white;
+}
+
+#control {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 240px;
+    height: 180px;
+    background-color: rgba(14, 14, 101, 0.5);
+    padding: 10px 20px;
+    color: white;
+    font-size: 16px;
+    font-family: 'Times New Roman';
+}
+
+#iso-slider {
+    width: 220px;
+}
+
+#volume-title, #volume-title a {
+    display: inline-block;
+    margin: 0px 0px 5px 0px;
+    font-size: 20px;
+    color: white;
+    text-decoration: underline;
+}
