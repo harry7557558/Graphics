@@ -18,7 +18,7 @@
 
     <div id="control">
         <p>
-            <span id="volume-title"><a href=''>&nbsp;</a></span><br />
+            <span id="volume-title"><a href=''>&nbsp;</a></span>&nbsp;&nbsp;<span id="volume-dims"></span><br />
             <select id="volume-select"></select>
         </p>
         <p>
@@ -27,6 +27,19 @@
                 <option>MIP</option>
                 <option>X-ray</option>
                 <option selected>Isosurface</option>
+                <option>Volumetric X-ray</option>
+                <option>Volumetric Integral</option>
+                <option>Volumetric Shadow</option>
+            </select>
+        </p>
+        <p>
+            Colormap:&nbsp;<select id="colormap-select">
+                <option value="vec3" selected>Grayscale</option>
+                <option value="cThermometer">Thermometer</option>
+                <option value="cGreenPinkTones">GreenPinkTones</option>
+                <option value="cBlueGreenYellow">BlueGreenYellow</option>
+                <option value="cRainbow">Rainbow</option>
+                <option value="cTemperatureMap">TemperatureMap</option>
             </select>
         </p>
         <p>

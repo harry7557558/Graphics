@@ -64,9 +64,10 @@ var viewport = {
     iRz: 0.9,
     iRx: 0.2,
     iRy: 0.0,
-    iSc: 1.2,
+    iSc: 1.3,
     uIso: 0.5,
     renderMode: -1,
+    colormap: "",
     renderNeeded: true
 };
 
@@ -96,6 +97,7 @@ function loadShaderSource(path) {
         }
     }
     source = source.replace("{%uVisual%}", String(viewport.renderMode));
+    source = source.replace("{%uColormap%}", viewport.colormap);
     return source;
 }
 
@@ -134,7 +136,8 @@ function loadTexture3D(gl, volume) {
         texture.bbox = [ratio[0] * dims[0] / boxL, ratio[1] * dims[1] / boxL, ratio[2] * dims[2] / boxL];
 
         document.getElementById("volume-title").innerHTML =
-            "<a href='" + volume.link + "' target='_blank'>" + volume.name + "</a>";
+            "<a href='" + volume.link + "' " + (volume.link == "#" ? "" : "target='_blank'") + ">" + volume.name + "</a>";
+        document.getElementById("volume-dims").innerHTML = dims.join('×');
 
         viewport.renderNeeded = true;
     };
@@ -293,6 +296,7 @@ function main() {
         }
         // visual/rendering
         viewport.renderMode = document.getElementById("visual-select").selectedIndex;
+        viewport.colormap = document.getElementById("colormap-select").value;
         // uIso
         var iso = Number(document.getElementById("iso-slider").value);
         document.getElementById("iso-val").innerHTML = iso.toFixed(3);
@@ -303,6 +307,10 @@ function main() {
     document.getElementById("iso-slider").addEventListener("input", updateParameters);
     document.getElementById("volume-select").addEventListener("input", updateParameters);
     document.getElementById("visual-select").addEventListener("input", function (e) {
+        updateParameters(e);
+        programInfo = initWebGL(gl);
+    });
+    document.getElementById("colormap-select").addEventListener("input", function (e) {
         updateParameters(e);
         programInfo = initWebGL(gl);
     });

@@ -26,9 +26,11 @@ mat3 calcCamera(float rz, float rx, float ry) {
 void main(void) {
     vec2 sc = iResolution.xy / (iSc*min(iResolution.x, iResolution.y));
 
+    // camera rotation
     mat3 R = calcCamera(iRz, iRx, iRy);
     vec3 u = R[0], v = R[1], w = R[2];
 
+    // calculate the minimum and maximum depth
     float mind = 8., maxd = -8.;
     for (float z=-1.0; z<=1.001; z+=2.0)
     for (float y=-1.0; y<=1.001; y+=2.0)
@@ -38,7 +40,12 @@ void main(void) {
         mind = min(mind, depth), maxd = max(maxd, depth);
     }
 
-    vec2 pos = vertexPosition.xy * sc;
+    // center of graph, minus control pad
+    vec2 pad = vec2(280, 220) / iResolution.xy;
+    vec2 ctr = vec2(1.0-pad.x*pad.x*pad.y, 1.0-pad.x*pad.y*pad.y) * 0.5/(1.0-pad.x*pad.y);
+    vec2 pos = (vertexPosition.xy + vec2(0.3,0.1)*ctr) * sc;
+
+    // set ray origin and direction
     vRo = u * pos.x + v * pos.y + mix(mind, maxd, uIso)*w;
     vRd = w;
 
