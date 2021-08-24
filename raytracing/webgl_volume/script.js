@@ -102,19 +102,17 @@ function loadShaderSource(path) {
 }
 
 function loadTexture3D(gl, volume) {
+    document.getElementById("volume-select").disabled = true;
+    document.getElementById("volume-title").innerHTML = "&nbsp;";
+    document.getElementById("volume-dims").innerHTML = "Loading...";
+
     const tex = gl.createTexture();
 
     var url = volume.path;
     var dims = volume.dims;
     var ratio = volume.ratio;
 
-    var req = new XMLHttpRequest();
-    req.open("GET", url, true);
-    req.responseType = "arraybuffer";
-
-    req.onload = function () {
-        var volumeBuffer = new Uint8Array(req.response);
-
+    function onload(volumeBuffer) {
         gl.bindTexture(gl.TEXTURE_3D, tex);
         gl.texStorage3D(gl.TEXTURE_3D, 1, gl.R8, dims[0], dims[1], dims[2]);
 
@@ -138,12 +136,46 @@ function loadTexture3D(gl, volume) {
         document.getElementById("volume-title").innerHTML =
             "<a href='" + volume.link + "' " + (volume.link == "#" ? "" : "target='_blank'") + ">" + volume.name + "</a>";
         document.getElementById("volume-dims").innerHTML = dims.join('×');
+        document.getElementById("volume-select").disabled = false;
 
         viewport.renderNeeded = true;
+    }
+
+    function onerror() {
+        document.getElementById("volume-dims").innerHTML
+            = "<span style='color:red;'>Failed to load volume.</span>";
+        document.getElementById("volume-select").disabled = false;
+    }
+
+    if (requestCache[url] != undefined) {
+        onload(requestCache[url]);
+        return;
+    }
+
+    var req = new XMLHttpRequest();
+    req.open("GET", url, true);
+    req.responseType = "arraybuffer";
+
+    req.onprogress = function (e) {
+        var tot_bytes = dims[0] * dims[1] * dims[2];
+        var loaded_bytes = e.loaded;
+        var percent = 100.0 * loaded_bytes / tot_bytes;
+        document.getElementById("volume-dims").innerHTML =
+            "Loading... (" + percent.toFixed(1) + "%)";
+    };
+    req.onload = function (e) {
+        if (req.status == 200) {
+            var volumeBuffer = new Uint8Array(req.response);
+            requestCache[url] = volumeBuffer;
+            onload(volumeBuffer);
+        }
+        else {
+            onerror();
+        }
     };
     req.onerror = function (e) {
-        alert("Failed to load volume texture.");
-    }
+        onerror();
+    };
     req.send();
 }
 

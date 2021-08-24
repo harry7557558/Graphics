@@ -41,9 +41,11 @@ void main(void) {
     }
 
     // center of graph, minus control pad
-    vec2 pad = vec2(280, 220) / iResolution.xy;
-    vec2 ctr = vec2(1.0-pad.x*pad.x*pad.y, 1.0-pad.x*pad.y*pad.y) * 0.5/(1.0-pad.x*pad.y);
-    vec2 pos = (vertexPosition.xy + vec2(0.3,0.1)*ctr) * sc;
+    vec2 pad = 2.0 * vec2(290, 230) / iResolution.xy;
+    float area = pad.x*pad.y;
+    vec2 com = vec2(1.0)-0.5*pad;
+    vec2 ctr = -com*area / (4.0-area);
+    vec2 pos = (vertexPosition.xy - clamp(ctr, vec2(-0.2), vec2(0.2))) * sc;
 
     // set ray origin and direction
     vRo = u * pos.x + v * pos.y + mix(mind, maxd, uIso)*w;
