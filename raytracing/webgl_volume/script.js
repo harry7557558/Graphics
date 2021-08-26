@@ -164,6 +164,8 @@ var texture = {
 };
 
 
+// ============================ WEBGL ==============================
+
 var requestCache = {};
 
 function loadShaderSource(path) {
@@ -294,9 +296,9 @@ function initWebGL(gl) {
             throw new Error(gl.getProgramInfoLog(shaderProgram));
         return shaderProgram;
     }
-    console.time("compile shader");
+    //console.time("compile shader");
     var shaderProgram = initShaderProgram(gl, vsSource, fsSource);
-    console.timeEnd("compile shader");
+    //console.timeEnd("compile shader");
 
     // position buffer
     var positionBuffer = gl.createBuffer();
@@ -385,6 +387,92 @@ function drawScene(gl, programInfo) {
 
 // ============================ MAIN ==============================
 
+function getParametersFromHash() {
+    try {
+        // load hash
+        var hash = document.location.hash.replace('#', '');
+        if (hash == "") return;
+        hash = hash.split('&').reduce(function (res, s) {
+            s = s.split('=');
+            res[s[0]] = decodeURIComponent(s[1]);
+            return res;
+        }, {});
+        // volume
+        if (hash['volume'] != undefined) {
+            const selector = document.getElementById("volume-select");
+            var volume_id = selector.selectedIndex;
+            selector.value = hash['volume'];
+            if (selector.selectedIndex == -1) selector.selectedIndex = volume_id;
+        }
+        // render mode / visual
+        if (hash['visual'] != undefined) {
+            const selector = document.getElementById("visual-select");
+            var visual_id = selector.selectedIndex;
+            selector.value = hash['visual'];
+            if (selector.selectedIndex == -1) selector.selectedIndex = visual_id;
+        }
+        // colormap
+        if (hash['colormap'] != undefined) {
+            const selector = document.getElementById("colormap-select");
+            var colormap_id = selector.selectedIndex;
+            selector.value = hash['colormap'];
+            if (selector.selectedIndex == -1) selector.selectedIndex = colormap_id;
+        }
+        // uIso
+        if (hash['iso'] != undefined) {
+            const slider = document.getElementById("iso-slider");
+            slider.value = Number(hash['iso']);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function copyLink() {
+    var link = window.location.href + '#';
+    link = link.substring(0, link.search('#', 0) + 1);
+    var volume = document.getElementById("volume-select").value;
+    var visual = document.getElementById("visual-select").value;
+    var colormap = document.getElementById("colormap-select").value;
+    var iso = Number(document.getElementById("iso-slider").value).toFixed(3);
+    link += "volume=" + volume + "&visual=" + visual + "&colormap=" + colormap + "&iso=" + iso;
+    console.log(link);
+
+    // https://stackoverflow.com/a/30810322
+    function fallbackCopyTextToClipboard(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            var successful = document.execCommand('copy');
+            var msg = successful ? 'successful' : 'unsuccessful';
+            alert('Link copy was ' + msg);
+        } catch (err) {
+            alert('Error copying link: ', err);
+        }
+        document.body.removeChild(textArea);
+    }
+    function copyTextToClipboard(text) {
+        if (!navigator.clipboard) {
+            fallbackCopyTextToClipboard(text);
+            return;
+        }
+        navigator.clipboard.writeText(text).then(function () {
+            alert('Link copied to clipboard');
+        }, function (err) {
+            alert('Error copying link: ', err);
+        });
+    }
+
+    copyTextToClipboard(link);
+}
+
+
 function main() {
     const canvas = document.getElementById("canvas");
     const gl = canvas.getContext("webgl2");
@@ -397,10 +485,12 @@ function main() {
             var v = VOLUMES[i];
             var mb = v.dims[0] * v.dims[1] * v.dims[2] / 1048576;
             var title = v.name + " (" + mb.toFixed(2) + " MB)";
-            select.innerHTML += "<option value='" + v.name + "' "
+            var value = v.name.toLowerCase().replace(/\s/g, '-');
+            select.innerHTML += "<option value='" + value + "' "
                 + (i == selected ? "selected" : "") + ">" + title + "</option>";
         }
     }
+    getParametersFromHash();
 
     // input
     var updateParameters = function (e) {
@@ -427,6 +517,11 @@ function main() {
         programInfo = initWebGL(gl);
     });
     document.getElementById("colormap-select").addEventListener("input", function (e) {
+        updateParameters(e);
+        programInfo = initWebGL(gl);
+    });
+    window.addEventListener("hashchange", function (e) {
+        getParametersFromHash();
         updateParameters(e);
         programInfo = initWebGL(gl);
     });

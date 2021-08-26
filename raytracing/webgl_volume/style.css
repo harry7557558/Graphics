@@ -22,7 +22,7 @@
     width: 240px;
     height: 200px;
     background-color: rgba(14, 14, 101, 0.5);
-    padding: 10px 20px;
+    padding: 15px 20px;
     color: white;
     font-size: 16px;
     font-family: 'Times New Roman';
@@ -42,4 +42,16 @@ p {
     font-size: 20px;
     color: white;
     text-decoration: underline;
+}
+
+#links {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+}
+
+#links a {
+    color: rgba(173, 216, 230, 0.7);
+    text-decoration: underline;
+    font-size: 14px;
 }

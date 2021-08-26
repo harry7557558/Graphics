@@ -172,6 +172,19 @@ vec3 vIsosurf(in vec3 ro, in vec3 rd, float t0, float t1) {
     return vec3(col);
 }
 
+// not really volumetric
+vec3 vVolumetricMip(in vec3 ro, in vec3 rd, float t0, float t1) {
+    float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
+    float step_size = (t1-t0) / step_count;
+    float maxval = 0.0;
+    for (float t=t0; t<t1; t+=step_size) {
+        float v = sampleTexture(ro+rd*t);
+        maxval = max(maxval, v);
+    }
+    float v = pow(maxval, 0.5*(1.0-uIso)/uIso);
+    return v * uColormap(maxval);
+}
+
 // similar to x-ray, integrate color instead of intensity
 vec3 vVolumetricXray(in vec3 ro, in vec3 rd, float t0, float t1) {
     float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
@@ -238,6 +251,7 @@ vec3 vVolumetricGradient(in vec3 ro, in vec3 rd, float t0, float t1) {
     return totcol;
 }
 
+// 2 layers of high opacity
 vec3 vPeriodic2(in vec3 ro, in vec3 rd, float t0, float t1) {
     float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
     float dt = (t1-t0) / step_count;
@@ -253,6 +267,7 @@ vec3 vPeriodic2(in vec3 ro, in vec3 rd, float t0, float t1) {
     return totcol;
 }
 
+// 3 layers of high opacity
 vec3 vPeriodic3(in vec3 ro, in vec3 rd, float t0, float t1) {
     float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
     float dt = (t1-t0) / step_count;
@@ -317,13 +332,14 @@ void main(void) {
     if (uVisual == 1) col = vMip(ro, rd, t0, t1);
     if (uVisual == 2) col = vXray(ro, rd, t0, t1);
     if (uVisual == 3) col = vIsosurf(ro, rd, t0, t1);
-    if (uVisual == 4) col = vVolumetricXray(ro, rd, t0, t1);
-    if (uVisual == 5) col = vVolumetricIntegral(ro, rd, t0, t1);
-    if (uVisual == 6) col = vVolumetricShadow(ro, rd, t0, t1);
-    if (uVisual == 7) col = vVolumetricGradient(ro, rd, t0, t1);
-    if (uVisual == 8) col = vPeriodic2(ro, rd, t0, t1);
-    if (uVisual == 9) col = vPeriodic3(ro, rd, t0, t1);
-    if (uVisual == 10) col = vSkinBone(ro, rd, t0, t1);
+    if (uVisual == 4) col = vVolumetricMip(ro, rd, t0, t1);
+    if (uVisual == 5) col = vVolumetricXray(ro, rd, t0, t1);
+    if (uVisual == 6) col = vVolumetricIntegral(ro, rd, t0, t1);
+    if (uVisual == 7) col = vVolumetricShadow(ro, rd, t0, t1);
+    if (uVisual == 8) col = vVolumetricGradient(ro, rd, t0, t1);
+    if (uVisual == 9) col = vPeriodic2(ro, rd, t0, t1);
+    if (uVisual == 10) col = vPeriodic3(ro, rd, t0, t1);
+    if (uVisual == 11) col = vSkinBone(ro, rd, t0, t1);
 
     fragColor = vec4(col, 1.0);
 }

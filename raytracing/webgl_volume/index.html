@@ -3,9 +3,15 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>Volume Rendering Test</title>
-    <meta name="description" content="Explore volumetric ray casting in WebGL." />
-    <meta name="keywords" content="harry7557558, volume, volumetric, rendering, volume rendering, ray casting, isosurface, CT, MRI" />
+    <title>Volume Rendering Demo</title>
+    <meta name="description" content="Explore volumetric ray casting in WebGL2." />
+    <link rel="icon" href="screenshot.png" type="image/x-icon" />
+    <meta property="og:title" content="Volume Rendering Demo" />
+    <meta property="og:description" content="Explore volumetric ray casting in WebGL2." />
+    <meta property="og:image" content="screenshot.png" />
+    <meta name="keywords"
+        content="harry7557558, volume, volumetric, rendering, volume rendering, ray casting, ray tracing, isosurface, X-ray, MIP, CT, MRI" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <link rel="stylesheet" href="style.css" />
@@ -19,23 +25,31 @@
     <div id="fps">fps</div>
 
     <div id="control">
+        <div id="links">
+            <a id='copy-link' href="javascript:copyLink()" title='click to copy shareable link'>Link</a>&nbsp;<a
+                href="https://docs.google.com/presentation/d/1jWFqIxE_UC-NchyigRhT-zdzpT5mQwWwiIgZeGT1jf4/edit"
+                target="_blank">Gallary</a>&nbsp;<a
+                href="https://github.com/harry7557558/Graphics/tree/master/raytracing/webgl_volume"
+                target="_blank">Github</a>
+        </div>
         <p>
             <span id="volume-title"><a href=''>&nbsp;</a></span>&nbsp;&nbsp;<span id="volume-dims"></span><br />
             <select id="volume-select"></select>
         </p>
         <p>
             Rendering:&nbsp;<select id="visual-select">
-                <option>Thin slice</option>
-                <option>MIP</option>
-                <option>X-ray</option>
-                <option>Isosurface</option>
-                <option>Volumetric X-ray</option>
-                <option>Volumetric Integral</option>
-                <option>Volumetric Shadow</option>
-                <option>Volumetric Gradient</option>
-                <option>Periodic 2</option>
-                <option>Periodic 3</option>
-                <option selected>Skin-Bone</option>
+                <option value="slice">Thin slice</option>
+                <option value="mip">MIP</option>
+                <option value="xray">X-ray</option>
+                <option value="isosurf">Isosurface</option>
+                <option value="volumetricmip">Volumetric MIP</option>
+                <option value="volumetricxray">Volumetric X-ray</option>
+                <option value="volumetricintegral">Volumetric integral</option>
+                <option value="volumetricshadow">Volumetric shadow</option>
+                <option value="volumetricgradient">Volumetric gradient</option>
+                <option value="period2">Periodic 2</option>
+                <option value="period3">Periodic 3</option>
+                <option value="skinbone" selected>Skin-Bone</option>
             </select>
         </p>
         <p>
