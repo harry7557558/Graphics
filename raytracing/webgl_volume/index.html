@@ -4,7 +4,8 @@
 <head>
     <meta charset="utf-8" />
     <title>Volume Rendering Test</title>
-    <meta name="description" content="Explore volume rendering in WebGL." />
+    <meta name="description" content="Explore volumetric ray casting in WebGL." />
+    <meta name="keywords" content="harry7557558, volume, volumetric, rendering, volume rendering, ray casting, isosurface, CT, MRI" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <link rel="stylesheet" href="style.css" />
@@ -27,16 +28,20 @@
                 <option>Thin slice</option>
                 <option>MIP</option>
                 <option>X-ray</option>
-                <option selected>Isosurface</option>
+                <option>Isosurface</option>
                 <option>Volumetric X-ray</option>
                 <option>Volumetric Integral</option>
                 <option>Volumetric Shadow</option>
+                <option>Volumetric Gradient</option>
+                <option>Periodic 2</option>
+                <option>Periodic 3</option>
+                <option selected>Skin-Bone</option>
             </select>
         </p>
         <p>
             Colormap:&nbsp;<select id="colormap-select">
-                <option value="vec3" selected>Grayscale</option>
-                <option value="cThermometer">Thermometer</option>
+                <option value="vec3">Grayscale</option>
+                <option value="cThermometer" selected>Thermometer</option>
                 <option value="cGreenPinkTones">GreenPinkTones</option>
                 <option value="cBlueGreenYellow">BlueGreenYellow</option>
                 <option value="cRainbow">Rainbow</option>
