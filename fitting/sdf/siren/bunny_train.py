@@ -17,13 +17,21 @@ def plot_data(data):
 
 
 def create_model():
-    act = 'relu'
+    act = tf.sin
     model = tf.keras.models.Sequential([
         tf.keras.layers.Dense(16, activation=act, input_shape=(3,)),
         tf.keras.layers.Dense(16, activation=act),
         tf.keras.layers.Dense(16, activation=act),
         tf.keras.layers.Dense(1)
     ])
+    weights = open('bunny_weights.txt').read()
+    weights = weights.replace('{','[').replace('}',']').replace(';', '')
+    weights = [w[w.find('=')+1:] for w in weights.split('\n')]
+    weights = [np.array(eval(w)) for w in weights]
+    model.layers[0].set_weights((weights[0], weights[1]))
+    model.layers[1].set_weights((weights[2], weights[3]))
+    model.layers[2].set_weights((weights[4], weights[5]))
+    model.layers[3].set_weights((weights[6], weights[7]))
     model.compile(
         optimizer=tf.keras.optimizers.SGD(learning_rate=0.03, momentum=0.9),
         loss='mean_squared_error', metrics=['accuracy'])
@@ -40,17 +48,19 @@ def export_model_code(model):
     for i in range(len(weights)):
         w, b = weights[i]
         print(f'const float layer{i+1}_weights[{len(w)}][{len(w[0])}] =',
-              model_export_code.arr_to_str_2d(w, '{', '}') + ';')
+              model_export_code.arr_to_str_2d(w, '{', '}', 6) + ';')
         print(f'const float layer{i+1}_biases[{len(b)}] =',
-              model_export_code.arr_to_str_1d(b, '{', '}') + ';')
+              model_export_code.arr_to_str_1d(b, '{', '}', 6) + ';')
+    print(model_export_code.export_glsl(weights))
 
 
 if __name__ == '__main__':
 
     model = create_model()
 
-    for i in range(100):
+    N = 400
+    for i in range(N):
         fit_model(model, X, Y)
-        print(model.evaluate(X, Y, batch_size=len(X)//100)[0])
+        print(f"{i+1}/{N}", model.evaluate(X, Y, batch_size=len(X)//100, verbose=0)[0])
 
     export_model_code(model)

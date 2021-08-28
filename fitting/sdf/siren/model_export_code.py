@@ -1,8 +1,8 @@
 import numpy as np
 
 
-def num2str(x, signed=False):
-    s = "{:.3f}".format(x)
+def num2str(x, signed=False, d=3):
+    s = "{:.{prec}f}".format(x, prec=d)
     while s[0] == '0':
         s = s[1:]
     while s[0] == '-' and s[1] == '0':
@@ -16,30 +16,30 @@ def num2str(x, signed=False):
     return s
 
 
-def arr_to_str_1d(arr, lbra='[', rbra=']'):
+def arr_to_str_1d(arr, lbra='[', rbra=']', d=3):
     s = []
     for i in range(len(arr)):
-        s.append(num2str(arr[i]))
+        s.append(num2str(arr[i], d=d))
     return lbra + ",".join(s) + rbra
 
 
-def arr_to_str_2d(arr, lbra='[', rbra=']'):
+def arr_to_str_2d(arr, lbra='[', rbra=']', d=3):
     s = []
     for i in range(len(arr)):
-        s.append(arr_to_str_1d(arr[i], lbra, rbra))
+        s.append(arr_to_str_1d(arr[i], lbra, rbra, d))
     return lbra + ",".join(s) + rbra
 
 
-def vec2str(v):
-    return f'vec{len(v)}(' + ','.join([num2str(x) for x in v]) + ')'
+def vec2str(v, d=3):
+    return f'vec{len(v)}(' + ','.join([num2str(x, d=d) for x in v]) + ')'
 
 
-def mat4str(m):
-    v = [m[0][0], m[1][0], m[2][0], m[3][0],
-         m[0][1], m[1][1], m[2][1], m[3][1],
-         m[0][2], m[1][2], m[2][2], m[3][2],
-         m[0][3], m[1][3], m[2][3], m[3][3]]
-    return 'mat4(' + ','.join([num2str(x) for x in v]) + ')'
+def mat4str(m, d=3):
+    v = [m[0][0], m[0][1], m[0][2], m[0][3],
+         m[1][0], m[1][1], m[1][2], m[1][3],
+         m[2][0], m[2][1], m[2][2], m[2][3],
+         m[3][0], m[3][1], m[3][2], m[3][3]]
+    return 'mat4(' + ','.join([num2str(x, d=d) for x in v]) + ')'
 
 
 def export_glsl(weights):
@@ -74,5 +74,5 @@ def export_glsl(weights):
             s = '+'.join([s0, s1, s2, s3]) + num2str(b[0], signed=True)
             code += f'return {s};\n'
 
-    print(code)
+    #print(code)
     return code
