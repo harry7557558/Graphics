@@ -617,6 +617,17 @@ struct vec4f {
 	explicit vec4f(float a) :x(a), y(a), z(a), w(a) {}
 	explicit vec4f(float x, float y, float z, float w) :x(x), y(y), z(z), w(w) {}
 	explicit vec4f(vec3f p, float w = 0.0f) : x(p.x), y(p.y), z(p.z), w(w) {}
+
+	vec4f operator - () const { return vec4f(-x, -y, -z, -w); }
+	vec4f operator + (const vec4f &v) const { return vec4f(x + v.x, y + v.y, z + v.z, w + v.w); }
+	vec4f operator - (const vec4f &v) const { return vec4f(x - v.x, y - v.y, z - v.z, w - v.w); }
+	vec4f operator * (const vec4f &v) const { return vec4f(x * v.x, y * v.y, z * v.z, w * v.w); }  // element wise
+	vec4f operator / (const vec4f &v) const { return vec4f(x / v.x, y / v.y, z / v.z, w / v.w); }
+	vec4f operator + (const float &k) const { return vec4f(x + k, y + k, z + k, w + k); }
+	vec4f operator - (const float &k) const { return vec4f(x - k, y - k, z - k, w - k); }
+	vec4f operator * (const float &k) const { return vec4f(x * k, y * k, z * k, w * k); }
+	vec4f operator / (const float &a) const { return vec4f(x / a, y / a, z / a, w / a); }
+	friend float dot(vec4f a, vec4f b) { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
 };
 
 
@@ -634,10 +645,13 @@ ivec3 max(ivec3 a, ivec3 b) { return ivec3(max(a.x, b.x), max(a.y, b.y), max(a.z
 vec3 min(vec3 a, vec3 b) { return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 vec3f min(vec3f a, vec3f b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
 ivec3 min(ivec3 a, ivec3 b) { return ivec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+vec4f max(vec4f a, vec4f b) { return vec4f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z), max(a.w, b.w)); }
+vec4f min(vec4f a, vec4f b) { return vec4f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z), min(a.w, b.w)); }
 vec2 clamp(vec2 p, double a, double b) { return vec2(clamp(p.x, a, b), clamp(p.y, a, b)); }
 vec2f clamp(vec2f p, float a, float b) { return vec2f(clamp(p.x, a, b), clamp(p.y, a, b)); }
 vec3 clamp(vec3 p, double a, double b) { return vec3(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b)); }
 vec3f clamp(vec3f p, float a, float b) { return vec3f(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b)); }
+vec4f clamp(vec4f p, float a, float b) { return vec4f(clamp(p.x, a, b), clamp(p.y, a, b), clamp(p.z, a, b), clamp(p.w, a, b)); }
 
 
 

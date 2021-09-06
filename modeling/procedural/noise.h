@@ -1,16 +1,24 @@
 #include "hash.h"
 
-// return vectors uniformly distributed inside an unit circle from hash uv
+// return vectors uniformly distributed inside an unit circle/sphere from hash in [0, 1)
 vec2f uniform_unit_circle(vec2f uv) {
 	float a = 2.0f*PIf*uv.x;
 	return sqrt(uv.y)*vec2f(cos(a), sin(a));
 }
+vec3f uniform_unit_sphere(vec3f uvw) {
+	float a = 2.0f*PIf*uvw.x;
+	float cosphi = 2.0f*uvw.y - 1.0f, sinphi = sqrt(1.0f - cosphi * cosphi);
+	float r = pow(uvw.z, 0.33333333f);
+	return r * vec3f(sinphi*vec2f(cos(a), sin(a)), cosphi);
+}
+
 
 float ValueNoise1D(float x) {
 	int i0 = (int)floor(x), i1 = i0 + 1;
 	float v0 = hash11(float(i0)), v1 = hash11(float(i1));
 	return 2.0f * mix(v0, v1, smoothstep(0.0f, 1.0f, x - float(i0))) - 1.0f;
 }
+
 
 float CosineNoise2D(vec2f xy) {
 	return cos(PIf*xy.x) * cos(PIf*xy.y);
@@ -316,4 +324,127 @@ vec3f SimplexValueNoise2Dg(vec2f xy) {
 	float val = v1 + u * (v2 - v1) + uv * (v3 - v2);
 	vec2f grad = grad_u * (v2 - v1) + grad_uv * (v3 - v2);
 	return vec3f(grad + (grad.x + grad.y)*K1, val);
+}
+
+
+float CosineNoise3D(vec3f xyz) {
+	return cos(PIf*xyz.x) * cos(PIf*xyz.y) * cos(PIf*xyz.z);
+}
+
+float ValueNoise3D(vec3f xyz) {
+	vec3f i0 = floor(xyz), i1 = i0 + 1.0f;
+	vec3f f = xyz - i0; f = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	return 2.0f * mix(
+		mix(mix(hash13(i0 + vec3f(0, 0, 0)), hash13(i0 + vec3f(0, 0, 1)), f.z),
+			mix(hash13(i0 + vec3f(0, 1, 0)), hash13(i0 + vec3f(0, 1, 1)), f.z), f.y),
+		mix(mix(hash13(i0 + vec3f(1, 0, 0)), hash13(i0 + vec3f(1, 0, 1)), f.z),
+			mix(hash13(i0 + vec3f(1, 1, 0)), hash13(i0 + vec3f(1, 1, 1)), f.z), f.y),
+		f.x) - 1.0f;
+}
+
+float GradientNoise3D(vec3f xyz) {
+	float i0 = floor(xyz.x), i1 = i0 + 1.0f;
+	float j0 = floor(xyz.y), j1 = j0 + 1.0f;
+	float k0 = floor(xyz.z), k1 = k0 + 1.0f;
+	float v000 = dot(2.0f * hash33(vec3f(i0, j0, k0)) - 1.0f, xyz - vec3f(i0, j0, k0));
+	float v010 = dot(2.0f * hash33(vec3f(i0, j1, k0)) - 1.0f, xyz - vec3f(i0, j1, k0));
+	float v100 = dot(2.0f * hash33(vec3f(i1, j0, k0)) - 1.0f, xyz - vec3f(i1, j0, k0));
+	float v110 = dot(2.0f * hash33(vec3f(i1, j1, k0)) - 1.0f, xyz - vec3f(i1, j1, k0));
+	float v001 = dot(2.0f * hash33(vec3f(i0, j0, k1)) - 1.0f, xyz - vec3f(i0, j0, k1));
+	float v011 = dot(2.0f * hash33(vec3f(i0, j1, k1)) - 1.0f, xyz - vec3f(i0, j1, k1));
+	float v101 = dot(2.0f * hash33(vec3f(i1, j0, k1)) - 1.0f, xyz - vec3f(i1, j0, k1));
+	float v111 = dot(2.0f * hash33(vec3f(i1, j1, k1)) - 1.0f, xyz - vec3f(i1, j1, k1));
+	vec3f f = xyz - vec3f(i0, j0, k0); f = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	return mix(mix(mix(v000, v001, f.z), mix(v010, v011, f.z), f.y), \
+		mix(mix(v100, v101, f.z), mix(v110, v111, f.z), f.y), f.x);
+}
+
+float NormalizedGradientNoise3D(vec3f xyz) {
+	float i0 = floor(xyz.x), i1 = i0 + 1.0f;
+	float j0 = floor(xyz.y), j1 = j0 + 1.0f;
+	float k0 = floor(xyz.z), k1 = k0 + 1.0f;
+	float v000 = dot(uniform_unit_sphere(hash33(vec3f(i0, j0, k0))), xyz - vec3f(i0, j0, k0));
+	float v010 = dot(uniform_unit_sphere(hash33(vec3f(i0, j1, k0))), xyz - vec3f(i0, j1, k0));
+	float v100 = dot(uniform_unit_sphere(hash33(vec3f(i1, j0, k0))), xyz - vec3f(i1, j0, k0));
+	float v110 = dot(uniform_unit_sphere(hash33(vec3f(i1, j1, k0))), xyz - vec3f(i1, j1, k0));
+	float v001 = dot(uniform_unit_sphere(hash33(vec3f(i0, j0, k1))), xyz - vec3f(i0, j0, k1));
+	float v011 = dot(uniform_unit_sphere(hash33(vec3f(i0, j1, k1))), xyz - vec3f(i0, j1, k1));
+	float v101 = dot(uniform_unit_sphere(hash33(vec3f(i1, j0, k1))), xyz - vec3f(i1, j0, k1));
+	float v111 = dot(uniform_unit_sphere(hash33(vec3f(i1, j1, k1))), xyz - vec3f(i1, j1, k1));
+	vec3f f = xyz - vec3f(i0, j0, k0); f = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	return mix(mix(mix(v000, v001, f.z), mix(v010, v011, f.z), f.y), \
+		mix(mix(v100, v101, f.z), mix(v110, v111, f.z), f.y), f.x);
+}
+
+float SimplexNoise3D(vec3f xyz) {
+	const float K1 = 0.3333333333f;
+	const float K2 = 0.1666666667f;
+	vec3f p = xyz + (xyz.x + xyz.y + xyz.z)*K1;
+	vec3f i = floor(p);
+	vec3f f0 = xyz - (i - (i.x + i.y + i.z)*K2);
+	//vec3f e = step(f0.yzx(), f0);  // possibly result in degenerated simplex
+	vec3f e = vec3f(f0.y > f0.x ? 0.0f : 1.0f, f0.z >= f0.y ? 0.0f : 1.0f, f0.x > f0.z ? 0.0f : 1.0f);
+	vec3f i1 = e * (vec3f(1.0f) - e.zxy());
+	vec3f i2 = vec3f(1.0f) - e.zxy() * (vec3f(1.0f) - e);
+	vec3f f1 = f0 - i1 + K2;
+	vec3f f2 = f0 - i2 + 2.0f*K2;
+	vec3f f3 = f0 - 1.0f + 3.0f*K2;
+	vec3f n0 = 2.0f * hash33(i) - 1.0f;
+	vec3f n1 = 2.0f * hash33(i + i1) - 1.0f;
+	vec3f n2 = 2.0f * hash33(i + i2) - 1.0f;
+	vec3f n3 = 2.0f * hash33(i + 1.0f) - 1.0f;
+	vec4f v = vec4f(dot(f0, n0), dot(f1, n1), dot(f2, n2), dot(f3, n3));
+	vec4f w = max(-vec4f(dot(f0, f0), dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec4f(0.0f));
+	return dot((w*w*w*w) * v, vec4f(32.0f));
+}
+
+float NormalizedSimplexNoise3D(vec3f xyz) {
+	const float K1 = 0.3333333333f;
+	const float K2 = 0.1666666667f;
+	vec3f p = xyz + (xyz.x + xyz.y + xyz.z)*K1;
+	vec3f i = floor(p);
+	vec3f f0 = xyz - (i - (i.x + i.y + i.z)*K2);
+	//vec3f e = step(f0.yzx(), f0);  // possibly result in degenerated simplex
+	vec3f e = vec3f(f0.y > f0.x ? 0.0f : 1.0f, f0.z >= f0.y ? 0.0f : 1.0f, f0.x > f0.z ? 0.0f : 1.0f);
+	vec3f i1 = e * (vec3f(1.0f) - e.zxy());
+	vec3f i2 = vec3f(1.0f) - e.zxy() * (vec3f(1.0f) - e);
+	vec3f f1 = f0 - i1 + K2;
+	vec3f f2 = f0 - i2 + 2.0f*K2;
+	vec3f f3 = f0 - 1.0f + 3.0f*K2;
+	vec3f n0 = uniform_unit_sphere(hash33(i));
+	vec3f n1 = uniform_unit_sphere(hash33(i + i1));
+	vec3f n2 = uniform_unit_sphere(hash33(i + i2));
+	vec3f n3 = uniform_unit_sphere(hash33(i + 1.0f));
+	vec4f v = vec4f(dot(f0, n0), dot(f1, n1), dot(f2, n2), dot(f3, n3));
+	vec4f w = max(-vec4f(dot(f0, f0), dot(f1, f1), dot(f2, f2), dot(f3, f3)) + 0.5f, vec4f(0.0f));
+	return dot((w*w*w*w) * v, vec4f(32.0f));
+}
+
+float SimplexValueNoise3D(vec3f xyz) {
+	const float K1 = 0.3333333333f;
+	const float K2 = 0.1666666667f;
+	// simplex noise
+	vec3f p = xyz + (xyz.x + xyz.y + xyz.z)*K1;
+	vec3f i = floor(p), f = p - i;
+	vec3f f0 = xyz - (i - (i.x + i.y + i.z)*K2);
+	//vec3f e = step(f0.yzx(), f0);  // possibly result in degenerated simplex
+	vec3f e = vec3f(f0.y > f0.x ? 0.0f : 1.0f, f0.z >= f0.y ? 0.0f : 1.0f, f0.x > f0.z ? 0.0f : 1.0f);
+	vec3f i1 = e * (vec3f(1.0f) - e.zxy());
+	vec3f i2 = vec3f(1.0f) - e.zxy() * (vec3f(1.0f) - e);
+	vec3f p0 = i;
+	vec3f p1 = i + i1;
+	vec3f p2 = i + i2;
+	vec3f p3 = i + 1.0f;
+	// value interpolation
+	float v0 = 2.0f * hash13(p0) - 1.0f;
+	float v1 = 2.0f * hash13(p1) - 1.0f;
+	float v2 = 2.0f * hash13(p2) - 1.0f;
+	float v3 = 2.0f * hash13(p3) - 1.0f;
+	vec3f p01 = p1 - p0, p12 = p2 - p1, p23 = p3 - p2;
+	float m = 1.0f / det(p01, p12, p23);
+	float w = m * det(f, p12, p23);
+	float uw = m * det(p01, f, p23);
+	float uvw = m * det(p01, p12, f);
+	//return mix(v0, mix(mix(v1, v2, u), mix(v1, v3, u), v), w);
+	return v0 + (v1 - v0) * w + (v2 - v1) * uw + (v3 - v2) * uvw;
 }
