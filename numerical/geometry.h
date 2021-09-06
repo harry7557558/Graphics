@@ -628,6 +628,18 @@ struct vec4f {
 	vec4f operator * (const float &k) const { return vec4f(x * k, y * k, z * k, w * k); }
 	vec4f operator / (const float &a) const { return vec4f(x / a, y / a, z / a, w / a); }
 	friend float dot(vec4f a, vec4f b) { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
+
+	void operator += (const vec4f &v) { x += v.x, y += v.y, z += v.z, w += v.w; }
+	void operator -= (const vec4f &v) { x -= v.x, y -= v.y, z -= v.z, w -= v.w; }
+	void operator *= (const vec4f &v) { x *= v.x, y *= v.y, z *= v.z, w *= v.w; }
+	void operator /= (const vec4f &v) { x /= v.x, y /= v.y, z /= v.z, w /= v.w; }
+	friend vec4f operator * (const float &a, const vec4f &v) { return vec4f(a*v.x, a*v.y, a*v.z, a*v.w); }
+	void operator += (const float &a) { x += a, y += a, z += a, w += a; }
+	void operator -= (const float &a) { x -= a, y -= a, z -= a, w -= a; }
+	void operator *= (const float &a) { x *= a, y *= a, z *= a, w *= a; }
+	void operator /= (const float &a) { x /= a, y /= a, z /= a, w /= a; }
+
+	vec3f xyz() const { return vec3f(x, y, z); }
 };
 
 
