@@ -141,6 +141,27 @@ const VOLUMES = [
         dims: [128, 128, 128],
         ratio: [1, 1, 1],
     },
+    {
+        name: "Bunny SDF",
+        link: "https://graphics.stanford.edu/data/3Dscanrep/3Dscanrep.html",
+        path: "v_sdfbunny_128x128x128_uint8.raw",
+        dims: [128, 128, 128],
+        ratio: [1, 1, -1],
+    },
+    {
+        name: "Suzanne SDF",
+        link: "https://www.blender.org/",
+        path: "v_sdfsuzanne_128x128x128_uint8.raw",
+        dims: [128, 128, 128],
+        ratio: [1.5, 1.2, -1.2],
+    },
+    {
+        name: "Dragon SDF",
+        link: "https://graphics.stanford.edu/data/3Dscanrep/3Dscanrep.html",
+        path: "v_sdfdragon_128x128x128_uint8.raw",
+        dims: [128, 128, 128],
+        ratio: [1.3, 0.9, -1.1],
+    },
 ];
 
 
@@ -216,7 +237,7 @@ function loadTexture3D(gl, volume) {
         texture.object = volume;
         texture.texture = tex;
         texture.dims = dims;
-        var boxL = 2.0 * (ratio[0] * dims[0] + ratio[1] * dims[1] + ratio[2] * dims[2]) / 3.0;
+        var boxL = 2.0 * (Math.abs(ratio[0]) * dims[0] + Math.abs(ratio[1]) * dims[1] + Math.abs(ratio[2]) * dims[2]) / 3.0;
         texture.bbox = [ratio[0] * dims[0] / boxL, ratio[1] * dims[1] / boxL, ratio[2] * dims[2] / boxL];
 
         document.getElementById("volume-title").innerHTML =
@@ -463,7 +484,7 @@ function copyLink() {
             return;
         }
         navigator.clipboard.writeText(text).then(function () {
-            alert('Link copied to clipboard');
+            alert('Link copied to clipboard\n' + text);
         }, function (err) {
             alert('Error copying link: ', err);
         });
@@ -475,7 +496,8 @@ function copyLink() {
 
 function main() {
     const canvas = document.getElementById("canvas");
-    const gl = canvas.getContext("webgl2");
+    const gl = canvas.getContext("webgl2") || canvas.getContext("experimental-webgl2");
+    if (gl == null) throw("Error: `canvas.getContext(\"webgl2\")` returns null. Your browser may not support WebGL 2.");
 
     // load volume selectors
     {

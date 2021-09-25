@@ -11,18 +11,21 @@ in vec3 vRd;
 uniform float uIso;  // the "completeness" of the object
 uniform vec3 uBoxRadius;  // bounding box
 
+#define ZERO min(uIso, 0.)
+#define PI 3.1415926
+
 
 // Sample volume
 
 uniform highp sampler3D uSampler3D;
 
-float sampleTexture(vec3 p_) {
-    vec3 p = (p_ + uBoxRadius) / (2.0*uBoxRadius);
+float sampleTexture(vec3 p) {
+    p = (p + uBoxRadius) / (2.0*uBoxRadius);
     return texture(uSampler3D, 1.0-p).x;
 }
 
-float sampleTexture_clamped(vec3 p_) {
-    vec3 p = (p_ + uBoxRadius) / (2.0*uBoxRadius);
+float sampleTexture_clamped(vec3 p) {
+    p = (p + uBoxRadius) / (2.0*uBoxRadius);
     if (p.x<0.||p.y<0.||p.z<0. || p.x>1.||p.y>1.||p.z>1.) return 0.0;
     return texture(uSampler3D, 1.0-p).x;
 }
@@ -45,13 +48,43 @@ vec3 sampleTextureGradT(in vec3 p, in float e) {
 	return (.25/e)*vec3(a+b-c-d,a-b+c-d,a-b-c+d);
 }
 
+// attempt to find analytical gradient
+// isn't faster than numerical gradient, not used
+vec4 sampleTextureGradVal(vec3 p) {
+    p = 1.0 - (p + uBoxRadius) / (2.0*uBoxRadius);
+    ivec3 size = textureSize(uSampler3D, 0);
+    vec3 xyz = p * vec3(size);
+	ivec3 i0 = ivec3(floor(xyz));
+    i0 = clamp(i0, ivec3(0), size-ivec3(1));
+	float v000 = texelFetch(uSampler3D, i0 + ivec3(0, 0, 0), 0).x;
+	float v001 = texelFetch(uSampler3D, i0 + ivec3(0, 0, 1), 0).x;
+	float v010 = texelFetch(uSampler3D, i0 + ivec3(0, 1, 0), 0).x;
+	float v011 = texelFetch(uSampler3D, i0 + ivec3(0, 1, 1), 0).x;
+	float v100 = texelFetch(uSampler3D, i0 + ivec3(1, 0, 0), 0).x;
+	float v101 = texelFetch(uSampler3D, i0 + ivec3(1, 0, 1), 0).x;
+	float v110 = texelFetch(uSampler3D, i0 + ivec3(1, 1, 0), 0).x;
+	float v111 = texelFetch(uSampler3D, i0 + ivec3(1, 1, 1), 0).x;
+	vec3 f = xyz - vec3(i0);
+	vec4 gradval = v000 * vec4(0, 0, 0, 1) +
+		(v100 - v000) * vec4(1.0, 0, 0, f.x) +
+		(v010 - v000) * vec4(0, 1.0, 0, f.y) +
+		(v001 - v000) * vec4(0, 0, 1.0, f.z) +
+		(v000 + v110 - v010 - v100) * vec4(f.y, f.x, 0, f.x*f.y) +
+		(v000 + v101 - v001 - v100) * vec4(f.z, 0, f.x, f.x*f.z) +
+		(v000 + v011 - v001 - v010) * vec4(0, f.z, f.y, f.y*f.z) +
+		(v111 - v011 - v101 - v110 + v100 + v001 + v010 - v000) * vec4(f.y*f.z, f.x*f.z, f.x*f.y, f.x*f.y*f.z)
+		;
+    return gradval * vec4(size, 1.0);
+}
+
+
 
 // Intersection with bounding cuboid
 
 bool boxIntersection(vec3 ro, vec3 rd, out float tn, out float tf) {
     vec3 inv_rd = 1.0 / rd;
     vec3 n = inv_rd*(ro);
-    vec3 k = abs(inv_rd)*uBoxRadius;
+    vec3 k = abs(inv_rd)*abs(uBoxRadius);
     vec3 t1 = -n - k, t2 = -n + k;
     tn = max(max(t1.x, t1.y), t1.z);
     tf = min(min(t2.x, t2.y), t2.z);
@@ -105,7 +138,7 @@ vec3 cTemperatureMap(float t) {
 
 // thin slice
 vec3 vSlice(in vec3 ro, in vec3 rd, float t0, float t1) {
-    vec3 pb = abs(ro) - uBoxRadius;
+    vec3 pb = abs(ro) - abs(uBoxRadius);
     if (max(max(pb.x, pb.y), pb.z) > 0.0) return vec3(0.02);
     float v = sampleTexture(ro);
     return uColormap(v);
@@ -152,10 +185,6 @@ vec3 vIsosurf(in vec3 ro, in vec3 rd, float t0, float t1) {
         v_old = v;
     }
     if (v <= iso) return vec3(0.0);
-#if 0
-    // linear interpolation
-    t = t - step_size + (iso-v_old)/(v-v_old)*step_size;
-#else
     // raymarching
     for (int s = 0; s < 4; s += 1) {
         v_old = v;
@@ -166,7 +195,6 @@ vec3 vIsosurf(in vec3 ro, in vec3 rd, float t0, float t1) {
             if ((v-iso)*(v_old-iso)<0.0) break;
         }
     }
-#endif
     vec3 n = normalize(sampleTextureGradC(ro+rd*t, 0.01));
     float col = 0.2+0.1*n.y+0.6*max(dot(n, normalize(vec3(0.5,0.5,1.0))),0.0);
     return vec3(col);
@@ -243,10 +271,31 @@ vec3 vVolumetricGradient(in vec3 ro, in vec3 rd, float t0, float t1) {
     for (float t=t0; t<t1; t+=dt) {
         float v = sampleTexture(ro+rd*t);
         vec3 grad = sampleTextureGradT(ro+rd*t, 0.005);
+        //vec3 grad = sampleTextureGradVal(ro+rd*t).xyz;
         vec3 col = clamp(uColormap(v), 0.0, 1.0);
         float absorb = k*length(grad);
         totabs *= exp(-absorb*dt);
         totcol += col*absorb*totabs*dt;
+    }
+    return totcol;
+}
+
+// faster than volumetric gradient
+vec3 vVolumetricDiff(in vec3 ro, in vec3 rd, float t0, float t1) {
+    float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
+    float dt = (t1-t0) / step_count;
+    vec3 totcol = vec3(0.0);
+    float totabs = 1.0;
+    float k = 0.5*uIso/(1.0-uIso);
+    float v_old = sampleTexture(ro+rd*t0), v;
+    for (float t=t0; t<t1; t+=dt) {
+        v = sampleTexture(ro+rd*t);
+        float grad = abs(v-v_old)/dt;
+        vec3 col = clamp(uColormap(v), 0.0, 1.0);
+        float absorb = k*grad;
+        totabs *= exp(-absorb*dt);
+        totcol += col*absorb*totabs*dt;
+        v_old = v;
     }
     return totcol;
 }
@@ -279,6 +328,29 @@ vec3 vPeriodic3(in vec3 ro, in vec3 rd, float t0, float t1) {
         float absorb = 0.5+0.5*cos(3.0*6.283*(v-uIso))<0.20 ? 40.0*uIso*v : 0.0;
         totabs *= exp(-absorb*dt);
         totcol += col*absorb*totabs*dt;
+    }
+    return totcol;
+}
+
+// simulate the x-ray image of an isosurface
+vec3 vIsosurfXray(in vec3 ro, in vec3 rd, float t0, float t1) {
+    float step_count = min(ceil((t1-t0)/STEP), MAX_STEP);
+    float dt = (t1-t0) / step_count;
+    vec3 totcol = vec3(0.0);
+    float iso = 1.0-uIso;
+    float v_old = sampleTexture(ro+rd*t0), v;
+    for (float t=t0; t<t1; t+=dt) {
+        v = sampleTexture(ro+rd*t);
+        if ((v_old-iso)*(v-iso) < 0.0) {
+            float linintp = (iso-v_old)/(v-v_old);
+            vec3 p = ro + rd * mix(t-dt, t, linintp);
+            vec3 grad = normalize(sampleTextureGradC(p, 0.01));
+            //vec3 col = clamp(uColormap(iso), 0.0, 1.0);
+            vec3 col = clamp(uColormap((p.z+abs(uBoxRadius.z))/abs(2.0*uBoxRadius.z)), 0.0, 1.0);
+            col = col / abs(dot(rd, grad));
+            totcol += 0.05*col;
+        }
+        v_old = v;
     }
     return totcol;
 }
@@ -316,6 +388,41 @@ vec3 vSkinBone(in vec3 ro, in vec3 rd, float t0, float t1) {
     return totcol + col * totabs;
 }
 
+// adapted from an aid in creating Shadertoy raymarching shaders
+vec3 vSdfVisualizer(in vec3 ro, in vec3 rd, float t0, float t1) {
+    float t = t0;
+    vec3 totcol = vec3(0.0);
+    float totabs = 1.0;
+    float v_old = (1.0-uIso)-sampleTexture(ro+rd*t), v;
+    float dt = min(STEP, abs(v_old));
+    for (float i=ZERO; i<MAX_STEP;) {
+        t += dt;
+        if (t > t1) return totcol;
+        v = (1.0-uIso)-sampleTexture(ro+rd*t);
+        if (v*v_old<0.) break;
+        vec3 col = uColormap(0.5+0.5*sin(16.0*PI*0.5*(v_old+v)));
+        float absorb = 0.3;
+        totabs *= exp(-absorb*dt);
+        totcol += col*absorb*totabs*dt;
+        v_old = v;
+        dt = clamp(v, 0.1*STEP, STEP);
+        if (dt < 1e-3) break;
+        if (++i >= MAX_STEP) return totcol;
+    }
+    if (v*v_old < 0.) {
+        for (int s = int(ZERO); s < 4; s += 1) {
+            v_old = v, dt *= -0.5;
+            for (int i = int(ZERO); i < 2; i++) {
+                t += dt, v = (1.0-uIso)-sampleTexture(ro+rd*t);
+                if (v*v_old<0.0) break;
+            }
+        }
+    }
+    vec3 grad = normalize(sampleTextureGradC(ro+rd*t, 1e-2));
+    vec3 col = vec3(0.2+0.05*grad.y+0.75*max(dot(grad, normalize(vec3(0.5,0.5,1.0))),0.0));
+    return totcol + col * totabs;
+}
+
 
 void main(void) {
     vec3 ro = vRo, rd = normalize(vRd);
@@ -328,18 +435,22 @@ void main(void) {
     }
 
     vec3 col = vec3(0.0);
-    if (uVisual == 0) col = vSlice(ro, rd, t0, t1);
-    if (uVisual == 1) col = vMip(ro, rd, t0, t1);
-    if (uVisual == 2) col = vXray(ro, rd, t0, t1);
-    if (uVisual == 3) col = vIsosurf(ro, rd, t0, t1);
-    if (uVisual == 4) col = vVolumetricMip(ro, rd, t0, t1);
-    if (uVisual == 5) col = vVolumetricXray(ro, rd, t0, t1);
-    if (uVisual == 6) col = vVolumetricIntegral(ro, rd, t0, t1);
-    if (uVisual == 7) col = vVolumetricShadow(ro, rd, t0, t1);
-    if (uVisual == 8) col = vVolumetricGradient(ro, rd, t0, t1);
-    if (uVisual == 9) col = vPeriodic2(ro, rd, t0, t1);
-    if (uVisual == 10) col = vPeriodic3(ro, rd, t0, t1);
-    if (uVisual == 11) col = vSkinBone(ro, rd, t0, t1);
+    int visual = uVisual;
+    if (visual-- == 0) col = vSlice(ro, rd, t0, t1);
+    if (visual-- == 0) col = vMip(ro, rd, t0, t1);
+    if (visual-- == 0) col = vXray(ro, rd, t0, t1);
+    if (visual-- == 0) col = vIsosurf(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricMip(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricXray(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricIntegral(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricShadow(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricGradient(ro, rd, t0, t1);
+    if (visual-- == 0) col = vVolumetricDiff(ro, rd, t0, t1);
+    if (visual-- == 0) col = vPeriodic2(ro, rd, t0, t1);
+    if (visual-- == 0) col = vPeriodic3(ro, rd, t0, t1);
+    if (visual-- == 0) col = vIsosurfXray(ro, rd, t0, t1);
+    if (visual-- == 0) col = vSkinBone(ro, rd, t0, t1);
+    if (visual-- == 0) col = vSdfVisualizer(ro, rd, t0, t1);
 
     fragColor = vec4(col, 1.0);
 }
