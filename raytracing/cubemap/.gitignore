@@ -1,11 +1,22 @@
-# some cubemaps are crawled from
-# https://sites.google.com/ycdsb.ca/international-education/programs/esl-secondary-schools-interactive-school-tours
+# all lines are commented so this is just a list of cubemap files
 
-*.jpg
-*.jpeg
-*.png
-*.bmp
-*.webp
-*.tif
-*.tiff
-*.hdr
+
+# my high school, https://247virtualtours.com/282-st-robert-chs-tour
+# should also check https://sites.google.com/ycdsb.ca/international-education/programs/esl-secondary-schools-interactive-school-tours
+
+#stro_chapel/*.jpg
+#stro_foyer/*.jpg
+#stro_guidance_front/*.jpg
+#stro_large_gym/*.jpg
+#stro_music_room/*.jpg
+
+
+# from Shadertoy
+# https://shadertoyunofficial.wordpress.com/2019/07/23/shadertoy-media-files/
+
+#shadertoy_forest/*.png
+#shadertoy_forest_blurred/*.png
+#shadertoy_uffizi_gallery/*.jpg
+#shadertoy_uffizi_gallery_blurred/*.png
+#shadertoy_st_peters_basilica/*.jpg
+#shadertoy_st_peters_basilica_blurred/*.png

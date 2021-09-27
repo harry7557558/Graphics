@@ -69,6 +69,7 @@ public:
 	}
 
 	vec3f sample_face(int i, vec2f uv);
+	vec3f sample_face_bilinear(int i, vec2f uv);
 	vec3f sample(vec3f rd);
 };
 
@@ -80,6 +81,19 @@ vec3f Cubemap::sample_face(int i, vec2f uv) {
 	return pixels[i][y*size[i].x + x];
 }
 
+vec3f Cubemap::sample_face_bilinear(int i, vec2f uv) {
+	// idk why this is faster than sample_face()
+	uv = vec2f(0.5) + 0.5f*uv;
+	float y = uv.y * size[i].y - 0.5f, x = uv.x * size[i].x - 0.5f;
+	int j0 = clamp(int(y), 0, size[i].y - 1), i0 = clamp(int(x), 0, size[i].x - 1);
+	float jf = clamp(y - j0, 0.0f, 1.0f), if_ = clamp(x - i0, 0.0f, 1.0f);
+	int j1 = clamp(j0 + 1, 0, size[i].y - 1), i1 = clamp(i0 + 1, 0, size[i].x - 1);
+	return mix(
+		mix(pixels[i][j0*size[i].x + i0], pixels[i][j0*size[i].x + i1], if_),
+		mix(pixels[i][j1*size[i].x + i0], pixels[i][j1*size[i].x + i1], if_),
+		jf);
+}
+
 
 vec3f Cubemap::sample(vec3f rd) {
 	float dist[6] = { 1.0f / rd.z, -1.0f / rd.x, 1.0f / rd.y, 1.0f / rd.x, -1.0f / rd.y, -1.0f / rd.z };
@@ -88,11 +102,11 @@ vec3f Cubemap::sample(vec3f rd) {
 		if (dist[i] > 0.0 && dist[i] < min_d)
 			min_d = dist[i], min_i = i;
 	}
-	if (min_i == 0) return sample_face(0, (rd*min_d).yx());
-	if (min_i == 1) return sample_face(1, (rd*min_d).yz());
-	if (min_i == 2) return sample_face(2, (rd*min_d).xz());
-	if (min_i == 3) return sample_face(3, (rd*min_d).yz() * vec2f(-1.0f, 1.0f));
-	if (min_i == 4) return sample_face(4, (rd*min_d).xz() * vec2f(-1.0f, 1.0f));
-	if (min_i == 5) return sample_face(5, (rd*min_d).yx() * vec2f(1.0f, -1.0f));
+	if (min_i == 0) return sample_face_bilinear(0, (rd*min_d).yx());
+	if (min_i == 1) return sample_face_bilinear(1, (rd*min_d).yz());
+	if (min_i == 2) return sample_face_bilinear(2, (rd*min_d).xz());
+	if (min_i == 3) return sample_face_bilinear(3, (rd*min_d).yz() * vec2f(-1.0f, 1.0f));
+	if (min_i == 4) return sample_face_bilinear(4, (rd*min_d).xz() * vec2f(-1.0f, 1.0f));
+	if (min_i == 5) return sample_face_bilinear(5, (rd*min_d).yx() * vec2f(1.0f, -1.0f));
 	return vec3f(max(rd.z, 0.0f));
 }
