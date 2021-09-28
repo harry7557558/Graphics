@@ -75,12 +75,15 @@
 // Press F5 to reload object from file, Shift+F5 or F9 to reload without resetting the current viewport
 // Press F1 to set window to topmost or non-topmost
 // Hold Alt key to modify object:
-//   - Press Numpad . to place the object on the center of xOy plane
-//   - Press Numpad 4/6/2/8/7/9 to rotate object left/right/up/down/counter/clockwise about its center
+//   - Press Numpad5 to place the object on the center of xOy plane
+//   - Press Numpad 4/6/2/8/7/9 to rotate object left/right/up/down/counter/clockwise about its center for 4.5 degrees
 //   - Press arrow keys to move object left/right/front/back (in screen coordinate)
-//   - Press Numpad5 to translate object so that its center coincident with the origin
+//   - Press Numpad . to translate object so that its center coincident with the origin
 //   - Press plus/minus keys or scroll mouse wheel to scale the object about its center
 //   - Hold Shift and press plus/minus keys (or scroll mouse wheel) to scale the object along the z-axis, about the xOy plane
+//   - Press X/Y/Z to reflect about the x/y/z axis
+//   - Press N to reverse face normal orientation, often used after reflection
+//   - Press O to place the shape on xOy plane oriented at a local minimum of the center of mass, using screen ray direction as the initial guess in optimization
 
 
 
@@ -151,6 +154,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	case WM_LBUTTONDOWN: { SetCapture(hWnd); MouseDownL(_USER_FUNC_PARAMS); _RDBK } case WM_LBUTTONUP: { ReleaseCapture(); MouseUpL(_USER_FUNC_PARAMS); _RDBK }
 	case WM_RBUTTONDOWN: { MouseDownR(_USER_FUNC_PARAMS); _RDBK } case WM_RBUTTONUP: { MouseUpR(_USER_FUNC_PARAMS); _RDBK }
 	case WM_SYSKEYDOWN:; case WM_KEYDOWN: { if (wParam >= 0x08) KeyDown(wParam); _RDBK } case WM_SYSKEYUP:; case WM_KEYUP: { if (wParam >= 0x08) KeyUp(wParam); _RDBK }
+	case WM_MENUCHAR: { return MNC_CLOSE << 16; }
 	} return DefWindowProc(hWnd, message, wParam, lParam);
 }
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
@@ -356,6 +360,96 @@ void calcVolumeCenterInertia() {
 	EigenPairs_Jacobi(3, &Inertia.v[0][0], (double*)&L, &Inertia_O.v[0][0]);
 	Inertia_D = mat3(L);
 }
+
+// find the orientation with the lowest center of mass when placed on a plane
+vec3f balance_nms(vec3f initial_n, float accur_eps, float *min_energy = nullptr) {
+	// numerical optimization using Nelder-Mead (downhill simplex) algorithm on a sphere
+	const int noimporv_break = 20;
+	const int max_iter = 1000;
+
+	// function to be minimized
+	int sampleCount = 0;
+	auto Fun = [&](vec3f n) {
+		sampleCount++;
+		float md = -INFINITY;
+		for (int i = 0; i < VN; i++) {
+			float d = dot(V[i], n);
+			if (d > md) md = d;
+		}
+		return md;
+	};
+
+	// initial simplex
+	struct sample {
+		vec3f n;  // normalized vector
+		float val;  // value
+	} S[3];
+	initial_n = normalize(initial_n);
+	for (int i = 0; i < 3; i++) {
+		float t = (float)(2.*PI*i / 3.);
+		S[i].n = axis_angle(cross(initial_n, vec3f(0, 0, 1)), acos(initial_n.z))
+			* normalize(vec3f(.05f*cos(t), .05f*sin(t), 1.));
+		S[i].val = Fun(S[i].n);
+	}
+
+	// downhill simplex
+	double old_minval = INFINITY;
+	int noimporv_count = 0;
+	for (int iter = 0; ; iter++) {
+		// sorting
+		sample temp;
+		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
+		if (S[1].val > S[2].val) temp = S[1], S[1] = S[2], S[2] = temp;
+		if (S[0].val > S[1].val) temp = S[0], S[0] = S[1], S[1] = temp;
+
+		// termination condition
+		if (S[0].val < old_minval - accur_eps) {
+			noimporv_count = 0;
+			old_minval = S[0].val;
+		}
+		else if (++noimporv_count > noimporv_break || iter >= max_iter) {
+			//printf("%d samples\n", sampleCount);  // rarely get over 300
+			if (min_energy) *min_energy = S[0].val;
+			return S[0].n;
+		}
+
+		// reflection
+		sample refl;
+		vec3f center = (S[0].n + S[1].n) * .5f;
+		refl.n = normalize(center * 2.f - S[2].n);  // expected to be normal vector
+		refl.val = Fun(refl.n);
+		if (refl.val >= S[0].val && refl.val < S[1].val) {
+			S[2] = refl;
+			continue;
+		}
+		// expansion
+		if (refl.val < S[0].val) {
+			sample expd;
+			expd.n = normalize(center + (center - S[2].n)*2.f);
+			expd.val = Fun(expd.n);
+			if (expd.val < refl.val)
+				S[2] = expd;
+			else
+				S[2] = refl;
+			continue;
+		}
+		// contraction
+		sample ctrct;
+		ctrct.n = normalize(center + .5f*(S[2].n - center));
+		ctrct.val = Fun(ctrct.n);
+		if (ctrct.val < S[2].val) {
+			S[2] = ctrct;
+			continue;
+		}
+		// compression
+		S[1].n = normalize(S[0].n + (S[1].n - S[0].n)*.5f);
+		S[2].n = normalize(S[0].n + (S[2].n - S[0].n)*.5f);
+		S[1].val = Fun(S[1].n);
+		S[2].val = Fun(S[2].n);
+	}
+	return S[0].n;
+}
+
 
 // ray intersection with shape, use for selection
 // return the distance
@@ -871,9 +965,9 @@ void render() {
 		if (wcslen(filename) > 24)
 			for (int i = 0; filename[i]; i++)
 				if (filename[i] == '/' || filename[i] == '\\') lastslash = i + 1;
-		swprintf(text, L"%s [%d %s]  normal=%s   %dx%d %.1lffps",
+		swprintf(text, L"%s [vn=%d, fn=%d, %s]  normal=%s   %dx%d %.1lffps",
 			&filename[lastslash],
-			TN, TreatAsSolid ? L"solid" : L"surface",
+			VN, TN, TreatAsSolid ? L"solid" : L"surface",
 			NormalMode == 0 ? L"ccw" : NormalMode == 1 ? L"cw" : L"ERROR!",
 			_WIN_W, _WIN_H, 1.0 / time_elapsed);
 	}
@@ -886,6 +980,8 @@ void render() {
 
 
 // ============================================== User ==============================================
+
+#include "stl_encoder.h"
 
 bool loadFile(const WCHAR* filename) {
 	FILE *fp = _wfopen(filename, L"rb");
@@ -928,25 +1024,31 @@ bool loadFileUserEntry() {
 		return loadFile(filename);
 	}
 }
-#if 0
+
 bool saveFile(const WCHAR* filename) {
-	FILE *fp = _wfopen(filename, L"wb"); if (!fp) return false;
-	for (int i = 0; i < 80; i++) fputc(0, fp);
-	fwrite(&N, 4, 1, fp);
-	for (int i = 0; i < N; i++) {
-		auto writevec3 = [&](vec3f p) {
-			float f = float(p.x); fwrite(&f, 4, 1, fp);
-			f = float(p.y); fwrite(&f, 4, 1, fp);
-			f = float(p.z); fwrite(&f, 4, 1, fp);
-		};
-		vec3f A = T[i].a, B = T[i].b, C = T[i].c;
-		writevec3(
-			NormalMode == 0 ? T[i].n :
-			NormalMode == 1 ? normalize(cross(B - A, C - A)) :
-			NormalMode == 2 ? normalize(cross(C - A, B - A)) : vec3f(0.)
-		);
-		writevec3(A); writevec3(B); writevec3(C);
-		fputc(0, fp); fputc(0, fp);
+	FILE* fp = _wfopen(filename, L"wb");
+	if (!fp) return false;
+	fprintf(fp, "ply\n");
+	fprintf(fp, "format binary_little_endian 1.0\n");
+	fprintf(fp, "element vertex %d\n", VN);
+	fprintf(fp, "property float x\nproperty float y\nproperty float z\n");
+	if (Vcol) fprintf(fp, "property uchar blue\nproperty uchar green\nproperty uchar red\n");
+	fprintf(fp, "element face %d\n", TN);
+	fprintf(fp, "property list uchar int vertex_indices\n");
+	fprintf(fp, "end_header\n");
+	for (int i = 0; i < VN; i++) {
+		float *v = (float*)&V[i];
+		fwrite(v, 4, 3, fp);
+		if (Vcol) {
+			fputc(((uint8_t*)&Vcol[i])[0], fp);
+			fputc(((uint8_t*)&Vcol[i])[1], fp);
+			fputc(((uint8_t*)&Vcol[i])[2], fp);
+		}
+	}
+	for (int i = 0; i < TN; i++) {
+		fputc(3, fp);
+		uint32_t *v = (uint32_t*)&T[i];
+		fwrite(v, 4, 3, fp);
 	}
 	return fclose(fp) == 0;
 }
@@ -964,7 +1066,6 @@ bool saveFileUserEntry() {
 	}
 	else return false;
 }
-#endif
 
 
 void setDefaultView() {
@@ -993,7 +1094,7 @@ void setDefaultView() {
 	Ctrl = Shift = Alt = false;
 }
 void Init() {
-	//wcscpy(filename, L"D:\\apple.ply"); loadFile(filename);
+	wcscpy(filename, L"D:\\dragon_remeshed.ply"); loadFile(filename);
 	wcscpy(filename, L"Press Ctrl+O to open a file.  ");
 	setDefaultView();
 }
@@ -1004,7 +1105,7 @@ void WindowResize(int _oldW, int _oldH, int _W, int _H) {
 	if (_W*_H == 0 || _oldW * _oldH == 0) return;  // window is minimized
 	double pw = _oldW, ph = _oldH, w = _W, h = _H;
 	double s = sqrt((w * h) / (pw * ph));
-	Unit *= s, dist /= s;
+	Unit *= s;
 	Render_Needed = true;
 }
 void WindowClose() {
@@ -1125,7 +1226,7 @@ void KeyUp(WPARAM _KEY) {
 	}
 
 	if (Ctrl) {
-		if (_KEY == 'O') {
+		if (_KEY == 'O') {  // open file
 			if (loadFileUserEntry()) {
 				calcBoundingBox(); calcVolumeCenterInertia();
 				setDefaultView();
@@ -1135,17 +1236,16 @@ void KeyUp(WPARAM _KEY) {
 				SetWindowText(_HWND, L"Error loading file");
 			}
 		}
-#if 0
-		if (_KEY == 'S') {
+		if (_KEY == 'S') {  // save file
 			if (!saveFileUserEntry()) {
 				MessageBeep(MB_ICONSTOP);
 				SetWindowText(_HWND, L"Error saving file");
 			}
 		}
-#endif
 		Ctrl = Shift = Alt = false;
 	}
-	else {
+
+	if (!Ctrl && !Alt) {
 		if (_KEY == 'C') ShadeMode = (ShadeMode + (Shift ? 4 : 1)) % 5;
 		if (_KEY == VK_TAB && !TransparentShading) RenderMode += Shift ? -1 : 1;
 		if (_KEY == 'N') { NormalMode = (NormalMode + (Shift ? 1 : 1)) % 2; if (SmoothShading) calcVertexNormal(); }
@@ -1162,7 +1262,7 @@ void KeyUp(WPARAM _KEY) {
 		if (_KEY == VK_DECIMAL && !Alt) calcBoundingBox(), Center = 0.5*(vec3(BMax) + vec3(BMin));
 
 #if 0
-		// WSAD, no longer use
+		// WSAD, deprecated
 		if (dist*Unit < 1e5) {
 			vec3 scrdir = normalize(Center - CamP);
 			double sc = 0.08*dot(vec3(BMax) - vec3(BMin), vec3(1.));
@@ -1184,26 +1284,41 @@ void KeyUp(WPARAM _KEY) {
 		// Shape modification
 		vec3 Center = 0.5*(vec3(BMin) + vec3(BMax));
 		vec3f center = vec3f(Center);
+		if (_KEY == 'X') for (int i = 0; i < VN; i++) V[i].x = -V[i].x;
+		if (_KEY == 'Y') for (int i = 0; i < VN; i++) V[i].y = -V[i].y;
+		if (_KEY == 'Z') for (int i = 0; i < VN; i++) V[i].z = -V[i].z;
+		if (_KEY == 'N') for (int i = 0; i < TN; i++) std::swap(T[i][1], T[i][2]);
+		if (_KEY == 'O') {  // balance, lowest center of mass
+			for (int i = 0; i < VN; i++) V[i] -= vec3f(COM);
+			vec3 rd = scrDir(0.5*vec2(_WIN_W, _WIN_H));
+			float com_height;
+			vec3f n = balance_nms(-vec3f(rd), 1e-6f, &com_height);
+			mat3f R = axis_angle(cross(vec3f(0, 0, 1), n), acos(-n.z));
+			for (int i = 0; i < VN; i++) {
+				V[i] = R * V[i];
+				V[i].z += com_height;
+			}
+		}
 		if (_KEY == VK_NUMPAD4 || _KEY == VK_NUMPAD6 || _KEY == VK_NUMPAD2 || _KEY == VK_NUMPAD8 || _KEY == VK_NUMPAD7 || _KEY == VK_NUMPAD9) {
 			mat3 M;
-			if (_KEY == VK_NUMPAD4) M = axis_angle(veck, -.025*PI);
-			if (_KEY == VK_NUMPAD6) M = axis_angle(veck, .025*PI);
-			if (_KEY == VK_NUMPAD2) M = axis_angle(ScrA, .025*PI);
-			if (_KEY == VK_NUMPAD8) M = axis_angle(ScrA, -.025*PI);
-			if (_KEY == VK_NUMPAD7) M = axis_angle(Center - CamP, -.025*PI);
-			if (_KEY == VK_NUMPAD9) M = axis_angle(Center - CamP, .025*PI);
+			// Shift doesn't seem to work
+			if (_KEY == VK_NUMPAD4) M = axis_angle(veck, (Shift ? 0.25 : .025)*-PI);
+			if (_KEY == VK_NUMPAD6) M = axis_angle(veck, (Shift ? 0.25 : .025)*PI);
+			if (_KEY == VK_NUMPAD2) M = axis_angle(ScrA, (Shift ? 0.25 : .025)*PI);
+			if (_KEY == VK_NUMPAD8) M = axis_angle(ScrA, (Shift ? 0.25 : .025)*-PI);
+			if (_KEY == VK_NUMPAD7) M = axis_angle(Center - CamP, (Shift ? 0.25 : .025)*-PI);
+			if (_KEY == VK_NUMPAD9) M = axis_angle(Center - CamP, (Shift ? 0.25 : .025)*PI);
 			for (int i = 0; i < VN; i++) {
 				// do calculation in double precision
 				vec3 a = M * (vec3(V[i]) - Center) + Center;
 				V[i] = vec3f(a);
 			}
-			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_NUMPAD5) {
-			for (int i = 0; i < VN; i++) V[i] -= center;
-			calcBoundingBox(); calcVolumeCenterInertia();
+			vec3f d = vec3f(vec3(0.5*vec3(BMin + BMax).xy(), BMin.z));
+			for (int i = 0; i < VN; i++) V[i] -= d;
 		}
-		if (_KEY >= 0x25 && _KEY <= 0x28) {
+		if (_KEY >= 0x25 && _KEY <= 0x28 && !Shift) {
 			vec3 d;
 			if (_KEY == VK_UP) d = normalize(ScrB);
 			if (_KEY == VK_DOWN) d = normalize(-ScrB);
@@ -1212,19 +1327,16 @@ void KeyUp(WPARAM _KEY) {
 			d *= 0.01*dot(vec3(BMax) - vec3(BMin), vec3(1.));
 			vec3f df(d);
 			for (int i = 0; i < VN; i++) V[i] += df;
-			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_OEM_PLUS || _KEY == VK_ADD || _KEY == VK_OEM_MINUS || _KEY == VK_SUBTRACT) {
 			float s = float((_KEY == VK_OEM_PLUS || _KEY == VK_ADD) ? exp(0.05) : exp(-0.05));
 			if (Shift) for (int i = 0; i < VN; i++) V[i].z *= s;
 			else for (int i = 0; i < VN; i++) V[i] = (V[i] - center)*s + center;
-			calcBoundingBox(); calcVolumeCenterInertia();
 		}
 		if (_KEY == VK_DECIMAL) {
-			vec3f d = vec3f(vec3(0.5*vec3(BMin + BMax).xy(), BMin.z));
-			for (int i = 0; i < VN; i++) V[i] -= d;
-			calcBoundingBox(); calcVolumeCenterInertia();
+			for (int i = 0; i < VN; i++) V[i] -= center;
 		}
+		calcBoundingBox(); calcVolumeCenterInertia();
 	}
 	else {
 		// Blender-style keys

@@ -609,6 +609,14 @@ public:
 	}
 };
 
+mat3f axis_angle(vec3f n, float a) {
+	n = normalize(n); float ct = cos(a), st = sin(a);
+	return mat3f(
+		ct + n.x*n.x*(1.0f - ct), n.y*n.x*(1.0f - ct) + n.z*st, n.z*n.x*(1.0f - ct) - n.y*st,
+		n.x*n.y*(1.0f - ct) - n.z*st, ct + n.y*n.y*(1.0f - ct), n.z*n.y*(1.0f - ct) + n.x*st,
+		n.x*n.z*(1.0f - ct) + n.y*st, n.y*n.z*(1.0f - ct) - n.x*st, ct + n.z*n.z*(1.0f - ct)
+	);
+}
 
 
 struct vec4f {

@@ -111,21 +111,31 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 
 	VN = FN = -1;
 
-	int xi = -1, yi = -1, zi = -1, property_index = 0;
-	int ri = -1, gi = -1, bi = -1;
-	std::vector<int> vertex_size_list;  // in bytes
+	int vl_xi = -1, vl_yi = -1, vl_zi = -1;  // xyz in vertex list
+	int vl_ri = -1, vl_gi = -1, vl_bi = -1;  // rgb in vertex list
+	int fl_li = -1;  // vertex_indices in face list
+	std::vector<int> vertex_size_list, face_size_list;  // in bytes
+	int vertex_property_index = 0, face_property_index = 0;
 	std::string element_name = "";
 
-	auto split_string = [](std::string &nm, std::string &s) {
+	auto next_word = [](std::string &nm, std::string &s) {
 		int first_space = (int)s.find(' ');
 		if (first_space <= 0) return false;
 		nm = s.substr(0, first_space);
 		s = s.substr(first_space + 1, s.size() - first_space - 1);
 		return true;
 	};
+	auto type_bytes = [](const std::string &type) {
+		if (type == "uchar" || type == "char" || type == "int8" || type == "uint8") return 1;
+		else if (type == "short" || type == "ushort" || type == "int16" || type == "uint16") return 2;
+		else if (type == "float" || type == "float32" || type == "int" || type == "uint" || type == "int32" || type == "uint32") return 4;
+		else if (type == "double" || type == "float64" || type == "int64" || type == "uint64") return 8;
+		else return 0;
+	};
+
 	for (std::string s : header_lines) {
 		std::string nm;
-		if (!split_string(nm, s)) return false;
+		if (!next_word(nm, s)) return false;
 
 		if (nm == "format") {
 			if (FN != -1 || VN != -1) return false;
@@ -135,7 +145,7 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 		}
 
 		else if (nm == "element") {
-			if (!split_string(element_name, s)) return false;
+			if (!next_word(element_name, s)) return false;
 			int d = std::stoi(s);
 			if (element_name == "vertex") VN = d;
 			else if (element_name == "face") {
@@ -150,49 +160,53 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 		else if (nm == "property") {
 			if (element_name != "vertex" && element_name != "face") continue;
 			std::string type;
-			if (!split_string(type, s)) return false;
-			if (type == "list") {
-				if (!split_string(type, s)) return false;
-				if (type != "uchar" && type != "char" && type != "int8" && type != "uint8") return false;
-				if (!split_string(type, s)) return false;
-				if (type != "uint" && type != "int" && type != "int32" && type != "uint32") return false;
-				if (s != "vertex_indices" && s != "vertex_index") return false;
-				if (FN == -1) return false;
+			if (!next_word(type, s)) return false;
+			if (element_name == "vertex") {
+				if (type_bytes(type)) vertex_size_list.push_back(type_bytes(type));
+				else return false;
+
+				if (type == "float" || type == "float32") {
+					if (s == "x") vl_xi = vertex_property_index;
+					if (s == "y") vl_yi = vertex_property_index;
+					if (s == "z") vl_zi = vertex_property_index;
+				}
+				else if (s == "x" || s == "y" || s == "z") return false;
+
+				if (s == "red" || s == "green" || s == "blue") {
+					if (s == "red") vl_ri = vertex_property_index;
+					if (s == "green") vl_gi = vertex_property_index;
+					if (s == "blue") vl_bi = vertex_property_index;
+					if (type != "uchar" && type != "uint8") return false;
+				}
+
+				vertex_property_index += 1;
 			}
-			else {
-				if (element_name == "vertex") {
-					if (type == "uchar" || type == "char" || type == "int8" || type == "uint8") vertex_size_list.push_back(1);
-					else if (type == "short" || type == "ushort" || type == "int16" || type == "uint16") vertex_size_list.push_back(2);
-					else if (type == "float" || type == "float32" || type == "int" || type == "uint" || type == "int32" || type == "uint32") vertex_size_list.push_back(4);
-					else if (type == "double" || type == "float64" || type == "int64" || type == "uint64") vertex_size_list.push_back(8);
+			else if (element_name == "face") {
+				if (type == "list") {
+					if (!next_word(type, s)) return false;
+					if (type != "uchar" && type != "char" && type != "int8" && type != "uint8") return false;
+					face_size_list.push_back(type_bytes(type));
+					if (!next_word(type, s)) return false;
+					if (type != "uint" && type != "int" && type != "int32" && type != "uint32") return false;
+					face_size_list.push_back(type_bytes(type));
+					if (s != "vertex_indices" && s != "vertex_index") return false;
+					if (FN == -1) return false;
+					fl_li = face_property_index++;
+				}
+				else {
+					if (type_bytes(type)) face_size_list.push_back(type_bytes(type));
 					else return false;
-
-					if (type == "float" || type == "float32") {
-						if (s == "x") xi = property_index;
-						if (s == "y") yi = property_index;
-						if (s == "z") zi = property_index;
-					}
-					else if (s == "x" || s == "y" || s == "z") return false;
-
-					if (s == "red" || s == "green" || s == "blue") {
-						if (s == "red") ri = property_index;
-						if (s == "green") gi = property_index;
-						if (s == "blue") bi = property_index;
-						if (type != "uchar" && type != "uint8") return false;
-					}
-
-					property_index += 1;
+					face_property_index += 1;
 				}
 			}
 		}
 
 		else if (nm != "comment") return false;
-
 	}
 
-	if (format == -1 || VN == -1 || FN == -1 || xi == -1 || yi == -1 || zi == -1) return false;
+	if (format == -1 || VN == -1 || FN == -1 || vl_xi == -1 || vl_yi == -1 || vl_zi == -1) return false;
 
-	bool has_color = ri != -1 && gi != -1 && bi != -1;
+	bool has_color = vl_ri != -1 && vl_gi != -1 && vl_bi != -1;
 	if (has_color) v_col = new COLORREF[VN];
 
 
@@ -225,24 +239,27 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 			return atoi(c);
 		};
 
-		float *fs = new float[property_index];
+		float *fs = new float[vertex_property_index];
 		for (int i = 0; i < VN; i++) {
-			for (int u = 0; u < property_index; u++) fs[u] = readFloat();
-			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			for (int u = 0; u < vertex_property_index; u++) fs[u] = readFloat();
+			Vs[i].x = fs[vl_xi], Vs[i].y = fs[vl_yi], Vs[i].z = fs[vl_zi];
 			if (has_color) {
-				vec3f col = (vec3f(fs[ri], fs[gi], fs[bi]) + vec3f(0.5)) / 255.;
+				vec3f col = (vec3f(fs[vl_ri], fs[vl_gi], fs[vl_bi]) + vec3f(0.5)) / 255.;
 				v_col[i] = toCOLORREF(col);
 			}
 		}
 		delete fs;
 
 		for (int i = 0; i < FN; i++) {
-			int n = readInt();
-			if (n != 3) return false;
-			for (int u = 0; u < 3; u++) {
-				int d = readInt();
-				if (d >= 0 && d < VN) Fs[i][u] = d;
-				else return false;
+			for (int u = 0; u < face_property_index; u++) {
+				if (u != fl_li) { readInt(); continue; }
+				int n = readInt();
+				if (n != 3) return false;
+				for (int u = 0; u < 3; u++) {
+					int d = readInt();
+					if (d >= 0 && d < VN) Fs[i][u] = d;
+					else return false;
+				}
 			}
 		}
 	}
@@ -260,28 +277,34 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 
 		if (next_byte() != '\n') return false;
 
-		float *fs = new float[property_index];
+		float *fs = new float[vertex_property_index];
 		uint32_t cr = 0, cg = 0, cb = 0;
 		for (int i = 0; i < VN; i++) {
-			for (int u = 0; u < property_index; u++) {
-				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();
-				else if (u == ri) cr = next_byte();
-				else if (u == gi) cg = next_byte();
-				else if (u == bi) cb = next_byte();
+			for (int u = 0; u < vertex_property_index; u++) {
+				if (u == vl_xi || u == vl_yi || u == vl_zi) *(uint32_t*)&fs[u] = read32();
+				else if (u == vl_ri) cr = next_byte();
+				else if (u == vl_gi) cg = next_byte();
+				else if (u == vl_bi) cb = next_byte();
 				else for (int _ = 0; _ < vertex_size_list[u]; _++) next_byte();
 			}
-			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			Vs[i].x = fs[vl_xi], Vs[i].y = fs[vl_yi], Vs[i].z = fs[vl_zi];
 			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
 		}
 		delete fs;
 
 		for (int i = 0; i < FN; i++) {
-			int n = (int)next_byte();
-			if (n != 3) return false;
-			for (int u = 0; u < 3; u++) {
-				int d = (int)read32();
-				if (d >= 0 && d < VN) Fs[i][u] = d;
-				else return false;
+			for (int u = 0; u < face_property_index; u++) {
+				if (u != fl_li) {
+					for (int _ = 0; _ < face_size_list[u]; _++) next_byte();
+					continue;
+				}
+				int n = (int)next_byte();
+				if (n != 3) return false;
+				for (int u = 0; u < 3; u++) {
+					int d = (int)read32();
+					if (d >= 0 && d < VN) Fs[i][u] = d;
+					else return false;
+				}
 			}
 		}
 
@@ -300,28 +323,34 @@ bool readPLY(FILE* fp, vec3f* &Vs, ply_triangle* &Fs, int &VN, int &FN, COLORREF
 
 		if (next_byte() != '\n') return false;
 
-		float *fs = new float[property_index];
+		float *fs = new float[vertex_property_index];
 		uint32_t cr = 0, cg = 0, cb = 0;
 		for (int i = 0; i < VN; i++) {
-			for (int u = 0; u < property_index; u++) {
-				if (u == xi || u == yi || u == zi) *(uint32_t*)&fs[u] = read32();
-				else if (u == ri) cr = next_byte();
-				else if (u == gi) cg = next_byte();
-				else if (u == bi) cb = next_byte();
+			for (int u = 0; u < vertex_property_index; u++) {
+				if (u == vl_xi || u == vl_yi || u == vl_zi) *(uint32_t*)&fs[u] = read32();
+				else if (u == vl_ri) cr = next_byte();
+				else if (u == vl_gi) cg = next_byte();
+				else if (u == vl_bi) cb = next_byte();
 				else for (int _ = 0; _ < vertex_size_list[u]; _++) next_byte();
 			}
-			Vs[i].x = fs[xi], Vs[i].y = fs[yi], Vs[i].z = fs[zi];
+			Vs[i].x = fs[vl_xi], Vs[i].y = fs[vl_yi], Vs[i].z = fs[vl_zi];
 			if (has_color) v_col[i] = (cr << 16) | (cg << 8) | cb;
 		}
 		delete fs;
 
 		for (int i = 0; i < FN; i++) {
-			int n = (int)next_byte();
-			if (n != 3) return false;
-			for (int u = 0; u < 3; u++) {
-				int d = (int)read32();
-				if (d >= 0 && d < VN) Fs[i][u] = d;
-				else return false;
+			for (int u = 0; u < face_property_index; u++) {
+				if (u != fl_li) {
+					for (int _ = 0; _ < face_size_list[u]; _++) next_byte();
+					continue;
+				}
+				int n = (int)next_byte();
+				if (n != 3) return false;
+				for (int u = 0; u < 3; u++) {
+					int d = (int)read32();
+					if (d >= 0 && d < VN) Fs[i][u] = d;
+					else return false;
+				}
 			}
 		}
 	}
