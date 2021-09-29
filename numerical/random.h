@@ -89,6 +89,9 @@ inline uint32_t lcg_next(uint32_t &seed) {
 double rand01(uint32_t &seed) {
 	return lcg_next(seed) * (1. / 4294967296.);  // [0,1)
 }
+float rand01f(uint32_t &seed) {
+	return (float)lcg_next(seed) * (float)(1. / 4294967296.);  // [0,1)
+}
 double rand_11(uint32_t &seed) {
 	return (.5 + (int32_t)lcg_next(seed))*(1. / 2147483648.);  // (-1,1)
 }

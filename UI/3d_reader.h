@@ -1,5 +1,6 @@
 // a very limited STL and PLY file reader for ply_viewer.cpp
 
+#pragma once
 
 #ifndef _WINDOWS_
 #include <Windows.h>  // COLORREF

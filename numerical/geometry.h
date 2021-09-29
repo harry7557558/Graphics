@@ -183,6 +183,8 @@ vec2::vec2(const vec2f &p) : x((double)p.x), y((double)p.y) {}
 
 vec2 sincos(double a) { return vec2(sin(a), cos(a)); }
 vec2 cossin(double a) { return vec2(cos(a), sin(a)); }
+vec2f sincos(float a) { return vec2f(sin(a), cos(a)); }
+vec2f cossin(float a) { return vec2f(cos(a), sin(a)); }
 
 
 
@@ -409,6 +411,7 @@ struct vec3f {
 	bool operator != (const vec3f &v) const { return x != v.x || y != v.y || z != v.z; }
 	friend vec3f pMax(const vec3f &a, const vec3f &b) { return vec3f(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)); }
 	friend vec3f pMin(const vec3f &a, const vec3f &b) { return vec3f(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)); }
+	friend vec3f abs(const vec3f &a) { return vec3f(abs(a.x), abs(a.y), abs(a.z)); }
 	friend vec3f floor(const vec3f &a) { return vec3f(floor(a.x), floor(a.y), floor(a.z)); }
 	friend vec3f ceil(const vec3f &a) { return vec3f(ceil(a.x), ceil(a.y), ceil(a.z)); }
 	friend vec3f fract(const vec3f &a) { return vec3f(fract(a.x), fract(a.y), fract(a.z)); }
