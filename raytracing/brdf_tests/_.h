@@ -368,6 +368,7 @@ void KeyUp(WPARAM _KEY) {
 		char filename_utf8[MAX_PATH << 2];
 		stbiw_convert_wchar_to_utf8(filename_utf8, MAX_PATH << 2, filename_t);
 		stbi_write_png(filename_utf8, _WIN_W, _WIN_H, 4, pixels, 4 * _WIN_W);
+		delete pixels;
 	}
 }
 
