@@ -65,6 +65,7 @@ bool Render_Needed = true;
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 #define _RDBK { if (!Render_Needed) break; HDC hdc = GetDC(hWnd), HImgMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(HImgMem, _HIMG); render(); BitBlt(hdc, 0, 0, _WIN_W, _WIN_H, HImgMem, 0, 0, SRCCOPY); SelectObject(HImgMem, hbmOld), DeleteDC(HImgMem), DeleteDC(hdc); Render_Needed = false; break; }
 	switch (message) {
+	case WM_NULL: { _RDBK }
 	case WM_CREATE: { if (!_HWND) Init(); break; }
 	case WM_CLOSE: { WindowClose(); DestroyWindow(hWnd); return 0; }
 	case WM_DESTROY: { PostQuitMessage(0); return 0; }
@@ -259,6 +260,18 @@ bool inited = false;
 void Init() {
 	if (inited) return; inited = true;
 	mainInit();
+
+#if KEEP_RENDERING
+	new std::thread([]() {
+		for (;;) {
+			if (_WINIMG) {
+				Render_Needed = true;
+				SendMessage(_HWND, WM_NULL, NULL, NULL);
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			}
+		}
+	});
+#endif
 }
 
 
