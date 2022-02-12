@@ -11,6 +11,8 @@ import states_builtin
 import integrators
 import colorsys
 
+import time
+
 
 class Solver:
 
@@ -45,22 +47,30 @@ FPS = 30
 def main():
     pygame.init()
     screen = pygame.display.set_mode(RESOLUTION)
-    pygame.display.set_caption("Mass-Spring Integrators Test")
+    pygame.display.set_caption("1D Diffusion Equation Integrators Test")
 
     font = pygame.font.SysFont('Consolas', 16)
 
-    state = states_builtin.dam(64, -0.5, 0.0, 0.02, None, 0.0)
+    #state = states_builtin.dam(100, 0.01, -0.5, 0.0, None, 0.0)
+    state = states_builtin.dam(500, 0.1, -0.5, 0.0, None, 0.0)
+    #state = states_builtin.dam(500, 0.5, -0.5, 0.0, None, 0.0)
+    #state = states_builtin.dancing_heater(100, 0.01, -0.5, 0.0, None, 0.0)
+    #state = states_builtin.dancing_heater(400, 0.1, -0.5, 0.0, None, None)
+    #state = states_builtin.two_heaters(40, 0.08, -0.5, 0.2)
 
-    viewport = Viewport(Vector2(RESOLUTION), 2.5, Vector2(0, 1))
+    viewport = Viewport(Vector2(RESOLUTION), 1.5, Vector2(0, 1))
 
     integrators_ = [
         integrators.Euler,
         integrators.Midpoint,
         integrators.RungeKutta,
+        integrators.ImplicitEuler
     ]
     solvers = []
     for i in range(len(integrators_)):
         solvers.append(Solver(state, integrators_[i], i/len(integrators_)))
+
+    time_start = time.perf_counter()
 
     running = True
     while running:
@@ -96,7 +106,15 @@ def main():
         # draw
         viewport.draw(screen)
         for i in range(len(solvers)):
-            solvers[i].draw(screen, viewport, font, [5, 5+18*i])
+            solvers[i].draw(screen, viewport, font, [5, 5+18*(i+1)])
+
+        # display actual time
+        text = font.render(
+            "{:.2f}s".format(time.perf_counter()-time_start),
+            True, (255, 255, 255))
+        text_rect = text.get_rect()
+        text_rect.topleft = [5, 5]
+        screen.blit(text, text_rect)
 
         # draw mouse position
         mouse_text = font.render(
@@ -113,4 +131,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # __import__("cProfile").run("main()")
     main()

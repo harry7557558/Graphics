@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.sparse
+import scipy.sparse.linalg
 from state import State
 from copy import deepcopy
 
@@ -28,8 +30,8 @@ class Euler(Base):
 
     def update(self, dt: float):
 
-        self.current_state.calc_dudt()
-        self.current_state.u += self.current_state.dudt * dt
+        dudt = self.current_state.calc_dudt()
+        self.current_state.u += dudt * dt
         self.current_state.time += dt
 
 
@@ -40,15 +42,13 @@ class Midpoint(Base):
 
     def update(self, dt: float):
 
-        self.current_state.calc_dudt()
         t0 = self.current_state.time
         u0 = np.array(self.current_state.u)
-        p0 = np.array(self.current_state.dudt)
+        p0 = self.current_state.calc_dudt()
 
         self.current_state.u = u0 + 0.5*p0*dt
         self.current_state.time = t0 + 0.5*dt
-        self.current_state.calc_dudt()
-        p1 = np.array(self.current_state.dudt)
+        p1 = self.current_state.calc_dudt()
 
         self.current_state.u = u0 + p1*dt
         self.current_state.time = t0 + dt
@@ -64,23 +64,38 @@ class RungeKutta(Base):
         t0 = self.current_state.time
         u0 = np.array(self.current_state.u)
 
-        self.current_state.calc_dudt()
-        k1 = np.array(self.current_state.dudt)
+        k1 = self.current_state.calc_dudt()
 
         self.current_state.u = u0+0.5*dt*k1
         self.current_state.time = t0 + 0.5*dt
-        self.current_state.calc_dudt()
-        k2 = np.array(self.current_state.dudt)
+        k2 = self.current_state.calc_dudt()
 
         self.current_state.u = u0+0.5*dt*k2
         self.current_state.time = t0 + 0.5*dt
-        self.current_state.calc_dudt()
-        k3 = np.array(self.current_state.dudt)
+        k3 = self.current_state.calc_dudt()
 
         self.current_state.u = u0+dt*k3
         self.current_state.time = t0 + dt
-        self.current_state.calc_dudt()
-        k4 = np.array(self.current_state.dudt)
+        k4 = self.current_state.calc_dudt()
 
         self.current_state.u = u0 + dt/6. * (k1+2.0*k2+2.0*k3+k4)
         self.current_state.time = t0 + dt
+
+
+class ImplicitEuler(Base):
+    """Without considering time variable"""
+
+    def __init__(self, state: State):
+        # isn't inaccurate when put 1 as EVAL_COUNT
+        super().__init__(state, 4, 0)
+
+    def update(self, dt: float):
+        #dpdu = self.current_state.calc_dpdu_n()
+        dpdu = self.current_state.calc_dpdu()
+        #mat = np.identity(self.current_state.n) / dt - dpdu
+        mat = scipy.sparse.identity(self.current_state.n) / dt - dpdu
+        dudt = self.current_state.calc_dudt()
+        #du = np.linalg.solve(mat, dudt)
+        du, du_info = scipy.sparse.linalg.cg(mat, dudt)
+        self.current_state.u += du
+        self.current_state.time += dt

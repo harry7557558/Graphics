@@ -1,6 +1,6 @@
 import numpy as np
+import scipy.sparse
 import pygame
-from pygame import Vector2
 from viewport import Viewport
 from typing import Callable
 
@@ -25,12 +25,12 @@ class State:
         self.dx = (self.x1 - self.x0) / (self.n - 1)
         self.x = np.linspace(self.x0, self.x1, self.n)  # positions
         self.u = np.array([initial_temp(x) for x in self.x])  # temperatures
-        self.dudt = np.zeros(self.n)  # derivatives
         self.time = 0.0
 
-    def calc_dudt(self) -> None:
+    def calc_dudt(self) -> np.array:
+        """Calculate the power at each point"""
         # heater
-        self.dudt = np.array([self.heater(x, self.time) for x in self.x])
+        dudt = np.array([self.heater(x, self.time) for x in self.x])
         # laplacian
         for i in range(self.n):
             u0 = self.boundary_temp_l if i == 0 else self.u[i-1]
@@ -41,7 +41,53 @@ class State:
                 u2 = self.u[i]
             u1 = self.u[i]
             lap_u = (u0+u2-2.0*u1) / self.dx**2
-            self.dudt[i] += self.k * lap_u
+            dudt[i] += self.k * lap_u
+        return dudt
+
+    def calc_dpdu_n(self) -> np.array:
+        """Numerically calculate the derivative of dudt to u, returns a matrix"""
+        eps = 1e-4
+        u0 = np.array(self.u)
+        mat = []
+        for i in range(self.n):
+            du = np.zeros(self.n)
+            du[i] = eps
+            self.u = u0 + du
+            p1 = self.calc_dudt()
+            self.u = u0 - du
+            p0 = self.calc_dudt()
+            mat.append((p1-p0)/(2.0*eps))
+        self.u = u0
+        return np.array(mat).T
+
+    def calc_dpdu(self) -> scipy.sparse.base:
+        """Analytically calculate ∂p/∂u, returns a matrix"""
+        rows = []
+        cols = []
+        nums = []
+        # heater - zero
+        # laplacian - symmetric tridiagonal
+        for i in range(self.n):  # for each p
+            if i == 0:
+                i0 = i if self.boundary_temp_l is None else -1
+            else:
+                i0 = i-1
+            if i == self.n - 1:
+                i2 = i if self.boundary_temp_r is None else -1
+            else:
+                i2 = i+1
+            cols.append(i)
+            rows.append(i)
+            nums.append(-2.0 * self.k/self.dx**2)
+            if i0 != -1:
+                cols.append(i)
+                rows.append(i0)
+                nums.append(1.0 * self.k/self.dx**2)
+            if i2 != -1:
+                cols.append(i)
+                rows.append(i2)
+                nums.append(1.0 * self.k/self.dx**2)
+        return scipy.sparse.coo_matrix((nums, (cols, rows)))
 
     def draw(self, surface: pygame.Surface, viewport: Viewport, color):
         for i in range(self.n):
