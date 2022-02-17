@@ -86,16 +86,16 @@ class ImplicitEuler(Base):
     """Without considering time variable"""
 
     def __init__(self, state: State):
-        # isn't inaccurate when put 1 as EVAL_COUNT
-        super().__init__(state, 4, 0)
+        # when set to 1: twice as much time as Euler
+        super().__init__(state, 2, 0)
 
     def update(self, dt: float):
-        #dpdu = self.current_state.calc_dpdu_n()
         dpdu = self.current_state.calc_dpdu()
         #mat = np.identity(self.current_state.n) / dt - dpdu
         mat = scipy.sparse.identity(self.current_state.n) / dt - dpdu
-        dudt = self.current_state.calc_dudt()
+        dudt = self.current_state.calc_dudt().reshape((self.current_state.n, 1))
         #du = np.linalg.solve(mat, dudt)
         du, du_info = scipy.sparse.linalg.cg(mat, dudt)
+        du = du.reshape((self.current_state.xn, self.current_state.yn))
         self.current_state.u += du
         self.current_state.time += dt

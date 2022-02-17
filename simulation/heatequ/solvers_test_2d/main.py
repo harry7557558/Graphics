@@ -33,8 +33,12 @@ class Solver:
         if eval_count % self.integrator.EVAL_COUNT != 0:
             raise ValueError("Eval count are not integer multiples")
         step_count = eval_count//self.integrator.EVAL_COUNT
+        t0 = time.perf_counter()
         for i in range(step_count):
             self.integrator.update(delta_t/step_count)
+        dt = 1000.0 * (time.perf_counter() - t0)
+        # Implicit Euler is faster than explicit Euler?!
+        print(self.integrator.__class__.__name__, "{:.1f}ms".format(dt))
 
     def draw(self, surface, viewport, font, text_pos: tuple[int, int]) -> None:
         self.state.draw(surface, viewport, self.curve_color)
@@ -53,20 +57,26 @@ def main():
 
     font = pygame.font.SysFont('Consolas', 16)
 
-    state = states_builtin.circle_dam(16, 12, 0.1, Vector2(-0.3, 0.3), 0.5)
+    #state = states_builtin.circle_dam(16, 12, 0.1, Vector2(-0.3, 0.3), 0.5)
+    #state = states_builtin.circle_dam(8, 6, 2.0, Vector2(-0.3, 0.3), 0.5)
+    #state = states_builtin.circle_dam(40, 40, 2.0, Vector2(-0.3, 0.3), 0.5)
+    #state = states_builtin.heater_cooler(12, 12, 0.2, 0.5, 4.0)
+    state = states_builtin.heater_cooler(20, 20, 2.0, 0.5, 40.0)
+    #state = states_builtin.heater_cooler(40, 40, 10000.0, 0.5, 200000.0)
 
     viewport = Viewport3D(Vector2(RESOLUTION), 0.5,
                           Vector3(0, 0, 0), -60, -30)
 
     integrators_ = [
-        integrators.Euler,
-        integrators.Midpoint,
-        integrators.RungeKutta,
-        # integrators.ImplicitEuler
+        #integrators.Euler,
+        #integrators.Midpoint,
+        #integrators.RungeKutta,
+        integrators.ImplicitEuler
     ]
     solvers = []
     for i in range(len(integrators_)):
         solvers.append(Solver(state, integrators_[i], i/len(integrators_)))
+    state.visualize_matrix("D:\\sparse-matrix.png")
 
     time_start = time.perf_counter()
 

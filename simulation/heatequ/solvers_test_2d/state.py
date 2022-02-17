@@ -43,7 +43,7 @@ class State:
         # heater
         for xi in range(self.xn):
             for yi in range(self.yn):
-                self.u[xi][yi] += self.heater(*self.xy[xi][yi], self.time)
+                dudt[xi][yi] += self.heater(*self.xy[xi][yi], self.time)
         # laplacian
         for xi in range(self.xn):
             for yi in range(self.yn):
@@ -74,15 +74,37 @@ class State:
             self.u = (u0 - du).reshape((self.xn, self.yn))
             p0 = self.calc_dudt().reshape((self.n))
             mat.append((p1-p0)/(2.0*eps))
-        self.u = u0
+        self.u = u0.reshape((self.xn, self.yn))
         return np.array(mat).T
 
     def calc_dpdu(self) -> scipy.sparse.base:
         """Analytically calculate ∂p/∂u, returns a matrix"""
-        pass
         rows = []
         cols = []
         nums = []
+        # heater - none
+        # laplacian - symmetric
+        for xi in range(self.xn):
+            for yi in range(self.yn):
+                pi = xi*self.yn + yi
+                xi0 = max(xi-1, 0)
+                xi1 = min(xi+1, self.xn-1)
+                yi0 = max(yi-1, 0)
+                yi1 = min(yi+1, self.yn-1)
+                # d2udx2 = (ux0+ux1-2.0*u) / dx**2
+                k = self.k / self.dx**2
+                rows += [pi]*3
+                cols += [xi0*self.yn + yi,
+                         xi1*self.yn + yi,
+                         xi*self.yn + yi]
+                nums += [k, k, -2.0*k]
+                # d2udy2 = (uy0+uy1-2.0*u) / dy**2
+                k = self.k / self.dy**2
+                rows += [pi]*3
+                cols += [xi*self.yn + yi0,
+                         xi*self.yn + yi1,
+                         xi*self.yn + yi]
+                nums += [k, k, -2.0*k]
         return scipy.sparse.coo_matrix((nums, (cols, rows)))
 
     def draw(self, surface: pygame.Surface, viewport: Viewport3D, color):
@@ -99,7 +121,9 @@ class State:
                 ]
                 n = np.cross(verts[2]-verts[0], verts[3]-verts[1])
                 n /= np.linalg.norm(n)
-                rgb = np.array(color)*abs(n[2])
+                s = abs(n[2])
+                s = (1.0-(1.0-s)**0.1)**0.5
+                rgb = np.array(color)*s
                 viewport.draw_quad(verts, rgb.tolist())
 
     def calc_mean_temperature(self) -> float:
@@ -116,3 +140,11 @@ class State:
         text_rect = text.get_rect()
         text_rect.topleft = topleft
         surface.blit(text, text_rect)
+
+    def visualize_matrix(self, filepath):
+        from PIL import Image
+        mat = self.calc_dpdu().toarray()
+        mat = abs(mat) / np.amax(abs(mat))
+        mat = (255*mat).astype(np.uint8)
+        img = Image.fromarray(mat)
+        img.save(filepath)
