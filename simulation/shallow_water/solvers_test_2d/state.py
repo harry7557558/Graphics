@@ -53,12 +53,12 @@ class State:
         dvdt = np.zeros((self.xn, self.yn))
         for xi in range(self.xn):
             for yi in range(self.yn):
-                xi0 = max(xi-1, 0)
-                xi1 = min(xi+1, self.xn-1)
+                xi0 = xi-1 if xi != 0 else xi+1
+                xi1 = xi+1 if xi != self.xn-1 else xi-1
                 xis0 = -1. if xi == 0 else 1.
                 xis1 = -1. if xi == self.xn-1 else 1.
-                yi0 = max(yi-1, 0)
-                yi1 = min(yi+1, self.yn-1)
+                yi0 = yi-1 if yi != 0 else yi+1
+                yi1 = yi+1 if yi != self.yn-1 else yi-1
                 yis0 = -1. if yi == 0 else 1.
                 yis1 = -1. if yi == self.yn-1 else 1.
                 # h
@@ -88,9 +88,9 @@ class State:
                 vy = (vy1-vy0)/(2.*self.dy)
                 vlap = (vx1+vx0-2.*v)/self.dx**2+(vy1+vy0-2.*v)/self.dy**2
                 # equation
-                dhdt[xi][yi] = -h*(ux+vy) - u*hx-v*hy
-                dudt[xi][yi] = -g*hx - u*ux-v*uy + nu*ulap - k*u+f*v
-                dvdt[xi][yi] = -g*hy - u*vx-v*vy + nu*vlap - k*v-f*u
+                dhdt[xi][yi] = -h*(ux+vy) - u*hx - v*hy
+                dudt[xi][yi] = -g*hx - u*ux - v*uy + nu*ulap - k*u + f*v
+                dvdt[xi][yi] = -g*hy - u*vx - v*vy + nu*vlap - k*v - f*u
         return (dhdt, dudt, dvdt)
 
     def calc_dstds_n(self) -> np.array:
@@ -110,12 +110,98 @@ class State:
         return np.array(mat).T
 
     def calc_dstds(self) -> scipy.sparse.base:
-        pass
         """Analytically calculate ∂p/∂u, returns a matrix"""
         rows = []
         cols = []
         nums = []
-        return scipy.sparse.coo_matrix((nums, (cols, rows)))
+        h, u, v = self.h, self.u, self.v
+        dx, dy = self.dx, self.dy
+        xn, yn = self.xn, self.yn
+        for xi in range(xn):
+            for yi in range(yn):
+                # Equations:
+                # ht' = -h*(ux'+vy') -u*hx'-v*hy'
+                # ut' = -g*hx' -u*ux'-v*uy' + nu*∇²u -k*u +f*v
+                # vt' = -g*hy' -u*vx'-v*vy' + nu*∇²v -k*v -f*u
+                xi0 = xi-1 if xi != 0 else xi+1
+                xi1 = xi+1 if xi != xn-1 else xi-1
+                xis0 = -1. if xi == 0 else 1.
+                xis1 = -1. if xi == xn-1 else 1.
+                yi0 = yi-1 if yi != 0 else yi+1
+                yi1 = yi+1 if yi != yn-1 else yi-1
+                yis0 = -1. if yi == 0 else 1.
+                yis1 = -1. if yi == yn-1 else 1.
+                # ∂ht'/∂h = -(ux'+vy') -u*∂hx'/∂h -v*∂hy'/∂h
+                rows += [xi*yn+yi]*5
+                cols += [xi*yn+yi,
+                         xi1*yn+yi, xi0*yn+yi,
+                         xi*yn+yi1, xi*yn+yi0]
+                nums += [-(u[xi1][yi]*xis1-u[xi0][yi]*xis0)/(2.*dx)
+                         - (v[xi][yi1]*yis1-v[xi][yi0]*yis0)/(2.*dy),
+                         -u[xi][yi]/(2.*dx), -u[xi][yi]/(-2.*dx),
+                         -v[xi][yi]/(2.*dy), -v[xi][yi]/(-2.*dy)]
+                # ∂ht'/∂u = -h*∂ux'/∂u -hx'
+                rows += [xi*yn+yi]*3
+                cols += [self.n + xi1*yn+yi, self.n + xi0*yn+yi,
+                         self.n + xi*yn+yi]
+                nums += [-h[xi][yi]*xis1/(2.*dx), -h[xi][yi]*xis0/(-2.*dx),
+                         -(h[xi1][yi]-h[xi0][yi])/(2.*dx)]
+                # ∂ht'/∂v = -h*∂vy'/∂v -hy'
+                rows += [xi*yn+yi]*3
+                cols += [2*self.n + xi*yn+yi1, 2*self.n + xi*yn+yi0,
+                         2*self.n + xi*yn+yi]
+                nums += [-h[xi][yi]*yis1/(2.*dy), -h[xi][yi]*yis0/(-2.*dy),
+                         -(h[xi][yi1]-h[xi][yi0])/(2.*dy)]
+                # ∂ut'/∂h = -g*∂hx'/∂h
+                rows += [self.n + xi*yn+yi]*2
+                cols += [xi1*yn+yi, xi0*yn+yi]
+                nums += [-self.g/(2.*dx), -self.g/(-2.*dx)]
+                # ∂ut'/∂u = -ux'-u*∂ux'/∂u -v*∂uy'/∂u + nu*∂[∇²u]/∂u -k
+                rows += [self.n + xi*yn+yi]*5
+                cols += [self.n + xi*yn+yi,
+                         self.n + xi1*yn+yi, self.n + xi0*yn+yi,
+                         self.n + xi*yn+yi1, self.n + xi*yn+yi0]
+                d_app = [-(u[xi1][yi]*xis1-u[xi0][yi]*xis0)/(2.*dx),
+                         -u[xi][yi]*xis1/(2.*dx),
+                         -u[xi][yi]*xis0/(-2.*dx),
+                         -v[xi][yi]/(2.*dy),
+                         -v[xi][yi]/(-2.*dy)]
+                d_vis = [-2.*self.nu*(dx**-2+dy**-2)-self.k,
+                         self.nu*xis1/dx**2,
+                         self.nu*xis0/dx**2,
+                         self.nu/dy**2,
+                         self.nu/dy**2]
+                nums += [d_app[i]+d_vis[i] for i in range(5)]
+                # ∂ut'/∂v = -uy' +f
+                rows += [self.n + xi*yn+yi]
+                cols += [2*self.n + xi*yn+yi]
+                nums += [-(u[xi][yi1]-u[xi][yi0])/(2.*dy) + self.f]
+                # ∂vt'/∂h = -g*∂hy'/∂h
+                rows += [2*self.n + xi*yn+yi]*2
+                cols += [xi*yn+yi1, xi*yn+yi0]
+                nums += [-self.g/(2.*dy), -self.g/(-2.*dy)]
+                # ∂vt'/∂u = -vx' -f
+                rows += [2*self.n + xi*yn+yi]
+                cols += [self.n + xi*yn+yi]
+                nums += [-(v[xi1][yi]-v[xi0][yi])/(2.*dx) - self.f]
+                # ∂vt'/∂v = -u*∂vx'/∂v -vy'-v*∂vy'/∂v + nu*∂[∇²v]/∂v-k
+                rows += [2*self.n + xi*yn+yi]*5
+                cols += [2*self.n + xi*yn+yi,
+                         2*self.n + xi*yn+yi1, 2*self.n + xi*yn+yi0,
+                         2*self.n + xi1*yn+yi, 2*self.n + xi0*yn+yi]
+                d_app = [-(v[xi][yi1]*yis1-v[xi][yi0]*yis0)/(2.*dy),
+                         -v[xi][yi]*yis1/(2.*dy),
+                         -v[xi][yi]*yis0/(-2.*dy),
+                         -u[xi][yi]/(2.*dx),
+                         -u[xi][yi]/(-2.*dx)]
+                d_vis = [-2.*self.nu*(dx**-2+dy**-2)-self.k,
+                         self.nu*yis1/dy**2,
+                         self.nu*yis0/dy**2,
+                         self.nu/dx**2,
+                         self.nu/dx**2]
+                nums += [d_app[i]+d_vis[i] for i in range(5)]
+
+        return scipy.sparse.coo_matrix((nums, (rows, cols)), shape=(3*self.n, 3*self.n))
 
     def draw(self, surface: pygame.Surface, viewport: Viewport3D, color):
         points = np.concatenate((self.xy,
@@ -136,12 +222,15 @@ class State:
                 rgb = np.array(color)*s
                 viewport.draw_quad(verts, rgb.tolist())
 
-    def visualize_matrix(self, filepath):
+    @staticmethod
+    def visualize_matrix(mat, filepath):
         from PIL import Image
-        #mat = self.calc_dstds().toarray()
-        mat = self.calc_dstds_n()
-        mat = abs(mat)**0.1
-        mat = abs(mat) / np.amax(abs(mat))
+        if type(mat) != np.ndarray:  # sparse
+            mat = mat.toarray()
+        mat = abs(mat)
+        print(np.amax(mat))
+        mat = mat**0.1  # make small vals stand out
+        mat /= np.amax(mat)
         mat = (255*mat).astype(np.uint8)
         img = Image.fromarray(mat)
         img.save(filepath)

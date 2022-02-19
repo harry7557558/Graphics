@@ -43,7 +43,7 @@ class Solver:
 
 
 RESOLUTION = (512, 512)
-FPS = 60
+FPS = 30
 
 
 def main():
@@ -52,23 +52,26 @@ def main():
         RESOLUTION, pygame.OPENGL | pygame.DOUBLEBUF)
     pygame.display.set_caption("Shallow Water Equation Integrators Test")
 
-    state = states_builtin.pool(1.6, 1.0, 16, 10, 0.5)
-    #state = states_builtin.pool(1.6, 1.0, 32, 20, 0.5)
+    #state = states_builtin.pool(1.6, 1.0, 16, 10, 0.5)
+    state = states_builtin.pool(1.6, 1.0, 32, 20, 0.5)
     #state = states_builtin.pool(3.0, 1.0, 60, 20, 0.5)
+    #state = states_builtin.pool(0.4, 0.3, 40, 30, 0.5)
+    #state = states_builtin.pool(1.6, 1.0, 64, 40, 0.5)
 
     viewport = Viewport3D(Vector2(RESOLUTION), 0.5,
                           Vector3(0, 0, 0), -60, -30)
 
     integrators_ = [
-        integrators.Euler,
-        #integrators.Midpoint,
-        #integrators.RungeKutta,
+        # integrators.Euler,
+        # integrators.Midpoint,
+        integrators.RungeKutta,
         integrators.ImplicitEuler
     ]
     solvers = []
     for i in range(len(integrators_)):
         solvers.append(Solver(state, integrators_[i], i/len(integrators_)))
-    state.visualize_matrix("D:\\sparse-matrix.png")
+    # if integrators.ImplicitEuler in integrators_:
+    #     state.visualize_matrix(state.calc_dstds_n(), "D:\\sparse-matrix.png")
 
     time_start = time.perf_counter()
 

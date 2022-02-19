@@ -100,14 +100,15 @@ class RungeKutta(Base):
 
 
 class ImplicitEuler(Base):
-    """Without considering time variable"""
+    """Without considering time variable
+       (Seems like this method loses energy for this type of equations)"""
 
     def __init__(self, state: State):
-        # when set to 1: twice as much time as Euler
-        super().__init__(state, 2, 0)
+        super().__init__(state, 4, 0)
 
     def update(self, dt: float):
-        dstds = self.current_state.calc_dstds_n()
+        dstds = self.current_state.calc_dstds()
+        #State.visualize_matrix(dstds, "D:\\sparse-matrix.png")
         #mat = np.identity(self.current_state.n) / dt - dpdu
         mat = scipy.sparse.identity(3*self.current_state.n) / dt - dstds
         dsdt = self.current_state.calc_dsdt()
