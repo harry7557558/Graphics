@@ -1,0 +1,227 @@
+#pragma once
+
+#include <functional>
+
+#include <GL/glew.h>
+#include <glm/glm.hpp>
+using namespace glm;
+
+
+namespace Integrators {
+	class Euler;
+	class Midpoint;
+	class RungeKutta;
+}
+
+class State {
+
+	// parameters
+	float k;  // ∂u/∂t = k * ∂²u/∂x²
+	std::function<float(vec2)> initial_temp;  // initial temperature
+	std::function<float(vec2, float)> heater;  // heater(xy, t)
+	float time;
+
+	// discretization
+	float x0;  // minimum x
+	float x1;  // maximum x
+	float y0;  // minimum y
+	float y1;  // maximum y
+	int xn;  // number of sample points along x
+	int yn;  // number of sample points along y
+	int n;  // xn*yn
+	float dx, dy;  // step along x, y
+	vec2 *xy;  // positions
+	float *u;  // temperatures
+
+public:
+	friend class Integrators::Euler;
+	friend class Integrators::Midpoint;
+	friend class Integrators::RungeKutta;
+
+	State() : xy(nullptr), u(nullptr) {}
+	State(
+		vec2 xy0, vec2 xy1, int xn, int yn,
+		float k,
+		std::function<float(vec2)> initial_temp,
+		std::function<float(vec2, float)> heater
+	);
+	State::State(const State &other);
+	~State();
+	int getN() const {
+		return this->n;
+	}
+
+	void draw(
+		GLuint programID, mat4 transformMatrix, vec3 color,
+		GLuint vertexbuffer, GLuint colorbuffer, GLuint indicebuffer
+	) const;
+
+	void getU(float *u) const;
+	void calcDudt(float *dudt) const;
+};
+
+State::State(
+	vec2 xy0, vec2 xy1, int xn, int yn,
+	float k,
+	std::function<float(vec2)> initial_temp,
+	std::function<float(vec2, float)> heater
+) {
+	// parameters
+	this->k = k;
+	this->initial_temp = initial_temp;
+	this->heater = heater;
+	this->time = 0.0f;
+
+	// discretization
+	this->x0 = xy0.x;
+	this->x1 = xy1.x;
+	this->y0 = xy0.y;
+	this->y1 = xy1.y;
+	this->xn = xn;
+	this->yn = yn;
+	this->n = xn * yn;
+	this->dx = (x1-x0)/(xn-1);
+	this->dy = (y1-y0)/(yn-1);
+
+	// initialize
+	this->xy = new vec2[xn*yn];
+	this->u = new float[xn*yn];
+	for (int xi = 0; xi < xn; xi++)
+		for (int yi = 0; yi < yn; yi++) {
+			int i = xi*yn+yi;
+			xy[i] = vec2(x0+xi*dx, y0+yi*dy);
+			u[i] = this->initial_temp(xy[i]);
+		}
+}
+
+State::State(const State &other) {
+	*this = other;
+	this->xy = new vec2[n];
+	this->u = new float[n];
+	std::memcpy(this->xy, other.xy, sizeof(vec2)*n);
+	std::memcpy(this->u, other.u, sizeof(float)*n);
+}
+
+State::~State() {
+	if (xy) delete xy; xy = nullptr;
+	if (u) delete u; u = nullptr;
+}
+
+
+void State::draw(
+	GLuint programID, mat4 transformMatrix, vec3 color,
+	GLuint vertexbuffer, GLuint colorbuffer, GLuint indicebuffer
+) const {
+
+	assert(sizeof(vec3) == 12);
+	assert(sizeof(ivec3) == 12);
+
+	// setup vertice/color/indice buffers
+	int m = (xn-1)*(yn-1);
+	vec3 *vertices = new vec3[4*m];
+	vec3 *colors = new vec3[4*m];
+	ivec3 *indices = new ivec3[2*m];
+	for (int xi = 0; xi < xn-1; xi++)
+		for (int yi = 0; yi < yn-1; yi++) {
+			// vertices
+			int v0[4] = {
+				xi*yn+yi,
+				(xi+1)*yn+yi,
+				xi*yn+(yi+1),
+				(xi+1)*yn+(yi+1)
+			};
+			int v1 = 4*(xi*(yn-1)+yi);
+			vec3 *vp = &vertices[v1];
+			for (int t = 0; t < 4; t++)
+				vp[t] = vec3(xy[v0[t]], u[v0[t]]);
+			// normal
+			vec3 *cp = &colors[v1];
+			vec3 n = normalize(cross(vp[3]-vp[0], vp[2]-vp[1]));
+			float shade = mix(1.0f-pow(1.0f-abs(n.z), 0.4f), 1.0f, 0.1f);
+			cp[0] = cp[1] = cp[2] = cp[3] = color * shade;
+			// indice
+			ivec3 *ip = &indices[2*(xi*(yn-1)+yi)];
+			ip[0] = ivec3(v1+0, v1+1, v1+3);
+			ip[1] = ivec3(v1+3, v1+2, v1+0);
+		}
+
+	// get uniform and attribute locations
+	GLuint matrixLocation = glGetUniformLocation(programID, "transformMatrix");
+	GLuint vertexPositionLocation = glGetAttribLocation(programID, "vertexPosition");
+	GLuint vertexColorLocation = glGetAttribLocation(programID, "vertexColor");
+
+	// vertices
+	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vec3)*4*m, vertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(vertexPositionLocation);
+	glVertexAttribPointer(
+		vertexPositionLocation,  // attribute location
+		3,  // size
+		GL_FLOAT,  // type
+		GL_FALSE,  // normalized?
+		0,  // stride
+		(void*)0  // array buffer offset
+	);
+
+	// colors
+	glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vec3)*4*m, colors, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(vertexColorLocation);
+	glVertexAttribPointer(
+		vertexColorLocation,  // attribute location
+		3,  // size
+		GL_FLOAT,  // type
+		GL_FALSE,  // normalized?
+		0,  // stride
+		(void*)0  // array buffer offset
+	);
+
+	// indices
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indicebuffer);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(ivec3)*2*m, indices, GL_STATIC_DRAW);
+
+	// set uniform(s)
+	glUniformMatrix4fv(matrixLocation, 1, GL_FALSE, &transformMatrix[0][0]);
+
+	// draw
+	glDrawElements(GL_TRIANGLES,
+		3*2*m,
+		GL_UNSIGNED_INT,
+		(void*)0);
+
+	// clean-up
+	glDisableVertexAttribArray(vertexPositionLocation);
+	glDisableVertexAttribArray(vertexColorLocation);
+	delete vertices;
+	delete colors;
+	delete indices;
+}
+
+
+void State::getU(float *u) const {
+	std::memcpy(u, this->u, n*sizeof(float));
+}
+
+void State::calcDudt(float *dudt) const {
+
+	// heater
+	for (int i = 0; i < n; i++)
+		dudt[i] = this->heater(xy[i], time);
+
+	// Laplacian
+	for (int xi = 0; xi < xn; xi++)
+		for (int yi = 0; yi < yn; yi++) {
+			int xi0 = max(xi-1, 0);
+			int xi1 = min(xi+1, xn-1);
+			int yi0 = max(yi-1, 0);
+			int yi1 = min(yi+1, yn-1);
+			float u = this->u[xi*yn+yi];
+			float ux0 = this->u[xi0*yn+yi];
+			float ux1 = this->u[xi1*yn+yi];
+			float uy0 = this->u[xi*yn+yi0];
+			float uy1 = this->u[xi*yn+yi1];
+			float d2udx2 = (ux0+ux1-2.0f*u) / (dx*dx);
+			float d2udy2 = (uy0+uy1-2.0f*u) / (dy*dy);
+			dudt[xi*yn+yi] += this->k * (d2udx2+d2udy2);
+		}
+}
