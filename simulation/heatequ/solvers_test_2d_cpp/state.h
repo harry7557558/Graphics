@@ -6,11 +6,14 @@
 #include <glm/glm.hpp>
 using namespace glm;
 
+#include "sparse.h"
+
 
 namespace Integrators {
 	class Euler;
 	class Midpoint;
 	class RungeKutta;
+	class ImplicitEuler;
 }
 
 class State {
@@ -37,6 +40,7 @@ public:
 	friend class Integrators::Euler;
 	friend class Integrators::Midpoint;
 	friend class Integrators::RungeKutta;
+	friend class Integrators::ImplicitEuler;
 
 	State() : xy(nullptr), u(nullptr) {}
 	State(
@@ -51,13 +55,14 @@ public:
 		return this->n;
 	}
 
+	void getU(float *u) const;
+	void getDudt(float *dudt) const;
+	void getDpdu(LilMatrix *dpdu) const;
+
 	void draw(
 		GLuint programID, mat4 transformMatrix, vec3 color,
 		GLuint vertexbuffer, GLuint colorbuffer, GLuint indicebuffer
 	) const;
-
-	void getU(float *u) const;
-	void calcDudt(float *dudt) const;
 };
 
 State::State(
@@ -105,6 +110,54 @@ State::State(const State &other) {
 State::~State() {
 	if (xy) delete xy; xy = nullptr;
 	if (u) delete u; u = nullptr;
+}
+
+
+void State::getU(float *u) const {
+	std::memcpy(u, this->u, n*sizeof(float));
+}
+
+void State::getDudt(float *dudt) const {
+
+	// heater
+	for (int i = 0; i < n; i++)
+		dudt[i] = this->heater(xy[i], time);
+
+	// Laplacian
+	for (int xi = 0; xi < xn; xi++)
+		for (int yi = 0; yi < yn; yi++) {
+			int xi0 = max(xi-1, 0);
+			int xi1 = min(xi+1, xn-1);
+			int yi0 = max(yi-1, 0);
+			int yi1 = min(yi+1, yn-1);
+			float u = this->u[xi*yn+yi];
+			float ux0 = this->u[xi0*yn+yi];
+			float ux1 = this->u[xi1*yn+yi];
+			float uy0 = this->u[xi*yn+yi0];
+			float uy1 = this->u[xi*yn+yi1];
+			float d2udx2 = (ux0+ux1-2.0f*u) / (dx*dx);
+			float d2udy2 = (uy0+uy1-2.0f*u) / (dy*dy);
+			dudt[xi*yn+yi] += this->k * (d2udx2+d2udy2);
+		}
+}
+
+void State::getDpdu(LilMatrix *dpdu) const {
+	for (int xi = 0; xi < xn; xi++)
+		for (int yi = 0; yi < yn; yi++) {
+			int pi = xi*yn+yi;
+			int xi0 = max(xi-1, 0);
+			int xi1 = min(xi+1, xn-1);
+			int yi0 = max(yi-1, 0);
+			int yi1 = min(yi+1, yn-1);
+			// d2udx2 = (ux0+ux1-2.0*u) / dx**2
+			dpdu->addValue(pi, xi0*yn+yi, k/(dx*dx));
+			dpdu->addValue(pi, xi1*yn+yi, k/(dx*dx));
+			dpdu->addValue(pi, xi*yn+yi, -2.0f*k/(dx*dx));
+			// d2udy2 = (uy0+uy1-2.0*u) / dy**2k/(dx*dx)
+			dpdu->addValue(pi, xi*yn+yi0, k/(dy*dy));
+			dpdu->addValue(pi, xi*yn+yi1, k/(dy*dy));
+			dpdu->addValue(pi, xi*yn+yi, -2.0f*k/(dy*dy));
+		}
 }
 
 
@@ -195,33 +248,4 @@ void State::draw(
 	delete vertices;
 	delete colors;
 	delete indices;
-}
-
-
-void State::getU(float *u) const {
-	std::memcpy(u, this->u, n*sizeof(float));
-}
-
-void State::calcDudt(float *dudt) const {
-
-	// heater
-	for (int i = 0; i < n; i++)
-		dudt[i] = this->heater(xy[i], time);
-
-	// Laplacian
-	for (int xi = 0; xi < xn; xi++)
-		for (int yi = 0; yi < yn; yi++) {
-			int xi0 = max(xi-1, 0);
-			int xi1 = min(xi+1, xn-1);
-			int yi0 = max(yi-1, 0);
-			int yi1 = min(yi+1, yn-1);
-			float u = this->u[xi*yn+yi];
-			float ux0 = this->u[xi0*yn+yi];
-			float ux1 = this->u[xi1*yn+yi];
-			float uy0 = this->u[xi*yn+yi0];
-			float uy1 = this->u[xi*yn+yi1];
-			float d2udx2 = (ux0+ux1-2.0f*u) / (dx*dx);
-			float d2udy2 = (uy0+uy1-2.0f*u) / (dy*dy);
-			dudt[xi*yn+yi] += this->k * (d2udx2+d2udy2);
-		}
 }

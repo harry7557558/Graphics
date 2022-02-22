@@ -24,7 +24,7 @@ mat4 calcTransformMatrix();
 // constants
 #define PI 3.1415927f
 #define iResolution ivec2(800, 600)
-#define FPS 40.0
+#define FPS 20.0
 
 
 // viewport-related global variables
@@ -40,6 +40,7 @@ vec2 mousePos(-1, -1);
 namespace Integrators {
 #include "integrators.h"
 }
+#include "test.cpp"
 
 
 // PDE solver
@@ -56,12 +57,13 @@ public:
 		this->color = glm::rgbColor(vec3(360.0f*hue, 0.5f, 1.0f));
 	}
 
-	void update(float deltaT, int evalCount) {
-		if (evalCount % integrator->getEvalCount() != 0)
-			throw "Eval count are not integer multiples.";
-		int stepCount = evalCount / integrator->getEvalCount();
+	void update(float deltaT, int stepCount) {
+		auto t0 = std::chrono::high_resolution_clock::now();
 		for (int i = 0; i < stepCount; i++)
 			integrator->update(deltaT / stepCount);
+		auto t1 = std::chrono::high_resolution_clock::now();
+		double time_elapsed = std::chrono::duration<double>(t1-t0).count();
+		if (1) printf("%s %.1lfms\n", &(integrator->getName())[0], 1000.0*time_elapsed);
 	}
 
 	void draw(GLuint programID, mat4 transformMatrix,
@@ -94,22 +96,30 @@ namespace BuiltInStates {
 		circleDam(vec2(1.5, 1.0), 32, 24, 0.1f, vec2(-0.5, -0.3), 0.5f),
 		circleDam(vec2(1.5, 1.0), 48, 36, 0.1f, vec2(-0.5, -0.3), 0.5f),
 		circleDam(vec2(1.5, 1.0), 120, 90, 0.1f, vec2(-0.5, -0.3), 0.5f),
-		heaterCooler(vec2(1.0, 0.8), 20, 20, 0.2f, 0.5f, 0.4f),
-		heaterCooler(vec2(1.0, 0.8), 20, 20, 0.4f, 0.5f, 4.0f),
+		heaterCooler(vec2(1.0, 0.8), 20, 20, 0.2f, 0.4f, 0.4f),
+		heaterCooler(vec2(1.0, 0.8), 20, 20, 2.0f, 0.4f, 4.0f),
+		heaterCooler(vec2(1.0, 0.8), 40, 40, 20.0f, 0.4f, 40.0f),
+		heaterCooler(vec2(1.0, 0.8), 40, 40, 1000.0f, 0.4f, 2000.0f),
+		circleDam(vec2(1.28, 0.8), 160, 100, 0.1f, vec2(-0.5, -0.3), 0.6f),
+		circleDam(vec2(1.28, 0.8), 320, 200, 0.1f, vec2(-0.5, -0.3), 0.6f),
+		circleDam(vec2(1.28, 0.8), 640, 400, 0.1f, vec2(-0.5, -0.3), 0.6f),
+		heaterCooler(vec2(1.0, 0.8), 500, 400, 2.0f, 0.4f, 4.0f),
 	};
 
 }
 
 
 int main(int argc, char* argv[]) {
+	//testTimeComplexity(); exit(0);
 
 	// simulation states
-	State state = BuiltInStates::states[1];
-	int nsv = 3, nsi = 0;
+	State state = BuiltInStates::states[9];
+	int nsv = 4, nsi = 0;
 	std::vector<Solver> solvers({
-		Solver(new Integrators::Euler(new State(state)), float(nsi++)/nsv),
-		Solver(new Integrators::Midpoint(new State(state)), float(nsi++)/nsv),
-		Solver(new Integrators::RungeKutta(new State(state)), float(nsi++)/nsv),
+		//Solver(new Integrators::Euler(new State(state)), float(nsi++)/nsv),
+		//Solver(new Integrators::Midpoint(new State(state)), float(nsi++)/nsv),
+		//Solver(new Integrators::RungeKutta(new State(state)), float(nsi++)/nsv),
+		Solver(new Integrators::ImplicitEuler(new State(state)), float(nsi++)/nsv),
 		});
 
 	// Initialise GLFW
@@ -126,7 +136,7 @@ int main(int argc, char* argv[]) {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// Open a window and create its OpenGL context
-	window = glfwCreateWindow(iResolution.x, iResolution.y, "Window Title", NULL, NULL);
+	window = glfwCreateWindow(iResolution.x, iResolution.y, "2D Heat Equation Solver Test", NULL, NULL);
 	if (window == NULL) {
 		fprintf(stderr, "Failed to open GLFW window.\n");
 		getchar(); glfwTerminate(); return -1;
@@ -183,14 +193,9 @@ void main() {
 	glGenBuffers(1, &indicebuffer);
 
 	do {
-		// simulation
-		float dt = 1.0f / float(FPS);
-		for (int i = 0; i < (int)solvers.size(); i++)
-			solvers[i].update(dt, 4);
-
 		// draw
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glClearColor(0.04f, 0.04f, 0.04f, 1.0f);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glUseProgram(programID);
 
 		mat4 transformMatrix = calcTransformMatrix();
@@ -201,12 +206,16 @@ void main() {
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 
+		// simulation
+		float dt = 1.0f / float(FPS);
+		for (int i = 0; i < (int)solvers.size(); i++)
+			solvers[i].update(dt, 1);
+
 		// pause
 		std::this_thread::sleep_for(std::chrono::milliseconds(int(1000.0f*dt)));
 	} while (glfwWindowShouldClose(window) == 0);
 
 	// Cleanup VBO and shader
-
 	glDeleteBuffers(1, &vertexbuffer);
 	glDeleteBuffers(1, &colorbuffer);
 	glDeleteBuffers(1, &indicebuffer);
