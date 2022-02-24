@@ -7,23 +7,26 @@ import random
 random.seed(0)
 
 
-def noisy_circle(n: int, r0: float, noi: float) -> State:
-
+def noisy_circle(n: int, r0: float, noi: float, power: float = 1.0) -> State:
     points = []
     for i in range(n):
-        a = 2.0*math.pi*i/n
+        u = 2.0*(i+0.5)/n-1.0
+        a = math.pi * (1, -1)[u < 0] * abs(u)**power
         r = r0 + noi*(2.0*random.random()-1.0)
         points.append(Vector2(r*math.cos(a), r*math.sin(a)))
     weights = [1.0+0.0*i/n for i in range(n)]
     return State(points, weights, True)
 
 
-def noisy_line(n: int, r0: float, noi: float) -> State:
-
+def noisy_line(n: int, r0: float, noi: float,
+               power: float = 1.0, scale_power: bool = False) -> State:
     points = []
     for i in range(n):
-        x = 2.0*i/(n-1)-1.0
+        u = (i+0.5)/n
+        x = 2.0 * pow(u, power) - 1.0
         y = noi*(2.0*random.random()-1.0)
+        if scale_power:
+            power*u**(power-1)
         points.append(Vector2(x, y))
     weights = [min(i*(n-i-1), 1) for i in range(n)]
     return State(points, weights, False)
