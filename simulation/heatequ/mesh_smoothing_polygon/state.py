@@ -24,9 +24,10 @@ class State:
             self.points[i] = Vector2(arr[2*i], arr[2*i+1])
 
     def _calc_indices_weights(self):
+        """Used by calc_dpdt() and calc_ddpdtdp()"""
         i0s, i1s = [], []
         w0s, w1s, ws = [], [], []
-        mode = "normalize"
+        mode = "average"
         points = self.points
         for i in range(self.n):
             # indices
@@ -39,16 +40,21 @@ class State:
             i1s.append(i1)
             # weights
             w_ = self.weights[i]
-            if mode == "laplacian":
+            if mode == "average":
+                # move to average points
                 w0 = w_ * 0.5
                 w1 = w_ * 0.5
                 w = w_ * -1.0
-            if mode == "normalize":
-                l = (points[i1]-points[i0]).length()
-                w0 = w_ * 0.5 / l
-                w1 = w_ * 0.5 / l
-                w = w_ * -1.0 / l
+            if mode == "laplacian":
+                # independent to mesh resolution, dependent to mesh size
+                # possibly divide by zero
+                s2 = 0.25*(points[i1]-points[i0]).length_squared()
+                w0 = w_ / s2
+                w1 = w_ / s2
+                w = w_ * -2.0 / s2
             if mode == "normal":
+                # move along normal direction
+                # produces "spikes" for out-of-interval
                 d0 = points[i0]-points[i]
                 d1 = points[i1]-points[i]
                 t = -d0.dot(d1-d0) / (d1-d0).length_squared()
@@ -79,7 +85,7 @@ class State:
         return np.array([[p.x, p.y] for p in self.calc_dpdt()]).flatten()
 
     def calc_ddpdtdp_n(self) -> np.array:
-        """Numerically calculate ∂(dpdt)/∂p, returns a matrix"""
+        """Numerically calculates ∂(dpdt)/∂p, returns a matrix"""
         eps = 1e-4
         p0 = self.get_points_arr()
         mat = []
@@ -97,6 +103,7 @@ class State:
     def calc_ddpdtdp(self) -> scipy.sparse.coo_matrix:
         """Analytically calculate ∂(dpdt)/∂p, returns a matrix
            Note that the matrix may be singular."""
+        # assumes weights are independent to p
         i0s, i1s, w0s, w1s, ws = self._calc_indices_weights()
         rows = []
         cols = []
@@ -114,6 +121,72 @@ class State:
             rows += [2*i, 2*i+1]
             cols += [2*i, 2*i+1]
             vals += [ws[i], ws[i]]
+        return scipy.sparse.coo_matrix((vals, (rows, cols)))
+
+    def calc_dpdt_pv(self) -> list[Vector2]:
+        """calc_dpdt() but preserves volume/area"""
+        dpdt = []
+        p = self.points
+        for i in range(self.n):
+            i02, i01, i11, i12 = i-2, i-1, i+1, i+2
+            if self.closed:
+                i02, i01 = i02 % self.n, i01 % self.n
+                i11, i12 = i11 % self.n, i12 % self.n
+            else:
+                i02, i01 = max(i02, 0), max(i01, 0)
+                i11, i12 = min(i11, self.n-1), min(i12, self.n-1)
+            w = self.weights[i]
+            lap2 = -6.0*p[i]+4.0*(p[i01]+p[i11])-(p[i02]+p[i12])
+            dpdt.append(w*lap2)
+        return dpdt
+
+    def calc_dpdt_pv_arr(self) -> np.ndarray:
+        """Same as calc_dpdt_pv() except it returns a flattened NumPy array"""
+        return np.array([[p.x, p.y] for p in self.calc_dpdt_pv()]).flatten()
+
+    def calc_ddpdtdp_pv_n(self) -> np.array:
+        """Numerically calculate ∂(dpdt_pv)/∂p, returns a matrix"""
+        eps = 1e-4
+        p0 = self.get_points_arr()
+        mat = []
+        for i in range(2*self.n):
+            dp = np.zeros(2*self.n)
+            dp[i] = eps
+            self.set_points_arr(p0+dp)
+            dpdt1 = self.calc_dpdt_pv_arr()
+            self.set_points_arr(p0-dp)
+            dpdt0 = self.calc_dpdt_pv_arr()
+            mat.append((dpdt1-dpdt0)/(2.0*eps))
+        self.set_points_arr(p0)
+        return np.array(mat).T
+
+    def calc_ddpdtdp_pv(self) -> scipy.sparse.coo_matrix:
+        """Analytically calculate ∂(dpdt_pv)/∂p, returns a matrix
+           Note that the matrix may be singular."""
+        rows = []
+        cols = []
+        vals = []
+        for i in range(self.n):
+            i02, i01, i11, i12 = i-2, i-1, i+1, i+2
+            if self.closed:
+                i02, i01 = i02 % self.n, i01 % self.n
+                i11, i12 = i11 % self.n, i12 % self.n
+            else:
+                i02, i01 = max(i02, 0), max(i01, 0)
+                i11, i12 = min(i11, self.n-1), min(i12, self.n-1)
+            w = self.weights[i]
+            # p
+            rows += [2*i, 2*i+1]
+            cols += [2*i, 2*i+1]
+            vals += [-6.0*w, -6.0*w]
+            # p01, p11
+            rows += [2*i, 2*i+1, 2*i, 2*i+1]
+            cols += [2*i01, 2*i01+1, 2*i11, 2*i11+1]
+            vals += [4.0*w, 4.0*w, 4.0*w, 4.0*w]
+            # p02, p12
+            rows += [2*i, 2*i+1, 2*i, 2*i+1]
+            cols += [2*i02, 2*i02+1, 2*i12, 2*i12+1]
+            vals += [-w, -w, -w, -w]
         return scipy.sparse.coo_matrix((vals, (rows, cols)))
 
     def draw(self, surface: pygame.Surface, viewport: Viewport, color):

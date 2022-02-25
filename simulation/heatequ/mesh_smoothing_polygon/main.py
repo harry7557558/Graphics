@@ -27,25 +27,28 @@ def main():
     # state = states_builtin.noisy_line(200, 1.0, 0.5)
     # state = states_builtin.noisy_line(200, 1.0, 0.5, 0.4, False)
     # state = states_builtin.noisy_circle(200, 1.0, 0.05, 0.5)
-    state = states_builtin.noisy_circle(200, 1.0, 0.05, 2.0)
+    # state = states_builtin.noisy_circle(200, 1.0, 0.05, 2.0)
+    state = states_builtin.noisy_flower(200, 5, 0.5, 0.5, 0.05)
+    # state = states_builtin.noisy_flower(1000, 5, 0.5, 0.5, 0.02)
 
     # smoothing
     state_euler = deepcopy(state)
     state_ieuler = deepcopy(state)
 
-    step_size = 50.0
+    step_size = 100.0
 
     t0 = time.perf_counter()
-    for i in range(int(2.0*step_size+1.0)):
-        h = step_size/int(2.0*step_size+1.0)
+    max_step = 0.12  # ≤ 1/8
+    for i in range(int(step_size/max_step+1.0)):
+        h = step_size/int(step_size/max_step+1.0)
         integrators.update_euler(state_euler, h)
-        #integrators.update_euler(state_euler, -h)
     t1 = time.perf_counter()
     print("Euler {:.1f}ms".format(1000.0*(t1-t0)))
 
     t0 = time.perf_counter()
-    for i in range(10):
-        h = step_size/10
+    n_steps = 1
+    for i in range(n_steps):
+        h = step_size/n_steps
         integrators.update_implicit_euler(state_ieuler, h)
     t1 = time.perf_counter()
     print("Implicit Euler {:.1f}ms".format(1000.0*(t1-t0)))
@@ -83,7 +86,7 @@ def main():
         # draw
         viewport.draw(screen)
         state.draw(screen, viewport, (128, 128, 128))
-        # state_euler.draw(screen, viewport, (255, 128, 0))
+        state_euler.draw(screen, viewport, (255, 128, 0))
         state_ieuler.draw(screen, viewport, (0, 128, 255))
 
         # draw mouse position

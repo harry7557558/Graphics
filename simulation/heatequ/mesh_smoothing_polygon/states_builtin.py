@@ -18,6 +18,18 @@ def noisy_circle(n: int, r0: float, noi: float, power: float = 1.0) -> State:
     return State(points, weights, True)
 
 
+def noisy_flower(n: int, fm: int, fw: float, r0: float, noi: float) -> State:
+    points = []
+    for i in range(n):
+        a = 2.0*math.pi*i/n
+        r = r0 * (1.0+fw*math.exp(math.sin(fm*a)))
+        p = Vector2(r*math.cos(a), r*math.sin(a))
+        p += noi*(2.0*Vector2(random.random(), random.random())-Vector2(1))
+        points.append(p)
+    weights = [1.0+0.0*i/n for i in range(n)]
+    return State(points, weights, True)
+
+
 def noisy_line(n: int, r0: float, noi: float,
                power: float = 1.0, scale_power: bool = False) -> State:
     points = []
