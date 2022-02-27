@@ -1,6 +1,7 @@
 import pygame
 from pygame import Vector2
 import math
+from typing import Callable
 
 
 class Viewport:
@@ -113,3 +114,58 @@ class Viewport:
                          (0, origin.y), (surface.get_width(), origin.y))
         pygame.draw.line(surface, AXES_COLOR,
                          (origin.x, 0), (origin.x, surface.get_height()))
+
+
+class Slider:
+
+    def __init__(self, p0: Vector2, p1: Vector2,
+                 v0: float, v1: float, vstep: float, v: float,
+                 callback: Callable = None):
+        self.p0 = Vector2(p0)
+        self.p1 = Vector2(p1)
+        self.v0 = float(v0)
+        self.v1 = float(v1)
+        self.vstep = float(vstep)
+        self.v = float(v)
+        self.callback = callback
+        self.has_capture = False
+
+    def set_callback(self, callback: Callable):
+        self.callback = callback
+    
+    def get_value(self) -> float:
+        return self.v
+
+    def draw(self, surface: pygame.Surface):
+        p0, p1 = self.p0, self.p1
+        dp = p1 - p0
+        t = (self.v - self.v0) / (self.v1 - self.v0)
+        pygame.draw.rect(surface, (64, 64, 64), (p0.x, p0.y, dp.x, dp.y))
+        pygame.draw.rect(surface, (192, 192, 192), (p0.x, p0.y, dp.x*t, dp.y))
+
+    def mouse_down(self, pos: Vector2) -> bool:
+        """Call this when mouse down and pass mouse position"""
+        pos = Vector2(pos)
+        if self.p0.x <= pos.x < self.p1.x and self.p0.y <= pos.y < self.p1.y:
+            self.has_capture = True
+        else:
+            self.has_capture = False
+
+    def mouse_up(self) -> bool:
+        """Call this when mouse up (optional)"""
+        self.has_capture = False
+
+    def mouse_move(self, pos: Vector2) -> bool:
+        """Call this when mouse click/drag to update value
+           Returns True if mouse has effect, False otherwise"""
+        pos = Vector2(pos)
+        if self.has_capture:
+            t = (pos.x - self.p0.x) / (self.p1.x - self.p0.x)
+            dv = (self.v1 - self.v0) * t
+            if self.vstep != 0.0:
+                dv = round(dv/self.vstep)*self.vstep
+            self.v = min(max(self.v0+dv, self.v0), self.v1)
+            if self.callback != None:
+                self.callback()
+            return True
+        return False
