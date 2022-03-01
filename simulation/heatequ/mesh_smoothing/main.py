@@ -26,13 +26,21 @@ def main():
     pygame.display.set_caption("Mesh Smoothing Test")
 
     # state
-    state = states_builtin.unit_cube()
-    state = states_builtin.noisy_plane(Vector2(1.5, 1.0), 15, 10, 0.2)
+    # state = states_builtin.unit_cube()
+    # state = states_builtin.plane(Vector2(1.5, 1.0), 15, 10, 0.2)
+    state = states_builtin.cylinder(1.2, 1.0, 1.0, 20, 10, True, 0.2)
+    # state = states_builtin.cylinder(1.2, 1.0, 1.0, 20, 10, False, 0.2)
+    # state = states_builtin.cylinder(1.2, 1.0, 1.0, 100, 50, False, 0.1)
+    # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 20, 10, True, 0.5)
+    # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 20, 10, False, 0.5)
+    # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 100, 50, False, 0.2)
+    # state = states_builtin.torus(1.0, 0.5, 10, 30, False, True, 0.3)
+    # state = states_builtin.torus(1.0, 0.5, 30, 100, False, True, 0.2)
 
     # GUI
     viewport = Viewport(Vector2(RESOLUTION), 0.5,
                         Vector3(0, 0, 0), -60, -30)
-    slider_pv = Slider(Vector2(10, 10), Vector2(120, 25), 0.0, 1.0, 1.0, 0.0)
+    slider_pv = Slider(Vector2(10, 10), Vector2(120, 25), 0.0, 1.0, 1.0, 1.0)
     slider_step = Slider(Vector2(10, 30), Vector2(120, 45), 0.0, 1.0, 0.0, 0.5)
 
     # smoothing
@@ -46,18 +54,18 @@ def main():
         step_size = slider_step.get_value()
         h = step_size / max(1.0-step_size, 1e-100)
         if slider_pv.get_value() > 0.5:
-            h = 0.001 * h
-            integrators.euler(state_ieuler, h)
-        else:
-            h = 0.01 * h
+            h = 1.0 * h
             integrators.ieuler(state_ieuler, h)
+        else:
+            h = 1.0 * h
+            integrators.euler(state_ieuler, h)
 
         t1 = time.perf_counter()
         print("Implicit Euler {:.1f}ms".format(1000.0*(t1-t0)))
 
-    # slider_pv.set_callback(recompute_smoothing)
-    # slider_step.set_callback(recompute_smoothing)
-    # recompute_smoothing()
+    slider_pv.set_callback(recompute_smoothing)
+    slider_step.set_callback(recompute_smoothing)
+    recompute_smoothing()
 
     running = True
     while running:
