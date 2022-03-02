@@ -55,36 +55,62 @@ class State:
             if not is_edge[j]:
                 self.neighbors[j].append(i)
         # misc
+        self.compute_matrix()
+        self.compute_matrix_pv()
         self.recompute_draw()
 
-    def calc_dpdt(self) -> list[Vector3]:
-        """Calculate the derivative at each point"""
-        dpdt = []
-        for i in range(self.n):
-            sdp = Vector3(0.0)
-            for j in self.neighbors[i]:
-                dp = self.vertices[j] - self.vertices[i]
-                sdp += dp / len(self.neighbors[i])
-            dpdt.append(sdp)
-        return dpdt
-
-    def calc_dpdu(self) -> scipy.sparse.base:
-        """Analytically calculate ∂[dpdt]/∂p, returns a matrix"""
-        pass
-        rows = []
-        cols = []
-        nums = []
+    def compute_matrix(self):
+        """Represent dudt as the weighted sum of neighborhood vertices"""
+        self.neighbor_weights = [[] for _ in range(self.n)]
         for i in range(self.n):
             nn = len(self.neighbors[i])
             if nn == 0:
                 continue
+            neighbors = self.neighbor_weights[i]
+            neighbors.append((i, -1.0))
             for j in self.neighbors[i]:
-                rows += [i]
-                cols += [j]
-                nums += [1.0 / nn]
-            rows += [i]
-            cols += [i]
-            nums += [-1.0]
+                neighbors.append((j, 1.0/nn))
+            # print(len(neighbors), end=' ')
+
+    def compute_matrix_pv(self):
+        """A version based on compute_weights() with less volume defect
+           The result is the negative of the square of the matrix"""
+        mat = self.neighbor_weights
+        mat_r = [[] for _ in range(self.n)]
+        for i in range(self.n):
+            mat_ri = {}
+            for (k, w1) in mat[i]:
+                for (j, w2) in mat[k]:
+                    if j in mat_ri:
+                        mat_ri[j] -= w1*w2
+                    else:
+                        mat_ri[j] = -w1*w2
+            for (j, w) in mat_ri.items():
+                mat_r[i].append((j, w))
+        self.neighbor_weights_pv = mat_r
+
+    def calc_dpdt(self, pv: bool) -> list[Vector3]:
+        """Calculate the derivative at each point"""
+        mat = self.neighbor_weights_pv if pv else self.neighbor_weights
+        dpdt = []
+        for i in range(self.n):
+            p1 = Vector3(0.0)
+            for (j, w) in mat[i]:
+                p1 += self.vertices[j] * w
+            dpdt.append(p1)
+        return dpdt
+
+    def calc_dpdu(self, pv: bool) -> scipy.sparse.base:
+        """Calculate ∂[dpdt]/∂p, returns a matrix"""
+        mat = self.neighbor_weights_pv if pv else self.neighbor_weights
+        rows = []
+        cols = []
+        nums = []
+        for i in range(self.n):
+            for (j, w) in mat[i]:
+                rows.append(i)
+                cols.append(j)
+                nums.append(w)
         return scipy.sparse.coo_matrix((nums, (rows, cols)))
 
     def recompute_draw(self):
@@ -107,10 +133,17 @@ class State:
             self.draw_indices,
             color)
 
-    def visualize_matrix(self, filepath):
+    @staticmethod
+    def visualize_matrix(mat, filepath):
         from PIL import Image
-        mat = self.calc_dpdu().toarray()
-        mat = abs(mat) / np.amax(abs(mat))
+        if type(mat) == np.matrix:
+            mat = np.array(mat)
+        if type(mat) != np.ndarray:  # sparse
+            mat = mat.toarray()
+        mat = abs(mat)
+        print(np.amax(mat))
+        # mat = mat**0.1  # make small vals stand out
+        mat /= np.amax(mat)
         mat = (255*mat).astype(np.uint8)
         img = Image.fromarray(mat)
         img.save(filepath)

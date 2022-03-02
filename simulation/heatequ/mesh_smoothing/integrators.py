@@ -12,12 +12,14 @@ def euler(state: State, h: float):
     state.recompute_draw()
 
 
-def ieuler(state: State, h: float):
+def ieuler(state: State, h: float, pv: bool):
     if h == 0.0:
         return
-    dpdu = state.calc_dpdu()
+    dpdu = state.calc_dpdu(pv)
     mat = scipy.sparse.identity(state.n) / h - dpdu
-    dpdt = state.calc_dpdt()
+    dpdt = state.calc_dpdt(pv)
+
+    # state.visualize_matrix(mat, "D:\\sparse-matrix.png")
 
     dxdt = np.array([p.x for p in dpdt])
     dydt = np.array([p.y for p in dpdt])
