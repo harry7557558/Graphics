@@ -100,7 +100,7 @@ class State:
             dpdt.append(p1)
         return dpdt
 
-    def calc_dpdu(self, pv: bool) -> scipy.sparse.base:
+    def calc_dpdu(self, pv: bool) -> scipy.sparse.coo_matrix:
         """Calculate ∂[dpdt]/∂p, returns a matrix"""
         mat = self.neighbor_weights_pv if pv else self.neighbor_weights
         rows = []

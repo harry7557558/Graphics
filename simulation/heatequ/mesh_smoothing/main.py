@@ -29,14 +29,19 @@ def main():
     # state = states_builtin.unit_cube()
     # state = states_builtin.plane(Vector2(1.5, 1.0), 15, 10, 0.2)
     # state = states_builtin.cylinder(1.2, 1.0, 1.0, 20, 10, True, 0.2)
-    state = states_builtin.cylinder(1.2, 1.0, 1.0, 20, 10, False, 0.2)
+    # state = states_builtin.cylinder(1.2, 1.0, 1.0, 20, 10, False, 0.2)
     # state = states_builtin.cylinder(1.2, 1.0, 1.0, 100, 50, False, 0.1)
     # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 20, 10, True, 0.5)
     # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 20, 10, False, 0.5)
     # state = states_builtin.sphere_uv(1.2, 1.1, 1.0, 100, 50, False, 0.2)
     # state = states_builtin.torus(1.0, 0.5, 10, 30, False, False, 0.3)
-    state = states_builtin.torus(1.0, 0.5, 10, 30, False, True, 0.3)
+    # state = states_builtin.torus(1.0, 0.5, 10, 30, False, True, 0.3)
     # state = states_builtin.torus(1.0, 0.5, 30, 100, False, True, 0.2)
+    # state = states_builtin.cylinder(1.2, 0.8, 0.1, 200, 1, False, 0.5)
+    # state = states_builtin.cylinder(1.2, 0.8, 0.1, 1000, 1, False, 0.2)
+    # state = states_builtin.cersis(1.0, 0.3, 3, 60, 10, 0.5)
+    state = states_builtin.cersis(1.0, 0.3, 5, 60, 10, 0.05)
+    # state = states_builtin.cersis(1.0, 0.3, 5, 120, 20, 0.05)
 
     # GUI
     viewport = Viewport(Vector2(RESOLUTION), 0.5,
@@ -53,13 +58,12 @@ def main():
         t0 = time.perf_counter()
 
         step_size = slider_step.get_value()
-        h = step_size / max(1.0-step_size, 1e-100)
-        if slider_pv.get_value() > 0.5:
-            h = 10.0 * h**2
-            integrators.ieuler(state_ieuler, h, True)
-        else:
-            h = 10.0 * h
+        h = 10.0 * step_size / max(1.0-step_size, 1e-100)
+        if slider_pv.get_value() < 0.5:
             integrators.ieuler(state_ieuler, h, False)
+        else:
+            # h = h**2
+            integrators.ieuler(state_ieuler, h, True)
 
         t1 = time.perf_counter()
         print("Implicit Euler {:.1f}ms".format(1000.0*(t1-t0)))

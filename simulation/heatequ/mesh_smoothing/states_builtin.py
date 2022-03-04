@@ -164,3 +164,16 @@ def torus(r0: float, r1: float, un: float, vn: float, u_seamed: bool, v_seamed: 
         return _gen_parametric_cylinder(fun, un, vn)
     if (not u_seamed) and not v_seamed:
         return _gen_parametric_torus(fun, un, vn)
+
+
+def cersis(r0: float, r1: float, n: int, un: int, vn: int, noise: float) -> State:
+    def fun(u, v):
+        cos, sin, pi = math.cos, math.sin, math.pi
+        asin, atan2 = math.asin, math.atan2
+        u, v = 2.0*pi*u, 2.0*pi*v
+        p = Vector3(cos(u)*(r0+r1*cos(v)), sin(u)*(r0+r1*cos(v)), r1*sin(v))
+        p += 0.5*asin(sin(n*atan2(p.y, p.x))) * Vector3(cos(u), sin(u), 0)
+        p.z *= 0.04 * (p.x**2+p.y**2) + 0.8
+        p += noise * (2.0*Vector3(random(), random(), random())-Vector3(1.0))
+        return p
+    return _gen_parametric_torus(fun, un, vn)
