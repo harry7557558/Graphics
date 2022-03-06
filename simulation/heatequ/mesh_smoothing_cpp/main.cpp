@@ -20,61 +20,20 @@ using namespace glm;
 
 #include "viewport.h"
 #include "state.h"
+#include "test.h"
 
-
-
-
-// viewport-related global variables
 GLFWwindow* window;
 Viewport* viewport;
-float iRz = 0.3f*PI;
-float iRx = 0.2f*PI;
-float iCameraDist = 5.0f;
 bool mouseDown = false;
 vec2 mousePos(-1, -1);
-
-
-
-// Built-in states
-namespace BuiltInStates {
-
-	State circleDam(vec2 r, int nx, int ny, float k, vec2 circO, float circR) {
-		return State(-r, r, nx, ny, k,
-			[=](vec2 xy) { return length(xy-circO)<circR ? 1.0f : 0.0f; },
-			[=](vec2 xy, float t) { return 0.0f; }
-		);
-	}
-
-	State heaterCooler(vec2 r, int nx, int ny, float k, float hr, float pw) {
-		return State(-r, r, nx, ny, k,
-			[=](vec2 xy) { return 0.0f; },
-			[=](vec2 xy, float t) { return length(xy)>hr ? pw*sign(xy.x+xy.y) : 0.0f; }
-		);
-	}
-
-	State states[] = {
-		circleDam(vec2(1.5, 1.0), 16, 12, 0.1f, vec2(-0.5, -0.3), 0.5f),
-		circleDam(vec2(1.5, 1.0), 32, 24, 0.1f, vec2(-0.5, -0.3), 0.5f),
-		circleDam(vec2(1.5, 1.0), 48, 36, 0.1f, vec2(-0.5, -0.3), 0.5f),
-		circleDam(vec2(1.5, 1.0), 120, 90, 0.1f, vec2(-0.5, -0.3), 0.5f),
-		heaterCooler(vec2(1.0, 0.8), 20, 20, 0.2f, 0.4f, 0.4f),
-		heaterCooler(vec2(1.0, 0.8), 20, 20, 2.0f, 0.4f, 4.0f),
-		heaterCooler(vec2(1.0, 0.8), 40, 40, 20.0f, 0.4f, 40.0f),
-		heaterCooler(vec2(1.0, 0.8), 40, 40, 1000.0f, 0.4f, 2000.0f),
-		circleDam(vec2(1.28, 0.8), 160, 100, 0.1f, vec2(-0.5, -0.3), 0.6f),
-		circleDam(vec2(1.28, 0.8), 320, 200, 0.1f, vec2(-0.5, -0.3), 0.6f),
-		circleDam(vec2(1.28, 0.8), 640, 400, 0.1f, vec2(-0.5, -0.3), 0.6f),
-		heaterCooler(vec2(1.0, 0.8), 500, 400, 2.0f, 0.4f, 4.0f),
-	};
-
-}
 
 
 int main(int argc, char* argv[]) {
 	//testTimeComplexity(); exit(0);
 
 	// states
-	State state = BuiltInStates::states[3];
+	State state = BuiltInStates::states[1];
+	state.smooth(100.0f, true);
 
 	// Initialise GLFW
 	if (!glfwInit()) {

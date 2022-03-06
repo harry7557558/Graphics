@@ -9,16 +9,26 @@ class LilMatrix {
 	std::vector<std::map<int, float>> mat;  // list of dict?!
 public:
 	friend class CsrMatrix;
+	friend class State;
 
 	LilMatrix(int n) {
 		this->n = n;
 		mat.resize(n);
 	}
-
 	void addValue(int row, int col, float val) {
 		mat[row][col] += val;
 	}
 
+	// res = mat * src
+	template<typename vec>
+	void matvecmul(const vec *src, vec *res) const {
+		for (int i = 0; i < n; i++) {
+			res[i] = vec(0.0f);
+			for (std::pair<int, float> jw : mat[i]) {
+				res[i] += jw.second * src[jw.first];
+			}
+		}
+	}
 };
 
 class CsrMatrix {
@@ -87,6 +97,7 @@ public:
 
 	// solve mat*x=b using conjugate gradient, returns the number of iterations
 	// https://en.wikipedia.org/wiki/Conjugate_gradient_method#The_resulting_algorithm
+	// requires the matrix to be symmetric to converge
 	int cg(const float *b, float *x, int maxiter, float atol) const {
 		float tol = float(n)*atol*atol;
 		// r = b - Ax
@@ -101,7 +112,7 @@ public:
 		// repeat
 		float *Ap = new float[n];
 		int k; for (k = 0; k < maxiter; k++) {
-			//printf("%f,", sqrt(r20/n));
+			printf("%f,", sqrt(r20/n));
 			// α = rᵀr / pᵀAp
 			this->matvecmul(p, Ap);
 			float alpha = r20 / vecdot(p, Ap);
