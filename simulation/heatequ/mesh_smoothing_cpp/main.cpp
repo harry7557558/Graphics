@@ -31,10 +31,6 @@ vec2 mousePos(-1, -1);
 int main(int argc, char* argv[]) {
 	//testTimeComplexity(); exit(0);
 
-	// states
-	State state = BuiltInStates::states[1];
-	state.smooth(100.0f, true);
-
 	// Initialise GLFW
 	if (!glfwInit()) {
 		fprintf(stderr, "Failed to initialize GLFW.\n");
@@ -72,10 +68,37 @@ int main(int argc, char* argv[]) {
 
 	// GUI
 	viewport = new Viewport(vec2(iResolution), 0.5f, vec3(0), -0.33f*PI, -0.17f*PI);
-	Slider sliderPv = Slider(vec2(10, 10), vec2(120, 25), 0.0f, 1.0f, 1.0f, 1.0f);
-	Slider sliderStep = Slider(vec2(10, 30), vec2(120, 45), 0.0f, 1.0f, 0.0f, 0.5f);
+	Slider sliderPv = Slider(vec2(10, 10), vec2(160, 25), 0.0f, 1.0f, 1.0f, 1.0f);
+	Slider sliderStep = Slider(vec2(10, 30), vec2(160, 45), 0.0f, 1.0f, 0.0f, 0.5f);
 
-	// mouse scroll
+	// states
+	State state_original = BuiltInStates::states[10];
+	State state = state_original;
+	auto recomputeState = [&]() {
+		// start time recording
+		auto t0 = std::chrono::high_resolution_clock::now();
+		// smoothing
+		state = state_original;
+		float step_size = sliderStep.getValue();
+		float h = step_size / max(1.0f-step_size, 1e-12f);
+		if (sliderPv.getValue() < 0.5f) {
+			h = 10.0f * h;
+			state.smooth(h, false);
+		}
+		else {
+			h = 10.0f * h * h;
+			state.smooth(h, true);
+		}
+		// end time recording
+		auto t1 = std::chrono::high_resolution_clock::now();
+		double dt = std::chrono::duration<double>(t1-t0).count();
+		printf("%.1lf ms\n", 1000.0*dt);
+	};
+	sliderPv.setCallback(recomputeState);
+	sliderStep.setCallback(recomputeState);
+	recomputeState();
+
+	// mouse action(s)
 	glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset) {
 		viewport->mouseScroll(exp(0.04f*(float)yoffset));
 	});
@@ -89,12 +112,12 @@ int main(int argc, char* argv[]) {
 		vec2 mouseDelta = mousePos == vec2(-1) ? dvec2(0.0) : vec2(newMousePos) - mousePos;
 		mousePos = newMousePos;
 		int mouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-		if (mouseState == GLFW_PRESS) {
+		if (!mouseDown && mouseState == GLFW_PRESS) {
 			sliderPv.mouseDown(mousePos);
 			sliderStep.mouseDown(mousePos);
 			mouseDown = true;
 		}
-		else if (mouseState == GLFW_RELEASE) {
+		else if (mouseDown && mouseState == GLFW_RELEASE) {
 			sliderPv.mouseUp();
 			sliderStep.mouseUp();
 			mouseDown = false;

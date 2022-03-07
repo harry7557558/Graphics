@@ -108,30 +108,32 @@ void State::smooth(float h, bool pv) {
 	CsrMatrix csr(lil);
 	csr *= -1.0f;
 
+	auto solver = lil.isSymmetric() ? &CsrMatrix::cg : &CsrMatrix::bicgstab;
+	float tol = 1e-4f;  // makes difference when h is large
+
 	float *dxdt = new float[n], *dx = new float[n];
 	for (int i = 0; i < n; i++)
 		dxdt[i] = dpdt[i].x, dx[i] = 0.0f;
-	csr.cg(dxdt, dx, n, 1e-5f);
+	int xk = (csr.*solver)(dxdt, dx, n, tol);
 
 	float *dydt = new float[n], *dy = new float[n];
 	for (int i = 0; i < n; i++)
 		dydt[i] = dpdt[i].y, dy[i] = 0.0f;
-	csr.cg(dydt, dy, n, 1e-5f);
+	int yk = (csr.*solver)(dydt, dy, n, tol);
 
 	float *dzdt = new float[n], *dz = new float[n];
 	for (int i = 0; i < n; i++)
 		dzdt[i] = dpdt[i].z, dz[i] = 0.0f;
-	csr.cg(dzdt, dz, n, 1e-5f);
+	int zk = (csr.*solver)(dzdt, dz, n, tol);
 
 	for (int i = 0; i < n; i++)
 		vertices[i] += vec3(dx[i], dy[i], dz[i]);
-	//for (int i = 0; i < n; i++)
-	//	vertices[i] += dpdt[i] * h;
 
 	delete dxdt; delete dx;
 	delete dydt; delete dy;
 	delete dzdt; delete dz;
 	delete dpdt;
+	printf("%d %d %d ", xk, yk, zk);
 }
 
 
