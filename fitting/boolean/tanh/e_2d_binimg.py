@@ -1,4 +1,5 @@
 # Fit binary images
+# Exports LaTeX to paste into Desmos
 
 from PIL import Image, ImageOps
 
@@ -12,7 +13,8 @@ def load_image(path):
     """Load a binary image, returns coordinates and value"""
     img = Image.open(path)
     img = ImageOps.flip(img)
-    img = img.resize((128, 128), resample=Image.NEAREST)
+    # img = img.resize((128, 128), resample=Image.NEAREST)
+    # img = img.resize((64, 64), resample=Image.NEAREST)
     # img = img.resize((32, 32), resample=Image.NEAREST)
     pixels = np.array(img).mean(axis=2) / 255.0
     x1 = (np.arange(img.width) + 0.5) / img.width
@@ -48,30 +50,44 @@ def model_trig(x: np.ndarray, deg: int):
     """Trigonometric
         dimension: (2*deg+1)**2
        Sometimes results in too many weights"""
+    def format_trig(fun, k, varname):
+        return "" if k == 0 else f"\\{fun}({varname})" if k == 1 else f"\\{fun}({k}{varname})"
     b0 = []
     tags = []
     for i in range(deg+1):
         for j in range(deg+1):
             i, j = i*2, j*2
             b0.append(np.cos(i*x[0])*np.cos(j*x[1]))
-            tags.append(f"\\cos({i}x)\\cos({j}y)")
+            tags.append(format_trig('cos', i, 'x') +
+                        format_trig('cos', j, 'y'))
             if i != 0:
                 b0.append(np.sin(i*x[0])*np.cos(j*x[1]))
-                tags.append(f"\\sin({i}x)\\cos({j}y)")
+                tags.append(format_trig('sin', i, 'x') +
+                            format_trig('cos', j, 'y'))
                 if j != 0:
                     b0.append(np.sin(i*x[0])*np.sin(j*x[1]))
-                    tags.append(f"\\sin({i}x)\\sin({j}y)")
+                    tags.append(format_trig('sin', i, 'x') +
+                                format_trig('sin', j, 'y'))
             if j != 0:
                 b0.append(np.cos(i*x[0])*np.sin(j*x[1]))
-                tags.append(f"\\cos({i}x)\\sin({j}y)")
+                tags.append(format_trig('cos', i, 'x') +
+                            format_trig('sin', j, 'y'))
     return (np.array(b0), tags)
 
 
 def print_model(w, tags):
-    s = []
+    w = np.round(9999 * w / np.max(np.abs(w))).astype(int)
+    s = ""
     for (wi, tag) in zip(w, tags):
-        s.append("({:.4f}){:s}".format(wi, tag))
-    print('+'.join(s) + "=0")
+        wi = str(wi)
+        if wi == "0":
+            continue
+        if wi[0] != '-':
+            wi = '+' + wi
+        if wi in ['+1', '-1'] and tag != "":
+            wi = wi[0]
+        s += wi + tag
+    print(s.lstrip('+') + "=0")
 
 
 def print_loss(lossfun, w, b0, y):
@@ -128,9 +144,9 @@ def optimize_mse(w, b0, y):
 
 if __name__ == "__main__":
 
-    x, y = load_image("img2d/binimg2.png")
+    x, y = load_image("data/binimg1.png")
 
-    b0, tags = model_trig(x, 3)
+    b0, tags = model_trig(x, 2)
 
     t0 = time.perf_counter()
 
