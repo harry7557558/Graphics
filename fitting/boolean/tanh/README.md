@@ -1,5 +1,15 @@
-Give basis functions $B_i(x)$ and a function $Y(x)$, find $w_i$ so $Y(x) \sim \tanh(\sum_i w_i B_i(x))$. $x$ can be scalar or vector.
+Inspired by neural bunnies on Shadertoy, the motivation of this is to find "better" fits to binary images and implicitly defined 3D models.
 
-Set $Y(x)$ to either 1 or -1, although numbers in between *potentially* increase stability.
+Instead of fitting the SDF, I use `tanh` for the output activation function. It is like a binary classification task, where `-1.0` is inside and `1.0` is outside, and the represented object is the zero-isosurface of the output.
 
-Can be used to do binary classification. The motivation of this is to find "better" fits to binary images and implicitly defined 3D models.
+Timeline:
+
+[e_1d_cg.py](e_1d_cg.py): Starts from a Desmos graph that takes forever to minimize a function with 4 scalar parameters. Input is one-dimensional. Defines two loss functions where one is easier to minimize on startup and another is more accurate. Minimized using `scipy.optimize.minimize` with either `CG` or `BFGS` that takes less than one second.
+
+[e_2d_binimg.py](e_2d_binimg.py): Fits two dimensional non-antialiased binary images. The model is the weighted sum of a list of basis functions. Compares polynomial and trigonometric basis functions. Minimizes the loss function using the BFGS algorithm implemented in SciPy.
+
+[e_3d_bunny.py](e_3d_bunny.py): Fits the "Stanford Bunny" with polynomial or trigonometric basis functions. Takes about 10 minutes to fit.
+
+[rbf_2d_binimg.py](rbf_2d_binimg.py): Experiments with radial basis functions in regression. Fits the SDF without activation function before fitting the model. Performs poorly due to local minima. With an attempt for determining the initial guess using simulated annealing.
+
+[rbf_3d_bunny.py](rbf_3d_bunny.py): Fits the bunny using RBF in 3D. Takes more than one hour to fit. Produces a loss lower than using trigonometric basis functions with a similar number of scalar weights, but I suspect it can do better when optimized using using genetic algorithm + mini-batch gradient descent.

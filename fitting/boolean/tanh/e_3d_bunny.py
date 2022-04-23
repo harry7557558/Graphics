@@ -3,7 +3,6 @@
 # Exports text expression compatible with
 # https://harry7557558.github.io/tools/raymarching-implicit/index.html
 
-from operator import index
 import numpy as np
 import scipy.optimize
 
@@ -44,7 +43,7 @@ def load_data(path, size):
 
 def model_poly(x: np.ndarray, deg: int):
     """Polynomial with 3 variables
-       Number of weights: (deg+1)*(deg+2)*(deg+3)//6
+       Number of weights: nCr(deg+3,3)
        Not so good when deg is large
     """
     def fp(v, p):
@@ -95,6 +94,7 @@ def model_trig(x: np.ndarray, deg: int):
 
 def print_model(w, tags):
     w = np.round(9999 * w / np.max(np.abs(w))).astype(int)
+    print(','.join([str(wi) for wi in w]))
     s = ""
     for (wi, tag) in zip(w, tags):
         wi = str(wi)
@@ -158,7 +158,41 @@ def optimize_mse(w, b0, y, tol):
     return res.x
 
 
-if __name__ == "__main__":
+def fit_poly():
+    """Fit the dataset using polynomial regression model"""
+
+    def model(x):
+        return model_poly(x, 8)
+
+    path = "../v_sdfbunny_128x128x128_uint8.raw"
+    x, y = load_data(path, 16)
+    b0, tags = model(x)
+
+    w = initial_guess(b0, y)
+    print_loss(loss_mse, w, b0, y)
+    print_model(w, tags)
+
+    w = optimize_lnp(w, b0, y, 1e-2)
+    print_loss(loss_mse, w, b0, y)
+    print_model(w, tags)
+
+    x, y = load_data(path, 32)
+    b0, tags = model(x)
+
+    w = optimize_mse(w, b0, y, 1e-4)
+    print_loss(loss_mse, w, b0, y)
+    print_model(w, tags)
+
+    x, y = load_data(path, 64)
+    b0, tags = model(x)
+
+    w = optimize_mse(w, b0, y, 1e-8)
+    print_loss(loss_mse, w, b0, y)
+    print_model(w, tags)
+
+
+def fit_trig():
+    """Fit the dataset using trigonometric regression model"""
 
     def model(x):
         return model_trig(x, 2)
@@ -166,8 +200,6 @@ if __name__ == "__main__":
     path = "../v_sdfbunny_128x128x128_uint8.raw"
     x, y = load_data(path, 16)
     b0, tags = model(x)
-
-    t0 = time.perf_counter()
 
     w = initial_guess(b0, y)
     print_loss(loss_mse, w, b0, y)
@@ -190,6 +222,14 @@ if __name__ == "__main__":
     w = optimize_mse(w, b0, y, 1e-6)
     print_loss(loss_mse, w, b0, y)
     print_model(w, tags)
+
+
+if __name__ == "__main__":
+
+    t0 = time.perf_counter()
+
+    # fit_poly()
+    fit_trig()
 
     t1 = time.perf_counter()
     print("Time elapsed: {:.2f}secs".format(t1-t0))
