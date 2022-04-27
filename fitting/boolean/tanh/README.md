@@ -15,3 +15,5 @@ Timeline:
 [rbf_3d_bunny.py](rbf_3d_bunny.py): Fits the bunny using RBF in 3D. Takes more than one hour to fit. Produces a loss lower than using trigonometric basis functions with a similar number of scalar weights, but I suspect it can do better when optimized using using genetic algorithm + mini-batch gradient descent.
 
 [sgd_test_1.py](sgd_test_1.py): Experiments with techniques to optimize the weights in fitting a bunny using trigonometric basis functions. SGD algorithms perform well on startup but stuck in a "valley." Stochastic CG and Newton-Raphson are unstable. This experiment isn't successful, but the Adam algorithm may be used for future tasks.
+
+[bfgs_test_1.py](bfgs_test_1.py): Copy SciPy BFGS code out and add some modifications so I can see the progress without using callback.
