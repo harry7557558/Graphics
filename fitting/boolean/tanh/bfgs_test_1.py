@@ -131,7 +131,7 @@ def update_plot(loss):
     global ax, plot_data
     plot_times.append(time.perf_counter())
     plot_losses.append(loss)
-    return  # slow
+    # return  # slow
 
     is_init = ax is None
     if is_init:
@@ -151,6 +151,7 @@ def update_plot(loss):
 
 def optimize_adam(lossfun, w, x, y, batch_size, learning_step, beta_1, beta_2, max_epoch, gtol):
     loss = 0.0
+    loss_cache = []
     grad = np.zeros((N_WEIGHTS))
     grad2 = np.zeros((N_WEIGHTS))
     train_order = np.arange(len(y))
@@ -168,7 +169,13 @@ def optimize_adam(lossfun, w, x, y, batch_size, learning_step, beta_1, beta_2, m
             print("NAN encountered in optimize_adam")
             break
         print(f"Epoch {epoch}, loss={loss}, grad={grad_norm}")
-        update_plot(loss)
+        if 0:
+            loss_cache.append(loss)
+            if len(loss_cache) > 50:
+                loss_cache = loss_cache[1:]
+            update_plot(np.average(loss_cache))
+        else:
+            update_plot(loss)
         if grad_norm < gtol:
             break
     return w
@@ -181,10 +188,8 @@ from scipy.optimize.minpack2 import dcsrch
 def scalar_search_wolfe1(fun, phi0=None, old_phi0=None, derphi0=None,
                          c1=1e-4, c2=0.9,
                          amax=1e100, amin=1e-100, xtol=1e-14):
-    if phi0 is None:
-        phi0 = fun(0.)[0]
-    if derphi0 is None:
-        derphi0 = fun(0.)[1]
+    if phi0 is None or derphi0 is None:
+        phi0, derphi0 = fun(0.)
 
     if old_phi0 is not None and derphi0 != 0:
         alpha1 = min(1.0, 1.01*2*(phi0 - old_phi0)/derphi0)
@@ -256,9 +261,6 @@ def minimize_bfgs(fun, x0, gtol=1e-5, maxiter=None):
         x0.shape = (1,)
     if maxiter is None:
         maxiter = len(x0) * 200
-
-    f = lambda x_: fun(x_)[0]
-    myfprime = lambda x_: fun(x_)[1]
 
     old_fval, gfk = fun(x0)
 
