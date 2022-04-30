@@ -1,9 +1,13 @@
 // trig_3d_bunny.py
 // See how fast is C++ compared to Python
 
+#if 1
 #pragma GCC optimize "Ofast"
 #pragma GCC optimize "unroll-loops"
 #pragma GCC target "sse,sse2,sse3,sse4,abm,avx,mmx,popcnt"
+#else
+#pragma GCC optimize "O0"
+#endif
 
 
 #include "bunny_optimizer.h"
@@ -80,9 +84,10 @@ void lossMse(int ndata, const double* w, const vec3* x, const double* y, double*
     delete f_grad;
 }
 
-void evaluateWeights(int ndata, const double *w, vec3 *x, double *y) {
+// evaluate the loss function with verbose
+void evaluateWeights(int ndata, const double* w, vec3* x, double* y) {
     double loss;
-    double *grad = new double[N_WEIGHTS];
+    double* grad = new double[N_WEIGHTS];
     lossMse(ndata, w, x, y, &loss, grad);
     double gradnorm = 0.0;
     for (int i = 0; i < N_WEIGHTS; i++) gradnorm += grad[i] * grad[i];
@@ -90,22 +95,20 @@ void evaluateWeights(int ndata, const double *w, vec3 *x, double *y) {
     printf("loss=%lf grad=%lf\n", loss, gradnorm);
 }
 
-int main() {
-
-    auto t0 = std::chrono::high_resolution_clock::now();
+// main function
+void optimizeBunny() {
 
     // load data
     std::vector<vec3> x;
     std::vector<double> y;
-    load_bunny(32, x, y);
+    load_bunny(16, x, y);
     int ndata = (int)y.size();
 
     // weights
-    // double* w = new double[N_WEIGHTS];
-    // for (int i = 0; i < N_WEIGHTS; i++) {
-    //     w[i] = -1.0 + 2.0 * randf();
-    // }
-    double w[N_WEIGHTS] = {-5.2351,-0.0737,3.1727,0.0101,1.3320,0.5287,1.5776,0.0378,2.1991,-0.0804,0.9363,2.0486,1.1747,1.1929,-0.1597,-1.5171,2.6011,-0.5434,-4.9482,1.1300,-1.7470,-0.4487,0.5385,-0.5625,-5.7769,-0.8215,3.1334,-2.1083,-0.6893,-0.0322,0.8653,-0.6590,-2.0678,0.0105,-1.2487,0.0016,1.5029,0.5848,2.2459,0.0361,0.0158,-0.2410,4.4085,4.9243,-0.7592,1.7660,-2.0783,-3.9629,-0.0000,0.7201,-1.8468,-5.5959,1.1026,0.4416,-1.6238,0.0636,-1.7207,0.0712,-6.1579,-1.4662,-1.2345,0.0890,-0.7839,0.1343,-1.1311,-2.2778,1.9943,0.0002,-3.3509,-0.0000,-2.7261,0.3878,0.0000,-2.9346,-1.5908,3.5336,1.2413,-4.7962,-0.0256,-1.5137,-0.0000,3.3537,-4.5305,2.8845,-1.6286,0.3168,0.3094,0.4009,-2.0512,1.5141,3.7879,2.9739,-0.9523,2.6657,0.8582,-4.4274,4.2945,-1.0409,2.2197,1.1295,-1.3909,0.6412,-3.4199,-0.3823,-0.0000,2.4247,6.9596,0.1848,-2.1125,3.1640,0.0565,3.2177,-0.0000,0.0000,-3.7274,5.6154,5.6841,7.4628,0.2871,-0.8150,2.6085,4.8001,-2.9622,0.5242,0.7536,-0.2827,0.7780,0.2387};
+    double* w = new double[N_WEIGHTS];
+    for (int i = 0; i < N_WEIGHTS; i++) {
+        w[i] = -1.0 + 2.0 * randf();
+    }
     // double e = checkGrad(N_WEIGHTS, [=](const double* w, double* val, double* grad) {
     //     // rosenbrock(ndata, w, nullptr, nullptr, val, grad);
     //     // model(w, vec3{0., 0., 0.}, val, grad);
@@ -116,17 +119,39 @@ int main() {
     evaluateWeights(ndata, w, &x[0], &y[0]);
 
     // optimize
-    // optimizeAdam(N_WEIGHTS, ndata, lossLnp, w, &x[0], &y[0], 1024, 0.01, 0.9, 0.999, 400, 1e-5);
+    minimizeAdam(N_WEIGHTS, ndata, lossLnp, w, &x[0], &y[0], 1024, 0.01, 0.9, 0.999, 400, 1e-5);
     evaluateWeights(ndata, w, &x[0], &y[0]);
-    
-    optimizeAdam(N_WEIGHTS, ndata, lossMse, w, &x[0], &y[0], 1024, 0.01, 0.9, 0.999, 400, 1e-5);
+    minimizeBfgsLoss(N_WEIGHTS, ndata, lossLnp, w, &x[0], &y[0], 1000, 1e-3);
     evaluateWeights(ndata, w, &x[0], &y[0]);
+
+    // minimizeAdam(N_WEIGHTS, ndata, lossMse, w, &x[0], &y[0], 1024, 0.01, 0.9, 0.999, 400, 1e-5);
+    // evaluateWeights(ndata, w, &x[0], &y[0]);
 
     // print weights
     for (int i = 0; i < N_WEIGHTS; i++) printf("%.4lf,", w[i]);
     printf("\n");
 
-    // timer
+}
+
+// debug
+void optimizeRosenbrock() {
+    double w[N_WEIGHTS];
+    for (int i = 0; i < N_WEIGHTS; i++) w[i] = -1.0;
+    double val; double grad[N_WEIGHTS];
+    rosenbrock(0, w, nullptr, nullptr, &val, grad);
+    printf("%lf\n", val);
+
+    minimizeBfgsLoss(N_WEIGHTS, 0, rosenbrock, w, nullptr, nullptr, 1000, 1e-5);
+}
+
+// timing
+int main() {
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+
+    optimizeBunny();
+    // optimizeRosenbrock();
+
     auto t1 = std::chrono::high_resolution_clock::now();
     double dt = std::chrono::duration<double>(t1 - t0).count();
     printf("%.2lf secs elapsed.\n", dt);
