@@ -72,6 +72,7 @@ def dcstep(stx, fx, dx, sty, fy, dy, stp, fp, dp, brackt, stpmin, stpmax):
     """https://github.com/scipy/scipy/blob/main/scipy/optimize/minpack2/dcstep.f"""
 
     sgnd = dp * (dx / abs(dx))
+    stpf = stp
 
     if fp > fx:
         theta = 3.0 * (fx-fp)/(stp-stx) + dx + dp
@@ -175,14 +176,12 @@ def dcstep(stx, fx, dx, sty, fy, dy, stp, fp, dp, brackt, stpmin, stpmax):
     return stx, fx, dx, sty, fy, dy, stp, brackt
 
 
-def scalar_search_wolfe1(fun, f0=None, old_f0=None, g0=None,
+def scalar_search_wolfe1(fun, f0, old_f0, g0,
                          ftol=1e-4, gtol=0.9,
                          stpmax=1e100, stpmin=1e-100, xtol=1e-14):
     """https://github.com/scipy/scipy/blob/main/scipy/optimize/minpack2/dcsrch.f"""
 
-    if f0 is None or g0 is None:
-        f0, g0 = fun(0.)
-    if old_f0 is not None and g0 != 0.0:
+    if g0 != 0.0:
         stp = min(1.0, 1.01*2*(f0 - old_f0)/g0)
         if stp <= 0.0:
             stp = 1.0
@@ -280,15 +279,14 @@ def scalar_search_wolfe1(fun, f0=None, old_f0=None, g0=None,
 
 def line_search_wolfe1(fun, xk, pk, gfk,
                        old_fval=None, old_old_fval=None):
-    # print("xk/pk", np.linalg.norm(xk), np.linalg.norm(pk))
     gval = gfk
 
     def phi(s):
         nonlocal gval
-        x_param = xk + s*pk
-        # print("s/x_param/gval", s, np.linalg.norm(x_param), np.linalg.norm(gval))
+        # print("s/xk/pk {:.16f} {:.16f} {:.16f}".format(s, np.linalg.norm(xk), np.linalg.norm(pk)))
+        x_param = xk + s * pk
         val, gval = fun(x_param)
-        # print("gval/grad", np.linalg.norm(gval))
+        # print("x_param/val/gval {:.16f} {:.16f} {:.16f}".format(np.linalg.norm(x_param), val, np.linalg.norm(gval)))
         return val, np.dot(gval, pk)
 
     derphi0 = np.dot(gfk, pk)
@@ -329,6 +327,8 @@ def minimize_bfgs(fun, x0, gtol=1e-5, maxiter=None):
             # line search error
             warnflag = 2
             break
+        # print("alpha/xk/pk {:.16f} {:.16f} {:.16f}".format(alpha_k, np.linalg.norm(xk), np.linalg.norm(pk)))
+        # print("ofval/oofval/gfkp1 {:.16f} {:.16f} {:.16f}".format(old_fval, old_old_fval, np.linalg.norm(gfkp1)))
 
         xkp1 = xk + alpha_k * pk
         sk = xkp1 - xk
@@ -343,7 +343,8 @@ def minimize_bfgs(fun, x0, gtol=1e-5, maxiter=None):
 
         if True:
             update_plot(xk, old_fval)
-            print("BFGS", k, old_fval, gnorm)
+            print("BFGS {:d} {:.16f} {:.16f}".format(k, old_fval, gnorm))
+            # __import__('sys').exit(0)
 
         if not np.isfinite(old_fval):
             # We correctly found +-Inf as optimal value, or something went
@@ -375,7 +376,6 @@ def minimize_bfgs(fun, x0, gtol=1e-5, maxiter=None):
             m2 = np.tensordot(hkyk, sk, axes=0) + \
                 np.tensordot(sk, hkyk, axes=0)
             Hk += m1 * w1 + m2 * w2
-            pass
 
     fval = old_fval
 

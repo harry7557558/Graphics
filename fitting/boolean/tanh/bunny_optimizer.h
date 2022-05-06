@@ -26,7 +26,9 @@ struct vec3 {
 
 
 // Load the bunny model as data points
-void load_bunny(int s, std::vector<vec3>& data_x, std::vector<double>& data_y) {
+int load_bunny(int s, std::vector<vec3>& data_x, std::vector<double>& data_y) {
+    data_x.clear();
+    data_y.clear();
     // load voxels from raw file
     const int s0 = 128;
     uint8_t* data_raw = new uint8_t[s0 * s0 * s0];
@@ -54,6 +56,7 @@ void load_bunny(int s, std::vector<vec3>& data_x, std::vector<double>& data_y) {
         }
     }
     delete data_raw;
+    return (int)data_y.size();
 }
 
 
@@ -62,7 +65,8 @@ double checkGrad(
     int ndim,
     std::function<void(const double* x, double* val, double* grad)> fun,
     double* x,
-    double eps = 1e-6
+    double eps = 1e-6,
+    bool verbose = false
 ) {
     double val;
     double* grad0 = new double[ndim];
@@ -79,6 +83,7 @@ double checkGrad(
         x[i] = x0;
         double dvdx = (val1 - val0) / (2.0 * eps);
         err2 += (dvdx - grad0[i]) * (dvdx - grad0[i]);
+        if (verbose) printf("%lf ", dvdx - grad0[i]);
     }
     delete grad; delete grad0;
     return sqrt(err2);
@@ -131,21 +136,38 @@ void minimizeAdam(
         grad2[i] = 0.0;
     }
 
+    // training order
+    int* order = new int[ndata];
+    vec3* batch_x = new vec3[batch_size];
+    double* batch_y = new double[batch_size];
+    for (int i = 0; i < ndata; i++) order[i] = i;
+
     // epoches
     for (int epoch = 0; epoch < max_epoch; epoch++) {
 
         // shuffle training data
-        for (int i = ndata - 1; i > 0; i--) {
-            int j = randu() % (i + 1);
-            std::swap(x[i], x[j]);
-            std::swap(y[i], y[j]);
+        if (0) {
+            for (int i = ndata - 1; i > 0; i--) {
+                int j = randu() % (i + 1);
+                std::swap(order[i], order[j]);
+            }
+        }
+        else {
+            for (int i = 0; i < ndata; i++) {
+                order[i] =  (int64_t(i) * 247547ll) % ndata;
+            }
         }
 
         // batches
         for (int batch = 0; batch < ndata; batch += batch_size) {
-            // evaluate function
+            // get data
             int n_batch = min(ndata - batch, batch_size);
-            lossfun(n_batch, w, &x[batch], &y[batch], &loss_t, grad_t);
+            for (int i = 0; i < n_batch; i++) {
+                int oi = order[batch + i];
+                batch_x[i] = x[oi], batch_y[i] = y[oi];
+            }
+            // evaluate function
+            lossfun(n_batch, w, batch_x, batch_y, &loss_t, grad_t);
             // update
             for (int i = 0; i < ndim; i++) {
                 loss = beta_1 * loss + (1.0 - beta_1) * loss_t;
@@ -163,6 +185,7 @@ void minimizeAdam(
         if (grad_norm < gtol) break;
     }
 
+    delete order; delete batch_x; delete batch_y;
     delete x; delete y;
     delete grad_t; delete grad; delete grad2;
 }
@@ -173,6 +196,12 @@ void minimizeAdam(
 // Takes twice as much evaluations to converge on the Rosenbrock function compared to SciPy,
 // which is very likely a bug but possibly due to floating point error.
 
+// calculates the sum of components, for debugging
+double vecsum(int ndim, const double* x) {
+    double s = 0.0;
+    for (int i = 0; i < ndim; i++) s += x[i];
+    return s;
+}
 // calculates sqrt(xᵀx)
 double vecnorm(int ndim, const double* x) {
     double s2 = 0.0;
@@ -437,21 +466,20 @@ double lineSearchWolfe1(
     const double* xk, const double* pk, const double* gfk,
     double* fval, double* old_fval, double* gval
 ) {
-    // printf("xk/pk %.12lf %.12lf\n", vecnorm(ndim, xk), vecnorm(ndim, pk));
     std::memcpy(gval, gfk, sizeof(double) * ndim);
 
     double* x_param = new double[ndim];
     auto phi = [&](double s, double* val, double* grad) {
+        // printf("s/xk/pk %.16lf %.16lf %.16lf\n", s, vecnorm(ndim, xk), vecnorm(ndim, pk));
         for (int i = 0; i < ndim; i++) x_param[i] = xk[i] + s * pk[i];
-        // printf("s/x_param/gval %.12lf %.12lf %.12lf\n", s, vecnorm(ndim, x_param), vecnorm(ndim, gval));
         fun(x_param, val, gval);
-        // printf("gval/grad %.12lf\n", vecnorm(ndim, gval));
+        // printf("x_param/val/gval %.16lf %.16lf %.16lf\n", vecnorm(ndim, x_param), *val, vecnorm(ndim, gval));
         *grad = vecdot(ndim, gval, pk);
     };
 
     double derphi0 = vecdot(ndim, gfk, pk);
-
     vec3 res = scalarSearchWolfe1(phi, *fval, *old_fval, derphi0);
+
     delete x_param;
     *fval = res.y;
     *old_fval = res.z;
@@ -512,6 +540,9 @@ void minimizeBfgs(
             warnflag = 2;
             break;
         }
+        // printf("alpha/xk/pk %.16lf %.16lf %.16lf\n", alpha_k, vecnorm(ndim, xk), vecnorm(ndim, pk));
+        // printf("ofval/oofval/gfkp1 %.16lf %.16lf %.16lf\n", old_fval, old_old_fval, vecnorm(ndim, gfkp1));
+
         for (int i = 0; i < ndim; i++) xkp1[i] = xk[i] + alpha_k * pk[i];
         for (int i = 0; i < ndim; i++) sk[i] = xkp1[i] - xk[i];
         std::memcpy(xk, xkp1, sizeof(double) * ndim);
@@ -523,7 +554,8 @@ void minimizeBfgs(
         if (gnorm <= gtol) break;
 
         if (1) {
-            printf("BFGS %d %lf %lf\n", k, old_fval, gnorm);
+            printf("BFGS %d %.16lf %.16lf\n", k, old_fval, gnorm);
+            // exit(0);
         }
 
         // update matrix
@@ -557,7 +589,7 @@ void minimizeBfgs(
     delete m1; delete m2; delete hkyk;
 }
 
-void minimizeBfgsLoss(
+void minimizeLossBfgs(
     int ndim, int ndata,
     std::function<void(int ndata, const double* w, const vec3* x, const double* y, double* val, double* grad)> lossfun,
     double* w, const vec3* x_, const double* y_,

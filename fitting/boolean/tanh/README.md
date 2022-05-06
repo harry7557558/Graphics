@@ -17,3 +17,7 @@ Timeline:
 [sgd_test_1.py](sgd_test_1.py): Experiments with techniques to optimize the weights in fitting a bunny using trigonometric basis functions. SGD algorithms perform well on startup but stuck in a "valley." Stochastic CG and Newton-Raphson are unstable. This experiment isn't successful, but the Adam algorithm may be used for future tasks.
 
 [bfgs_test_1.py](bfgs_test_1.py): Copy SciPy BFGS code out and add some modifications so I can see the progress without using callback.
+
+[trig_3d_bunny.py](trig_3d_bunny.py) and [trig_3d_bunny.cpp](trig_3d_bunny.cpp): Trigonometric basis functions with variable frequencies. Try to see if C++ is faster than Python. (Answer: slightly.) The C++ BFGS function seems to have a bug because it takes twice as many iterations to converge as the SciPy one.
+
+[bunny_neural_1.cpp](bunny_neural_1.cpp): Neural network with 1 hidden layer. The hidden layer has an activation function. Tried three different activation functions, `sin` best, then `tanh`, ReLU is very fast but very terrible.
