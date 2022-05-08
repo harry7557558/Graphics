@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdio>
+#include <cstdint>
 #include <cmath>
 #include <functional>
 #include <algorithm> // max/min
@@ -169,8 +170,8 @@ void minimizeAdam(
             // evaluate function
             lossfun(n_batch, w, batch_x, batch_y, &loss_t, grad_t);
             // update
+            loss = beta_1 * loss + (1.0 - beta_1) * loss_t;
             for (int i = 0; i < ndim; i++) {
-                loss = beta_1 * loss + (1.0 - beta_1) * loss_t;
                 grad[i] = beta_1 * grad[i] + (1.0 - beta_1) * grad_t[i];
                 grad2[i] = beta_2 * grad2[i] + (1.0 - beta_2) * grad_t[i] * grad_t[i];
                 w[i] -= learning_step * grad[i] / (sqrt(grad2[i]) + 1e-8);
