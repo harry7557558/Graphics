@@ -26,7 +26,7 @@ struct vec3 {
 };
 
 
-// Load the bunny model as data points
+// Load the bunny model as data points, y \in {-1, 1}
 int load_bunny(int s, std::vector<vec3>& data_x, std::vector<double>& data_y) {
     data_x.clear();
     data_y.clear();
@@ -53,6 +53,36 @@ int load_bunny(int s, std::vector<vec3>& data_x, std::vector<double>& data_y) {
                 }
                 data_x.push_back(p);
                 data_y.push_back(val > 0. ? 1.0 : -1.0);
+            }
+        }
+    }
+    delete data_raw;
+    return (int)data_y.size();
+}
+
+// Load the tooth model as data points, 0 <= y <= 1
+int load_tooth(std::vector<vec3>& data_x, std::vector<double>& data_y) {
+    data_x.clear();
+    data_y.clear();
+    // load voxels from raw file
+    const int sx = 100, sy = 94, sz = 160;
+    uint8_t* data_raw = new uint8_t[sx * sy * sz];
+    FILE* fp = fopen("../v_tooth_100x94x160_uint8.raw", "rb");
+    fread(data_raw, 1, sx * sy * sz, fp);
+    fclose(fp);
+    // convert to points
+    for (int zi = 0; zi < sz; zi++) {
+        double z = -1.0 + (zi + 0.5) * 2.0 / sz;
+        for (int yi = 0; yi < sy; yi++) {
+            double y = -1.0 + (yi + 0.5) * 2.0 / sy;
+            for (int xi = 0; xi < sx; xi++) {
+                double x = -1.0 + (xi + 0.5) * 2.0 / sx;
+                int i = (zi * sy + yi) * sx + xi;
+                // int i = (xi * sy + yi) * sz + zi;
+                double val = double(data_raw[i]) / 255.0;
+                data_x.push_back(vec3{ x, y, z });
+                data_y.push_back(val);
+                // if (zi == sz / 2 && val > 0.2) printf("(%lg,%lg),", x, y);
             }
         }
     }
@@ -155,7 +185,7 @@ void minimizeAdam(
         }
         else {
             for (int i = 0; i < ndata; i++) {
-                order[i] =  (int64_t(i) * 247547ll) % ndata;
+                order[i] = (int64_t(i) * 247547ll) % ndata;
             }
         }
 
@@ -182,7 +212,7 @@ void minimizeAdam(
         double grad_norm = 0.0;
         for (int i = 0; i < ndim; i++) grad_norm += grad[i] * grad[i];
         grad_norm = sqrt(grad_norm);
-        printf("Epoch %d, loss=%lf, grad=%lf\n", epoch, loss, grad_norm);
+        printf("Epoch %d/%d, loss=%lf, grad=%lf\n", epoch + 1, max_epoch, loss, grad_norm);
         if (grad_norm < gtol) break;
     }
 
@@ -492,7 +522,8 @@ double lineSearchWolfe1(
 void minimizeBfgs(
     int ndim,
     std::function<void(const double* x, double* y, double* grad)> fun,
-    double* x, double gtol = 1e-5, int maxiter = -1
+    double* x, double gtol = 1e-5, int maxiter = -1,
+    std::function<void(double* x)> callback = nullptr
 ) {
     if (maxiter <= 0)
         maxiter = ndim * 200;
@@ -555,9 +586,11 @@ void minimizeBfgs(
         if (gnorm <= gtol) break;
 
         if (1) {
-            printf("BFGS %d %.16lf %.16lf\n", k, old_fval, gnorm);
+            printf("BFGS %d/%d %.16lf %.16lf\n", k, maxiter, old_fval, gnorm);
             // exit(0);
         }
+        if (callback != nullptr)
+            callback(xk);
 
         // update matrix
         double skyk = vecdot(ndim, sk, yk);
@@ -594,14 +627,37 @@ void minimizeLossBfgs(
     int ndim, int ndata,
     std::function<void(int ndata, const double* w, const vec3* x, const double* y, double* val, double* grad)> lossfun,
     double* w, const vec3* x_, const double* y_,
-    int maxiter, double gtol
+    int maxiter, double gtol, int batch_size = -1
 ) {
+    if (batch_size <= 0)
+        batch_size = ndata;
+
+    int* order = new int[ndata];
+    vec3* batch_x = new vec3[batch_size];
+    double* batch_y = new double[batch_size];
+    for (int i = 0; i < ndata; i++)
+        order[i] = (int64_t(i) * 247547ll) % ndata;
+    int batch_i = 0;
+
     int nfev = 0;
     auto lossfun_wrap = [&](const double* x, double* val, double* grad) {
         nfev += 1;
-        lossfun(ndata, x, x_, y_, val, grad);
+        lossfun(batch_size, x, batch_x, batch_y, val, grad);
     };
+    auto callback = [&](double* x) {
+        for (int i = 0; i < batch_size; i++) {
+            batch_x[i] = x_[order[batch_i]];
+            batch_y[i] = y_[order[batch_i]];
+            batch_i = (batch_i + 1) % ndata;
+        }
+    };
+    callback(nullptr);
     // printf("checkGrad %lf\n", checkGrad(ndim, lossfun_wrap, w, 1e-6));
-    minimizeBfgs(ndim, lossfun_wrap, w, gtol, maxiter);
+    if (batch_size == ndata) minimizeBfgs(ndim, lossfun_wrap, w, gtol, maxiter);
+    else minimizeBfgs(ndim, lossfun_wrap, w, gtol, maxiter, callback);
     printf("nfev: %d\n", nfev);
+
+    delete order;
+    delete batch_x;
+    delete batch_y;
 }
