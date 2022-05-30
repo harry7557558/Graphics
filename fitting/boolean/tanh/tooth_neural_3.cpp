@@ -1,9 +1,9 @@
 // Neural network regression
 
 // Input: (x, y, z, 1)
-// Hidden layer 1: 8 neurons + bias, sine activation
-// Hidden layer 2: 8 neurons + bias, sine activation
-// Hidden layer 3: 8 neurons + bias, tanh activation
+// Hidden layer 1: LN1 neurons + bias, sine activation
+// Hidden layer 2: LN2 neurons + bias, sine activation
+// Hidden layer 3: LN3 neurons + bias, tanh activation
 // Output: scalar, sigmoid activation
 
 #pragma GCC optimize "Ofast"

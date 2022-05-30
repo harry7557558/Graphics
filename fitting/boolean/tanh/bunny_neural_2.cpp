@@ -1,5 +1,5 @@
 // Neural network with 2 hidden layers
-// Check line 31 for different activation functions.
+// Check line 24 for different activation functions.
 
 #pragma GCC optimize "Ofast"
 #pragma GCC optimize "unroll-loops"
