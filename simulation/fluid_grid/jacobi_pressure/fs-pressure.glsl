@@ -16,11 +16,11 @@ uniform sampler2D samplerP;
 
 
 float getDivU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(coord)%ivec2(iResolution), 0).z;
+    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).z;
 }
 float getP(vec2 coord) {
     if (iterIndex == 0) return 0.0;
-    return texelFetch(samplerP, ivec2(coord)%ivec2(iResolution), 0).x;
+    return texelFetch(samplerP, ivec2(mod(coord,iResolution)), 0).x;
 }
 
 

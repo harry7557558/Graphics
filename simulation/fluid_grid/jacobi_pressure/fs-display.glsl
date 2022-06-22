@@ -9,12 +9,13 @@ uniform float eps;
 uniform float dt;
 
 uniform sampler2D samplerU;
+uniform sampler2D samplerC;
 
 #define PI 3.1415926
 
 
 vec2 getU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(coord), 0).xy;
+    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
 }
 float getDivU(vec2 coord) {
     vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps);
@@ -31,10 +32,15 @@ vec3 hueShift(vec3 c, float s) {
 
 void main() {
     vec2 coord = gl_FragCoord.xy;
+    vec2 xy = coord / iResolution.xy;
+
     vec2 u = getU(coord);
     float mag = length(u.xy);
     float dir = atan(u.y,u.x);
     vec3 col = mag/(mag+0.4)*hueShift(vec3(1,0,0), dir);
     // col = vec3(0.5+getDivU(coord));
+
+    col = texture(samplerC, xy).xyz;
+
     fragColor = vec4(col, 1);
 }

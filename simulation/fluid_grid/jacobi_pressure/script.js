@@ -8,8 +8,9 @@ var renderer = {
     width: -1,
     height: -1,
     eps: NaN,
-    dt: 0.004,
+    dt: 0.005,
     iFrame: 0,
+    iMouse: [0, 0, -1],
     vsSource: "",
     fsAdvectU: "",
     programAdvectU: null,
@@ -21,6 +22,9 @@ var renderer = {
     targetPressure: null,
     fsGradP: null,
     programGradP: null,
+    fsAdvectC: null,
+    programAdvectC: null,
+    targetColor: null,
     fsDisplay: "",
     programDisplay: null,
 };
@@ -139,11 +143,13 @@ async function drawScene() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetVelocity.framebuffer);
     setPositionBuffer(renderer.programAdvectU);
     setUniforms(renderer.programAdvectU);
+    gl.uniform3f(gl.getUniformLocation(renderer.programAdvectU, "iMouse"),
+        renderer.iMouse[0], renderer.iMouse[1], renderer.iMouse[2]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindTexture(gl.TEXTURE_2D, renderer.targetVelocity.sampler);
     gl.copyTexImage2D(gl.TEXTURE_2D,
         0, gl.RGBA32F, 0, 0, renderer.width, renderer.height, 0);
-    
+
     // calculate the divergence of advected velocity
     gl.useProgram(renderer.programDivU);
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetVelocity.framebuffer);
@@ -157,7 +163,7 @@ async function drawScene() {
     // iteratively solve for pressure
     gl.useProgram(renderer.programPressure);
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetPressure.framebuffer);
-    for (var iter = 0; iter < 100; iter++) {
+    for (var iter = 0; iter < 20; iter++) {
         setPositionBuffer(renderer.programAdvectU);
         setUniforms(renderer.programPressure);
         gl.uniform1i(gl.getUniformLocation(renderer.programPressure, "iterIndex"), iter);
@@ -183,11 +189,27 @@ async function drawScene() {
     gl.copyTexImage2D(gl.TEXTURE_2D,
         0, gl.RGBA32F, 0, 0, renderer.width, renderer.height, 0);
 
+    // advect color
+    gl.useProgram(renderer.programAdvectC);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetColor.framebuffer);
+    setPositionBuffer(renderer.programAdvectC);
+    setUniforms(renderer.programAdvectC);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, renderer.targetColor.sampler);
+    gl.uniform1i(gl.getUniformLocation(renderer.programAdvectC, "samplerC"), 1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindTexture(gl.TEXTURE_2D, renderer.targetColor.sampler);
+    gl.copyTexImage2D(gl.TEXTURE_2D,
+        0, gl.RGBA32F, 0, 0, renderer.width, renderer.height, 0);
+
     // put results on canvas
     gl.useProgram(renderer.programDisplay);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     setPositionBuffer(renderer.programDisplay);
     setUniforms(renderer.programDisplay);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, renderer.targetColor.sampler);
+    gl.uniform1i(gl.getUniformLocation(renderer.programDisplay, "samplerC"), 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
@@ -213,7 +235,8 @@ window.onload = function () {
     }, false);
     renderer.width = canvas.width;
     renderer.height = canvas.height;
-    renderer.eps = 1.0 / Math.max(renderer.width, renderer.height);
+    // renderer.eps = 32.0 / Math.max(renderer.width, renderer.height);
+    renderer.eps = 1.0 / 16.0;
 
     // load GLSL source
     console.time("load glsl code");
@@ -223,6 +246,7 @@ window.onload = function () {
     renderer.fsDivU = loadShaderSource("fs-div-u.glsl");
     renderer.fsPressure = loadShaderSource("fs-pressure.glsl");
     renderer.fsGradP = loadShaderSource("fs-grad-p.glsl");
+    renderer.fsAdvectC = loadShaderSource("fs-advect-c.glsl");
     renderer.fsDisplay = loadShaderSource("fs-display.glsl");
     console.timeEnd("load glsl code");
 
@@ -233,6 +257,7 @@ window.onload = function () {
         renderer.programDivU = createShaderProgram(renderer.vsSource, renderer.fsDivU);
         renderer.programPressure = createShaderProgram(renderer.vsSource, renderer.fsPressure);
         renderer.programGradP = createShaderProgram(renderer.vsSource, renderer.fsGradP);
+        renderer.programAdvectC = createShaderProgram(renderer.vsSource, renderer.fsAdvectC);
         renderer.programDisplay = createShaderProgram(renderer.vsSource, renderer.fsDisplay);
     }
     catch (e) {
@@ -249,31 +274,39 @@ window.onload = function () {
     // framebuffers
     renderer.targetVelocity = createRenderTarget(renderer.width, renderer.height);
     renderer.targetPressure = createRenderTarget(renderer.width, renderer.height);
+    renderer.targetColor = createRenderTarget(renderer.width, renderer.height);
 
     // rendering
     function render() {
         drawScene();
         renderer.iFrame += 1;
-        // requestAnimationFrame(render);
+        setTimeout(function () { requestAnimationFrame(render); }, 20);
     }
     requestAnimationFrame(render);
 
     // interactions
     var mouseDown = false;
+    function updateMouse(event) {
+        if (mouseDown)
+            renderer.iMouse = [event.offsetX, renderer.height - 1 - event.offsetY, 1];
+        else event[2] = -1;
+    }
     window.addEventListener("resize", function (event) {
     });
     canvas.addEventListener("pointerdown", function (event) {
         //event.preventDefault();
         canvas.setPointerCapture(event.pointerId);
         mouseDown = true;
+        updateMouse(event);
     });
     canvas.addEventListener("pointerup", function (event) {
         event.preventDefault();
-        render();
+        // render();
         mouseDown = false;
+        updateMouse(event);
     });
     canvas.addEventListener("pointermove", function (event) {
-
+        updateMouse(event);
     });
 
 }

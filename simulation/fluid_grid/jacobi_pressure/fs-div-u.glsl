@@ -14,7 +14,7 @@ uniform sampler2D samplerU;
 
 
 vec2 getU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(coord)%ivec2(iResolution), 0).xy;
+    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
 }
 float getDivU(vec2 coord) {
     vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps);

@@ -16,7 +16,7 @@ uniform sampler2D samplerP;
 
 
 vec2 getU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(coord)%ivec2(iResolution), 0).xy;
+    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
 }
 float getDivU(vec2 coord) {
     vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps);
@@ -24,7 +24,7 @@ float getDivU(vec2 coord) {
     return ddx.x + ddy.y;
 }
 float getP(vec2 coord) {
-    return texelFetch(samplerP, ivec2(coord)%ivec2(iResolution), 0).x;
+    return texelFetch(samplerP, ivec2(mod(coord,iResolution)), 0).x;
 }
 vec2 getGradP(vec2 coord) {
     return vec2(getP(coord+vec2(1,0))-getP(coord-vec2(1,0)),
