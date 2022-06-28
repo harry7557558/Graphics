@@ -17,13 +17,25 @@
 		#canvas {
 			touch-action: none;
 		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		#message {
+			width: 400px;
+			margin: 0;
+		}
 	</style>
 	<script src="script.js"></script>
 </head>
 
 <body>
-	<canvas id="canvas" width="512" height="512"></canvas>
+	<canvas id="canvas" width="400" height="400"></canvas>
 	<p id="error-message"></p>
+	<p id="message">Fluid simulation test. Mouse-able. Right click to reset.</p>
 
 </body>
 

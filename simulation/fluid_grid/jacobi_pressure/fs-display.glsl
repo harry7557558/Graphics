@@ -5,7 +5,7 @@ out vec4 fragColor;
 
 uniform vec2 iResolution;
 uniform int iFrame;
-uniform float eps;
+uniform vec2 eps;
 uniform float dt;
 
 uniform sampler2D samplerU;
@@ -18,9 +18,14 @@ vec2 getU(vec2 coord) {
     return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
 }
 float getDivU(vec2 coord) {
-    vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps);
-    vec2 ddy = (getU(coord+vec2(0,1))-getU(coord-vec2(0,1)))/(2.0*eps);
+    vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps.x);
+    vec2 ddy = (getU(coord+vec2(0,1))-getU(coord-vec2(0,1)))/(2.0*eps.y);
     return ddx.x + ddy.y;
+}
+float getCurlU(vec2 coord) {
+    vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps.x);
+    vec2 ddy = (getU(coord+vec2(0,1))-getU(coord-vec2(0,1)))/(2.0*eps.y);
+    return ddy.x - ddx.y;
 }
 
 
@@ -37,8 +42,9 @@ void main() {
     vec2 u = getU(coord);
     float mag = length(u.xy);
     float dir = atan(u.y,u.x);
-    vec3 col = mag/(mag+0.4)*hueShift(vec3(1,0,0), dir);
+    vec3 col = mag/(mag+0.4)*hueShift(vec3(1,0,0), -dir);
     // col = vec3(0.5+getDivU(coord));
+    // col = vec3(0.5+getCurlU(coord));
 
     col = texture(samplerC, xy).xyz;
 

@@ -7,10 +7,10 @@ var renderer = {
     gl: null,
     width: -1,
     height: -1,
-    eps: NaN,
-    dt: 0.005,
+    eps: 0.5,
+    dt: 0.008,
     iFrame: 0,
-    iMouse: [0, 0, -1],
+    iMouse: [0, 0, 0, 0],
     vsSource: "",
     fsAdvectU: "",
     programAdvectU: null,
@@ -79,8 +79,8 @@ function createSampleTexture(width, height) {
     // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
     return tex;
 }
 function createRenderTarget(width, height) {
@@ -126,7 +126,8 @@ async function drawScene() {
         gl.uniform2f(gl.getUniformLocation(program, "iResolution"),
             renderer.width, renderer.height);
         gl.uniform1i(gl.getUniformLocation(program, "iFrame"), renderer.iFrame);
-        gl.uniform1f(gl.getUniformLocation(program, "eps"), renderer.eps);
+        gl.uniform2f(gl.getUniformLocation(program, "eps"),
+            renderer.eps, renderer.eps * renderer.height / renderer.width);
         gl.uniform1f(gl.getUniformLocation(program, "dt"), renderer.dt);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, renderer.targetVelocity.sampler);
@@ -143,8 +144,8 @@ async function drawScene() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetVelocity.framebuffer);
     setPositionBuffer(renderer.programAdvectU);
     setUniforms(renderer.programAdvectU);
-    gl.uniform3f(gl.getUniformLocation(renderer.programAdvectU, "iMouse"),
-        renderer.iMouse[0], renderer.iMouse[1], renderer.iMouse[2]);
+    gl.uniform4f(gl.getUniformLocation(renderer.programAdvectU, "iMouse"),
+        renderer.iMouse[0], renderer.iMouse[1], renderer.iMouse[2], renderer.iMouse[3]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindTexture(gl.TEXTURE_2D, renderer.targetVelocity.sampler);
     gl.copyTexImage2D(gl.TEXTURE_2D,
@@ -219,7 +220,7 @@ window.onload = function () {
     function onError(error) {
         console.error(error);
         let errorMessageContainer = document.getElementById("error-message");
-        errorMessageContainer.style.display = visible;
+        errorMessageContainer.style.display = "block";
         errorMessageContainer.innerHTML = error;
     }
     let canvas = document.getElementById("canvas");
@@ -235,8 +236,6 @@ window.onload = function () {
     }, false);
     renderer.width = canvas.width;
     renderer.height = canvas.height;
-    // renderer.eps = 32.0 / Math.max(renderer.width, renderer.height);
-    renderer.eps = 1.0 / 16.0;
 
     // load GLSL source
     console.time("load glsl code");
@@ -288,8 +287,11 @@ window.onload = function () {
     var mouseDown = false;
     function updateMouse(event) {
         if (mouseDown)
-            renderer.iMouse = [event.offsetX, renderer.height - 1 - event.offsetY, 1];
-        else event[2] = -1;
+            renderer.iMouse = [
+                event.offsetX, renderer.height - 1 - event.offsetY,
+                event.movementX, -event.movementY
+            ];
+        else renderer.iMouse[2] = renderer.iMouse[3] = 0;
     }
     window.addEventListener("resize", function (event) {
     });
@@ -299,7 +301,7 @@ window.onload = function () {
         mouseDown = true;
         updateMouse(event);
     });
-    canvas.addEventListener("pointerup", function (event) {
+    window.addEventListener("pointerup", function (event) {
         event.preventDefault();
         // render();
         mouseDown = false;
@@ -307,6 +309,10 @@ window.onload = function () {
     });
     canvas.addEventListener("pointermove", function (event) {
         updateMouse(event);
+    });
+    canvas.addEventListener("contextmenu", function (event) {
+        event.preventDefault();
+        renderer.iFrame = 0;
     });
 
 }

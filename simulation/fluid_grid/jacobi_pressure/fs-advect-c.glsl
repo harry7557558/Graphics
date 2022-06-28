@@ -7,7 +7,7 @@ out vec4 fragColor;
 
 uniform vec2 iResolution;
 uniform int iFrame;
-uniform float eps;
+uniform vec2 eps;
 uniform float dt;
 
 uniform sampler2D samplerU;
@@ -17,11 +17,20 @@ uniform sampler2D samplerC;
 
 
 vec2 getU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
+    // return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
+    ivec2 c = ivec2(coord), r = ivec2(iResolution);
+    vec2 s = vec2(
+        c.x<0||c.x>=r.x ? -1.0 : 1.0,
+        c.y<0||c.y>=r.y ? -1.0 : 1.0 );
+    c = (r-1)-abs(r-1-abs(c));
+    return s * texelFetch(samplerU, c, 0).xy;
 }
 
 vec4 getC(vec2 coord) {
-    return texelFetch(samplerC, ivec2(mod(coord,iResolution)), 0);
+    // return texelFetch(samplerC, ivec2(mod(coord,iResolution)), 0);
+    ivec2 c = ivec2(coord), r = ivec2(iResolution);
+    c = (r-1)-abs(r-1-abs(c));
+    return texelFetch(samplerC, c, 0);
 }
 vec4 getCbillinear(vec2 uv) {
     vec2 size = iResolution;  // vec2(textureSize(samplerC))
@@ -41,14 +50,16 @@ void main() {
     vec2 xy = coord / iResolution.xy;
 
     vec2 u = getU(coord);
-    vec2 p = xy - u * dt;
+    if (isnan(u.x+u.y)) u = vec2(0.0);
+    vec2 p = xy - u * dt * eps.x/eps;
 
-    if (iFrame==0) {
-        const float k = 10.0 * PI;
+    if (u==vec2(0) || iFrame==0) {
+        const float k = 4.0 * PI;
         fragColor = 0.0 + 1.0 * vec4(
             step(sin(k*p)-cos(k*p),cos(k*p)+sin(k*p)),
             step(cos(k*p)-cos(k*p),sin(k*p)+sin(k*p))
         ).zxyw;
+        fragColor = mix(fragColor, vec4(step(0.0,sin(k*p.x)*sin(k*p.y))), 0.5);
     }
 
     else fragColor = getCbillinear(p);

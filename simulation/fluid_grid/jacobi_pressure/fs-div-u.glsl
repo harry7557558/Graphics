@@ -7,18 +7,24 @@ out vec4 fragColor;
 
 uniform vec2 iResolution;
 uniform int iFrame;
-uniform float eps;
+uniform vec2 eps;
 uniform float dt;
 
 uniform sampler2D samplerU;
 
 
 vec2 getU(vec2 coord) {
-    return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
+    // return texelFetch(samplerU, ivec2(mod(coord,iResolution)), 0).xy;
+    ivec2 c = ivec2(coord), r = ivec2(iResolution);
+    vec2 s = vec2(
+        c.x<0||c.x>=r.x ? -1.0 : 1.0,
+        c.y<0||c.y>=r.y ? -1.0 : 1.0 );
+    c = (r-1)-abs(r-1-abs(c));
+    return s * texelFetch(samplerU, c, 0).xy;
 }
 float getDivU(vec2 coord) {
-    vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps);
-    vec2 ddy = (getU(coord+vec2(0,1))-getU(coord-vec2(0,1)))/(2.0*eps);
+    vec2 ddx = (getU(coord+vec2(1,0))-getU(coord-vec2(1,0)))/(2.0*eps.x);
+    vec2 ddy = (getU(coord+vec2(0,1))-getU(coord-vec2(0,1)))/(2.0*eps.y);
     return ddx.x + ddy.y;
 }
 
