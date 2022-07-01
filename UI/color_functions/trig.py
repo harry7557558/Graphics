@@ -36,12 +36,12 @@ def fit_array_deg(x, y, deg):
         # convert a*cos(k*x)+b*sin(k*x) to a*cos(kx+b)
         a, b = sol[2*k+2], sol[2*k+3]
         a, b = hypot(a, b), -atan2(b, a)
-        ans.append([a, b])
+        ans += [a, b]
 
     return (ans, loss)
 
 
-def fit_array(x, y, req_loss=2.0/255.0, max_deg=4):
+def fit_array(x, y, req_loss=4.0/255.0, max_deg=2):
     for deg in range(0, max_deg+1):
         coes, loss = fit_array_deg(x, y, deg)
         if loss < req_loss:
@@ -56,13 +56,18 @@ def fit_color(cols):
     cr = fit_array(x, np.array([c[0] for c in cols]))
     cg = fit_array(x, np.array([c[1] for c in cols]))
     cb = fit_array(x, np.array([c[2] for c in cols]))
-    return (cr, cg, cb)
+    return [cr, cg, cb]
 
 
-def float2str_min(x):
+def float2str_min(x, mul=1.0):
     """ float to string for color output """
+    if type(x) is list:
+        x = [float2str_min(xi, mul).lstrip('+').rstrip('.')
+             for xi in x]
+        return '+vec3(' + ','.join(x) + ')'
+    x *= mul
     sign = '+' if x >= 0.0 else '-'
-    s = "{:.3f}".format(abs(x))  # 3-4 decimal places
+    s = "{:.2f}".format(abs(x))
     while s[-1] == '0':
         s = s[:len(s)-1]
     while s[0] == '0':
@@ -73,12 +78,12 @@ def float2str_min(x):
 
 
 def encode_series(c):
-    deg = len(c)-3
-    s = f"{float2str_min(c[0])}{float2str_min(2.0*pi*c[1])}*x"
+    deg = (len(c)-2)//2-1
+    s = f"{float2str_min(c[0])}{float2str_min(c[1],2.0*pi)}*x"
     for k in range(0, deg+1):
-        s += f"{float2str_min(c[k+2][0])}*" + \
-            f"cos({float2str_min(2.*pi*max(k, 0.5)).lstrip('+')}*x" + \
-            f"{float2str_min(c[k+2][1])})"
+        s += f"{float2str_min(c[2*k+2])}*" + \
+            f"cos({float2str_min(max(k, 0.5),2.0*pi).lstrip('+')}*x" + \
+            f"{float2str_min(c[2*k+3])})"
     return s.lstrip('+')
 
 
@@ -101,9 +106,12 @@ class ColorFunctions {
 public:
 """
 
+    glsl_code = """"""
+
     for (colorname, data) in pics:
         print(colorname)
         coes = fit_color(data)
+        # generate JS and C++ code
         js_code += "  " + colorname + ": function(x) {\n"
         cpp_code += "  static vec3 " + colorname + "(Float x) {\n"
         for c in range(3):
@@ -114,11 +122,23 @@ public:
                 st + ';\n'
         js_code += "    return this.tocol(r, g, b);\n  },\n"
         cpp_code += "    return vec3(clp(r),clp(g),clp(b));\n  }\n"
+        # generate GLSL code
+        glsl_code += "vec3 " + colorname + "T(float x) {\n"
+        l = max([len(c) for c in coes])
+        for c in range(3):
+            coes[c] += [0.0] * (l-len(coes[c]))
+        coes = np.array(coes).T.tolist()
+        st = encode_series(coes)
+        glsl_code += "    return clamp(" + st + ",0.,1.);\n}\n"
 
     js_code += "};"
     cpp_code += "};\n"
 
-    return {"js_code": js_code, "cpp_code": cpp_code}
+    return {
+        "js_code": js_code,
+        "cpp_code": cpp_code,
+        "glsl_code": glsl_code
+    }
 
 
 if __name__ == "__main__":
@@ -131,3 +151,6 @@ if __name__ == "__main__":
 
     open("trig.js", "wb").write(bytearray(code['js_code'], 'utf-8'))
     open("trig.h", "wb").write(bytearray(code['cpp_code'], 'utf-8'))
+    open("trig.glsl", "wb").write(bytearray(code['glsl_code'], 'utf-8'))
+
+    import js_generator

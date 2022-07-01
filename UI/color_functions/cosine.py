@@ -122,10 +122,16 @@ def debug_color(data):
     sys.exit()
 
 
-def float2str_min(x, prec=3):
+def float2str_min(x, prec=-1):
     """ float to string for color output """
+    if type(x) is list:
+        if type(prec) is int:
+            prec = [prec] * len(x)
+        x = [float2str_min(x[i], prec[i]).lstrip('+').rstrip('.')
+             for i in range(len(prec))]
+        return '+vec3(' + ','.join(x) + ')'
     sign = '+' if x >= 0.0 else '-'
-    s = "{:.{prec}f}".format(abs(x), prec=prec)  # 3-4 decimal places
+    s = "{:.{prec}f}".format(abs(x), prec=prec)
     while s[-1] == '0':
         s = s[:len(s)-1]
     while s[0] == '0':
@@ -154,16 +160,19 @@ class ColorFunctions {
 public:
 """
 
+    glsl_code = """"""
+
     for (colorname, data) in pics:
         print(colorname)
         coes = fit_color(data)
+        # generate JS and C++ code
         js_code += "  " + colorname + ": function(t) {\n"
         cpp_code += "  static vec3 " + colorname + "(Float t) {\n"
         for i in range(3):
-            prec = max(int(log10(abs(coes[i][2])))+2, 3)
-            a = float2str_min(coes[i][0], prec=3)
-            b = float2str_min(coes[i][1], prec=3)
-            c = float2str_min(coes[i][2], prec=3)
+            prec = max(int(log10(abs(coes[i][2])))+2, 2)
+            a = float2str_min(coes[i][0], prec=2)
+            b = float2str_min(coes[i][1], prec=2)
+            c = float2str_min(coes[i][2], prec=2)
             d = float2str_min(coes[i][3], prec=prec)
             e = float2str_min(coes[i][4], prec=prec)
             st = f"{a}{b}*t{c}*cos({d}*t{e})".lstrip('+').replace('(+', '(')
@@ -173,11 +182,26 @@ public:
                 st + ';\n'
         js_code += "    return this.tocol(r, g, b);\n  },\n"
         cpp_code += "    return vec3(clp(r),clp(g),clp(b));\n  }\n"
+        # generate GLSL code
+        glsl_code += "vec3 " + colorname + "C(float t) {\n"
+        coes = np.array(coes).T.tolist()
+        prec = [max(int(log10(abs(v)))+2, 2) for v in coes[2]]
+        a = float2str_min(coes[0], prec=2)
+        b = float2str_min(coes[1], prec=2)
+        c = float2str_min(coes[2], prec=2)
+        d = float2str_min(coes[3], prec=prec)
+        e = float2str_min(coes[4], prec=prec)
+        st = f"{a}{b}*t{c}*cos({d}*t{e})".lstrip('+').replace('(+', '(')
+        glsl_code += "    return clamp(" + st + ",0.,1.);\n}\n"
 
     js_code += "};"
     cpp_code += "};\n"
 
-    return {"js_code": js_code, "cpp_code": cpp_code}
+    return {
+        "js_code": js_code,
+        "cpp_code": cpp_code,
+        "glsl_code": glsl_code
+    }
 
 
 if __name__ == "__main__":
@@ -193,3 +217,6 @@ if __name__ == "__main__":
 
     open("cosine.js", "wb").write(bytearray(code['js_code'], 'utf-8'))
     open("cosine.h", "wb").write(bytearray(code['cpp_code'], 'utf-8'))
+    open("cosine.glsl", "wb").write(bytearray(code['glsl_code'], 'utf-8'))
+
+    import js_generator

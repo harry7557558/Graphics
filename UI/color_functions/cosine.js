@@ -6,303 +6,303 @@ const ColorFunctions = {
     return 'rgb('+this.clp(r)+','+this.clp(g)+','+this.clp(b)+')';
   },
   AlpineColors: function(t) {
-    var r = .34+.562*t+.15*Math.cos(3.468*t+1.969);
-    var g = .257+.75*t+.093*Math.cos(4.562*t+.16);
-    var b = .431+.302*t+.173*Math.cos(4.864*t+1.108);
+    var r = .34+.56*t+.15*Math.cos(3.47*t+1.97);
+    var g = .26+.75*t+.09*Math.cos(4.56*t+.16);
+    var b = .43+.3*t+.17*Math.cos(4.86*t+1.11);
     return this.tocol(r, g, b);
   },
   LakeColors: function(t) {
-    var r = .254+.731*t+.058*Math.cos(3.275*t-1.005);
-    var g = .132+.669*t+.25*Math.cos(3.073*t-1.904);
-    var b = .338+.725*t+.297*Math.cos(3.358*t-.976);
+    var r = .25+.73*t+.06*Math.cos(3.28*t-1.);
+    var g = .13+.67*t+.25*Math.cos(3.07*t-1.9);
+    var b = .34+.73*t+.3*Math.cos(3.36*t-.98);
     return this.tocol(r, g, b);
   },
   ArmyColors: function(t) {
-    var r = .43+.296*t+.017*Math.cos(12.935*t+.408);
-    var g = .427+.427*t+.144*Math.cos(4.132*t+.063);
-    var b = .886+2.688*t+3.539*Math.cos(.851*t+1.682);
+    var r = .43+.3*t+.02*Math.cos(12.93*t+.41);
+    var g = .43+.43*t+.14*Math.cos(4.13*t+.06);
+    var b = .89+2.69*t+3.54*Math.cos(.85*t+1.68);
     return this.tocol(r, g, b);
   },
   MintColors: function(t) {
-    var r = -.968+.087*t+1.813*Math.cos(.817*t-.666);
-    var g = .699-.492*t+.447*Math.cos(1.321*t-.899);
-    var b = .071+.083*t+.736*Math.cos(1.242*t-.702);
+    var r = -.97+.09*t+1.81*Math.cos(.82*t-.67);
+    var g = .7-.49*t+.45*Math.cos(1.32*t-.9);
+    var b = .07+.08*t+.74*Math.cos(1.24*t-.7);
     return this.tocol(r, g, b);
   },
   AtlanticColors: function(t) {
-    var r = -.359-4.384*t+7.369*Math.cos(.729*t-1.507);
-    var g = .309-.072*t+.477*Math.cos(2.921*t-1.956);
-    var b = .464-.507*t+.749*Math.cos(2.484*t-2.026);
+    var r = -.36-4.38*t+7.37*Math.cos(.73*t-1.51);
+    var g = .31-.07*t+.48*Math.cos(2.92*t-1.96);
+    var b = .46-.51*t+.75*Math.cos(2.48*t-2.03);
     return this.tocol(r, g, b);
   },
   NeonColors: function(t) {
-    var r = .772+.066*t+.044*Math.cos(5.935*t+2.729);
-    var g = .832-.792*t+.139*Math.cos(5.937*t+.756);
-    var b = .142+.513*t+.133*Math.cos(5.692*t+.064);
+    var r = .77+.07*t+.04*Math.cos(5.93*t+2.73);
+    var g = .83-.79*t+.14*Math.cos(5.94*t+.76);
+    var b = .14+.51*t+.13*Math.cos(5.69*t+.06);
     return this.tocol(r, g, b);
   },
   AuroraColors: function(t) {
-    var r = .209+.586*t+.05*Math.cos(10.516*t+1.428);
-    var g = .511-.234*t+.282*Math.cos(5.461*t+2.466);
-    var b = .167+.704*t+.122*Math.cos(7.581*t-.642);
+    var r = .21+.59*t+.05*Math.cos(10.52*t+1.43);
+    var g = .51-.23*t+.28*Math.cos(5.46*t+2.47);
+    var b = .17+.7*t+.12*Math.cos(7.58*t-.64);
     return this.tocol(r, g, b);
   },
   PearlColors: function(t) {
-    var r = .721+.133*t+.197*Math.cos(5.404*t-.179);
-    var g = .784-.07*t+.112*Math.cos(6.567*t-.891);
-    var b = .713+.151*t+.11*Math.cos(7.189*t-.772);
+    var r = .72+.13*t+.2*Math.cos(5.4*t-.18);
+    var g = .78-.07*t+.11*Math.cos(6.57*t-.89);
+    var b = .71+.15*t+.11*Math.cos(7.19*t-.77);
     return this.tocol(r, g, b);
   },
   AvocadoColors: function(t) {
-    var r = .655-.2*t+.649*Math.cos(2.755*t+2.923);
-    var g = -.678+2.051*t+.657*Math.cos(2.279*t-.098);
-    var b = -.013+.246*t+.022*Math.cos(5.897*t-1.248);
+    var r = .65-.2*t+.65*Math.cos(2.76*t+2.92);
+    var g = -.68+2.05*t+.66*Math.cos(2.28*t-.1);
+    var b = -.01+.25*t+.02*Math.cos(5.9*t-1.25);
     return this.tocol(r, g, b);
   },
   PlumColors: function(t) {
-    var r = -1.019+2.938*t+1.008*Math.cos(2.766*t+.148);
-    var g = -2.843+17.04*t+30.478*Math.cos(.544*t+1.478);
-    var b = 2.035-4.714*t+3.865*Math.cos(1.482*t-2.124);
+    var r = -1.02+2.94*t+1.01*Math.cos(2.77*t+.15);
+    var g = -2.84+17.04*t+30.48*Math.cos(.544*t+1.478);
+    var b = 2.04-4.71*t+3.86*Math.cos(1.48*t-2.12);
     return this.tocol(r, g, b);
   },
   BeachColors: function(t) {
-    var r = -40.164+87.818*t+202.129*Math.cos(.4371*t+1.3668);
-    var g = .559+.364*t+.081*Math.cos(7.608*t-2.555);
-    var b = .149+.801*t+.105*Math.cos(6.822*t+.376);
+    var r = -40.16+87.82*t+202.13*Math.cos(.4371*t+1.3668);
+    var g = .56+.36*t+.08*Math.cos(7.61*t-2.56);
+    var b = .15+.8*t+.1*Math.cos(6.82*t+.38);
     return this.tocol(r, g, b);
   },
   RoseColors: function(t) {
-    var r = .324+.541*t+.17*Math.cos(5.629*t-2.919);
-    var g = .482-.211*t+.17*Math.cos(5.382*t-2.917);
-    var b = .221+.002*t+.159*Math.cos(4.866*t-2.524);
+    var r = .32+.54*t+.17*Math.cos(5.63*t-2.92);
+    var g = .48-.21*t+.17*Math.cos(5.38*t-2.92);
+    var b = .22+0.*t+.16*Math.cos(4.87*t-2.52);
     return this.tocol(r, g, b);
   },
   CandyColors: function(t) {
-    var r = .43+.468*t+.213*Math.cos(4.928*t-1.749);
-    var g = 19.473-36.595*t+79.305*Math.cos(.474*t-1.816);
-    var b = .483+.298*t+.165*Math.cos(4.659*t+2.531);
+    var r = .43+.47*t+.21*Math.cos(4.93*t-1.75);
+    var g = 19.47-36.59*t+79.3*Math.cos(.474*t-1.816);
+    var b = .48+.3*t+.17*Math.cos(4.66*t+2.53);
     return this.tocol(r, g, b);
   },
   SolarColors: function(t) {
-    var r = -.325+1.625*t+.778*Math.cos(2.093*t-.134);
-    var g = .027+.73*t+.077*Math.cos(5.134*t+1.925);
-    var b = .172-.13*t+.155*Math.cos(2.134*t+3.136);
+    var r = -.33+1.62*t+.78*Math.cos(2.09*t-.13);
+    var g = .03+.73*t+.08*Math.cos(5.13*t+1.92);
+    var b = .17-.13*t+.16*Math.cos(2.13*t+3.14);
     return this.tocol(r, g, b);
   },
   CMYKColors: function(t) {
-    var r = 21.344-109.661*t+274.797*Math.cos(.4044*t-1.6474);
-    var g = .963-.695*t+.363*Math.cos(6.257*t+1.694);
-    var b = .857-.536*t+.098*Math.cos(9.08*t-1.018);
+    var r = 21.34-109.66*t+274.8*Math.cos(.4044*t-1.6474);
+    var g = .96-.7*t+.36*Math.cos(6.26*t+1.69);
+    var b = .86-.54*t+.1*Math.cos(9.08*t-1.02);
     return this.tocol(r, g, b);
   },
   SouthwestColors: function(t) {
-    var r = 2.153-26.755*t+51.145*Math.cos(.542*t-1.604);
-    var g = .441+.304*t+.174*Math.cos(6.236*t+2.533);
-    var b = .167+.385*t+.124*Math.cos(11.285*t+1.021);
+    var r = 2.15-26.75*t+51.14*Math.cos(.542*t-1.604);
+    var g = .44+.3*t+.17*Math.cos(6.24*t+2.53);
+    var b = .17+.38*t+.12*Math.cos(11.28*t+1.02);
     return this.tocol(r, g, b);
   },
   DeepSeaColors: function(t) {
-    var r = -.452+1.772*t+.586*Math.cos(3.484*t+.168);
-    var g = .395+.166*t+.399*Math.cos(2.951*t+2.859);
-    var b = .216+.37*t+.472*Math.cos(1.93*t-1.406);
+    var r = -.45+1.77*t+.59*Math.cos(3.48*t+.17);
+    var g = .39+.17*t+.4*Math.cos(2.95*t+2.86);
+    var b = .22+.37*t+.47*Math.cos(1.93*t-1.41);
     return this.tocol(r, g, b);
   },
   StarryNightColors: function(t) {
-    var r = .188+.741*t+.121*Math.cos(5.253*t+2.268);
-    var g = .494-.068*t+.427*Math.cos(2.988*t-2.477);
-    var b = .391-.019*t+.267*Math.cos(3.939*t-2.331);
+    var r = .19+.74*t+.12*Math.cos(5.25*t+2.27);
+    var g = .49-.07*t+.43*Math.cos(2.99*t-2.48);
+    var b = .39-.02*t+.27*Math.cos(3.94*t-2.33);
     return this.tocol(r, g, b);
   },
   FallColors: function(t) {
-    var r = .207+.806*t+.041*Math.cos(8.621*t-.258);
-    var g = .262+.403*t+.124*Math.cos(6.28*t+.023);
-    var b = 6.498-7.166*t+12.763*Math.cos(.571*t-2.069);
+    var r = .21+.81*t+.04*Math.cos(8.62*t-.26);
+    var g = .26+.4*t+.12*Math.cos(6.28*t+.02);
+    var b = 6.5-7.17*t+12.76*Math.cos(.571*t-2.069);
     return this.tocol(r, g, b);
   },
   SunsetColors: function(t) {
-    var r = .138+1.15*t+.267*Math.cos(5.058*t-2.215);
-    var g = -.054+1.068*t+.043*Math.cos(7.883*t+.103);
-    var b = -.065+.734*t+.322*Math.cos(7.069*t-1.202);
+    var r = .14+1.15*t+.27*Math.cos(5.06*t-2.21);
+    var g = -.05+1.07*t+.04*Math.cos(7.88*t+.1);
+    var b = -.07+.73*t+.32*Math.cos(7.07*t-1.2);
     return this.tocol(r, g, b);
   },
   FruitPunchColors: function(t) {
-    var r = .895-.02*t+.109*Math.cos(5.773*t-.213);
-    var g = .569-.095*t+.137*Math.cos(5.769*t-2.086);
-    var b = -.038+.685*t+.136*Math.cos(6.989*t+1.023);
+    var r = .89-.02*t+.11*Math.cos(5.77*t-.21);
+    var g = .57-.09*t+.14*Math.cos(5.77*t-2.09);
+    var b = -.04+.68*t+.14*Math.cos(6.99*t+1.02);
     return this.tocol(r, g, b);
   },
   ThermometerColors: function(t) {
-    var r = .453+.122*t+.385*Math.cos(4.177*t-2.507);
-    var g = .284+.142*t+.554*Math.cos(4.181*t-1.918);
-    var b = .464+.05*t+.475*Math.cos(3.217*t-.809);
+    var r = .45+.12*t+.39*Math.cos(4.18*t-2.51);
+    var g = .28+.14*t+.55*Math.cos(4.18*t-1.92);
+    var b = .46+.05*t+.48*Math.cos(3.22*t-.81);
     return this.tocol(r, g, b);
   },
   IslandColors: function(t) {
-    var r = .67+.125*t+.142*Math.cos(7.543*t+1.454);
-    var g = -8.587+7.996*t+12.196*Math.cos(.712*t+.746);
-    var b = -35.367+32.875*t+68.157*Math.cos(.508*t+1.022);
+    var r = .67+.12*t+.14*Math.cos(7.54*t+1.45);
+    var g = -8.59+8.*t+12.2*Math.cos(.712*t+.746);
+    var b = -35.37+32.87*t+68.16*Math.cos(.508*t+1.022);
     return this.tocol(r, g, b);
   },
   WatermelonColors: function(t) {
-    var r = 8.384-23.701*t+45.905*Math.cos(.542*t-1.752);
-    var g = 6.221-56.236*t+127.225*Math.cos(.4551*t-1.6188);
-    var b = 80.008-209.122*t+639.314*Math.cos(.3292*t-1.696);
+    var r = 8.38-23.7*t+45.9*Math.cos(.542*t-1.752);
+    var g = 6.22-56.24*t+127.22*Math.cos(.4551*t-1.6188);
+    var b = 80.01-209.12*t+639.31*Math.cos(.3292*t-1.696);
     return this.tocol(r, g, b);
   },
   BrassTones: function(t) {
-    var r = .16+.07*t+.727*Math.cos(3.313*t-1.671);
-    var g = .238+.004*t+.595*Math.cos(3.492*t-1.798);
-    var b = .118-.036*t+.312*Math.cos(3.548*t-1.885);
+    var r = .16+.07*t+.73*Math.cos(3.31*t-1.67);
+    var g = .24+0.*t+.6*Math.cos(3.49*t-1.8);
+    var b = .12-.04*t+.31*Math.cos(3.55*t-1.89);
     return this.tocol(r, g, b);
   },
   GreenPinkTones: function(t) {
-    var r = .529-.054*t+.55*Math.cos(5.498*t+2.779);
-    var g = .21+.512*t+.622*Math.cos(4.817*t-1.552);
-    var b = .602-.212*t+.569*Math.cos(5.266*t+2.861);
+    var r = .53-.05*t+.55*Math.cos(5.5*t+2.78);
+    var g = .21+.51*t+.62*Math.cos(4.82*t-1.55);
+    var b = .6-.21*t+.57*Math.cos(5.27*t+2.86);
     return this.tocol(r, g, b);
   },
   BrownCyanTones: function(t) {
-    var r = .203+.373*t+.472*Math.cos(3.367*t-1.293);
-    var g = -1.135-14.824*t+26.533*Math.cos(.626*t-1.521);
-    var b = .587-3.096*t+3.441*Math.cos(1.409*t-1.721);
+    var r = .2+.37*t+.47*Math.cos(3.37*t-1.29);
+    var g = -1.14-14.82*t+26.53*Math.cos(.626*t-1.521);
+    var b = .59-3.1*t+3.44*Math.cos(1.41*t-1.72);
     return this.tocol(r, g, b);
   },
   PigeonTones: function(t) {
-    var r = .115+.864*t+.065*Math.cos(7.663*t-.48);
-    var g = .134+.845*t+.042*Math.cos(7.904*t-.989);
-    var b = .166+.795*t+.057*Math.cos(7.722*t-.96);
+    var r = .12+.86*t+.06*Math.cos(7.66*t-.48);
+    var g = .13+.84*t+.04*Math.cos(7.9*t-.99);
+    var b = .17+.79*t+.06*Math.cos(7.72*t-.96);
     return this.tocol(r, g, b);
   },
   CherryTones: function(t) {
-    var r = -33.955+52.149*t+107.832*Math.cos(.4822*t+1.2484);
-    var g = 11.897-9.82*t+19.465*Math.cos(.588*t-2.214);
-    var b = 13.784-12.632*t+25.214*Math.cos(.562*t-2.139);
+    var r = -33.95+52.15*t+107.83*Math.cos(.4822*t+1.2484);
+    var g = 11.9-9.82*t+19.47*Math.cos(.588*t-2.214);
+    var b = 13.78-12.63*t+25.21*Math.cos(.562*t-2.139);
     return this.tocol(r, g, b);
   },
   RedBlueTones: function(t) {
-    var r = .649-.248*t+.33*Math.cos(4.743*t-2.171);
-    var g = .46+.013*t+.388*Math.cos(4.495*t-2.538);
-    var b = .912-1.304*t+.961*Math.cos(2.624*t-2.37);
+    var r = .65-.25*t+.33*Math.cos(4.74*t-2.17);
+    var g = .46+.01*t+.39*Math.cos(4.49*t-2.54);
+    var b = .91-1.3*t+.96*Math.cos(2.62*t-2.37);
     return this.tocol(r, g, b);
   },
   CoffeeTones: function(t) {
-    var r = -2.682+4.95*t+5.693*Math.cos(.799*t+.997);
-    var g = .32+.635*t+.04*Math.cos(7.862*t-1.389);
-    var b = .064+.864*t+.199*Math.cos(5.276*t-.159);
+    var r = -2.68+4.95*t+5.69*Math.cos(.8*t+1.);
+    var g = .32+.64*t+.04*Math.cos(7.86*t-1.39);
+    var b = .06+.86*t+.2*Math.cos(5.28*t-.16);
     return this.tocol(r, g, b);
   },
   RustTones: function(t) {
-    var r = .122+1.015*t+.12*Math.cos(5.857*t-2.927);
-    var g = .062+.473*t+.056*Math.cos(5.844*t-2.93);
-    var b = .17-.157*t+.019*Math.cos(5.848*t+.205);
+    var r = .12+1.02*t+.12*Math.cos(5.86*t-2.93);
+    var g = .06+.47*t+.06*Math.cos(5.84*t-2.93);
+    var b = .17-.16*t+.02*Math.cos(5.85*t+.2);
     return this.tocol(r, g, b);
   },
   FuchsiaTones: function(t) {
-    var r = .387-3.144*t+5.33*Math.cos(.828*t-1.625);
-    var g = .034+.905*t+.05*Math.cos(7.864*t-.057);
-    var b = 1.444-4.925*t+8.111*Math.cos(.747*t-1.737);
+    var r = .39-3.14*t+5.33*Math.cos(.83*t-1.63);
+    var g = .03+.91*t+.05*Math.cos(7.86*t-.06);
+    var b = 1.44-4.92*t+8.11*Math.cos(.75*t-1.74);
     return this.tocol(r, g, b);
   },
   SiennaTones: function(t) {
-    var r = -.412+1.682*t+.857*Math.cos(2.03*t-.038);
-    var g = .327+.416*t+.153*Math.cos(3.422*t-2.907);
-    var b = .397+.093*t+.337*Math.cos(3.09*t+2.801);
+    var r = -.41+1.68*t+.86*Math.cos(2.03*t-.04);
+    var g = .33+.42*t+.15*Math.cos(3.42*t-2.91);
+    var b = .4+.09*t+.34*Math.cos(3.09*t+2.8);
     return this.tocol(r, g, b);
   },
   GrayTones: function(t) {
-    var r = .043+.841*t+.044*Math.cos(7.064*t-.075);
-    var g = .061+.84*t+.03*Math.cos(7.431*t-.36);
-    var b = .088+.793*t+.017*Math.cos(9.001*t-1.351);
+    var r = .04+.84*t+.04*Math.cos(7.06*t-.08);
+    var g = .06+.84*t+.03*Math.cos(7.43*t-.36);
+    var b = .09+.79*t+.02*Math.cos(9.*t-1.35);
     return this.tocol(r, g, b);
   },
   ValentineTones: function(t) {
-    var r = 2.391-3.682*t+5.193*Math.cos(.817*t-1.937);
-    var g = .135+.605*t+.1*Math.cos(4.255*t+1.819);
-    var b = .173+.657*t+.053*Math.cos(5.679*t+1.147);
+    var r = 2.39-3.68*t+5.19*Math.cos(.82*t-1.94);
+    var g = .14+.6*t+.1*Math.cos(4.26*t+1.82);
+    var b = .17+.66*t+.05*Math.cos(5.68*t+1.15);
     return this.tocol(r, g, b);
   },
   GrayYellowTones: function(t) {
-    var r = .6-.129*t+.468*Math.cos(2.889*t-2.671);
-    var g = 22.003-61.926*t+141.553*Math.cos(.4457*t-1.7253);
-    var b = 40.32-135.252*t+364.051*Math.cos(.3746*t-1.6809);
+    var r = .6-.13*t+.47*Math.cos(2.89*t-2.67);
+    var g = 22.-61.93*t+141.55*Math.cos(.4457*t-1.7253);
+    var b = 40.32-135.25*t+364.05*Math.cos(.3746*t-1.6809);
     return this.tocol(r, g, b);
   },
   DarkTerrain: function(t) {
-    var r = -119.592+246.859*t+786.342*Math.cos(.3139*t+1.4182);
-    var g = -5.317+12.06*t+7.188*Math.cos(1.751*t+.736);
-    var b = -180.095+452.81*t+1665.276*Math.cos(.27247*t+1.4622);
+    var r = -119.59+246.86*t+786.34*Math.cos(.3139*t+1.4182);
+    var g = -5.32+12.06*t+7.19*Math.cos(1.75*t+.74);
+    var b = -180.09+452.81*t+1665.28*Math.cos(.27247*t+1.4622);
     return this.tocol(r, g, b);
   },
   LightTerrain: function(t) {
-    var r = .585+.263*t+.087*Math.cos(5.119*t+2.234);
-    var g = 27.294-45.823*t+94.808*Math.cos(.49*t-1.854);
-    var b = 39.021-51.942*t+114.118*Math.cos(.4623*t-1.9117);
+    var r = .59+.26*t+.09*Math.cos(5.12*t+2.23);
+    var g = 27.29-45.82*t+94.81*Math.cos(.49*t-1.854);
+    var b = 39.02-51.94*t+114.12*Math.cos(.4623*t-1.9117);
     return this.tocol(r, g, b);
   },
   GreenBrownTerrain: function(t) {
-    var r = .117+.953*t+.119*Math.cos(6.758*t-2.887);
-    var g = .12+.881*t+.181*Math.cos(6.804*t-2.345);
-    var b = -205.56+434.262*t+1593.101*Math.cos(.27279*t+1.44143);
+    var r = .12+.95*t+.12*Math.cos(6.76*t-2.89);
+    var g = .12+.88*t+.18*Math.cos(6.8*t-2.34);
+    var b = -205.56+434.26*t+1593.1*Math.cos(.27279*t+1.44143);
     return this.tocol(r, g, b);
   },
   SandyTerrain: function(t) {
-    var r = .903-.539*t+.319*Math.cos(4.28*t-2.369);
-    var g = .481+.071*t+.271*Math.cos(4.704*t-2.322);
-    var b = .264-.027*t+.058*Math.cos(5.68*t-2.617);
+    var r = .9-.54*t+.32*Math.cos(4.28*t-2.37);
+    var g = .48+.07*t+.27*Math.cos(4.7*t-2.32);
+    var b = .26-.03*t+.06*Math.cos(5.68*t-2.62);
     return this.tocol(r, g, b);
   },
   BrightBands: function(t) {
-    var r = .631+.13*t+.314*Math.cos(7.388*t-.03);
-    var g = .52+.312*t+.288*Math.cos(5.462*t-3.023);
-    var b = -577.524+1052.6*t+4334.341*Math.cos(.24336*t+1.43714);
+    var r = .63+.13*t+.31*Math.cos(7.39*t-.03);
+    var g = .52+.31*t+.29*Math.cos(5.46*t-3.02);
+    var b = -577.52+1052.6*t+4334.34*Math.cos(.24336*t+1.43714);
     return this.tocol(r, g, b);
   },
   DarkBands: function(t) {
-    var r = .516+.307*t+.147*Math.cos(11.59*t+.777);
-    var g = .621+.214*t+.262*Math.cos(4.299*t+.764);
-    var b = 1.077-.984*t+.355*Math.cos(5.115*t+1.765);
+    var r = .52+.31*t+.15*Math.cos(11.59*t+.78);
+    var g = .62+.21*t+.26*Math.cos(4.3*t+.76);
+    var b = 1.08-.98*t+.35*Math.cos(5.11*t+1.76);
     return this.tocol(r, g, b);
   },
   Aquamarine: function(t) {
-    var r = -.304+1.962*t+1.037*Math.cos(2.567*t+.358);
-    var g = .262+.949*t+.472*Math.cos(2.849*t+.153);
-    var b = -.204+2.356*t+1.507*Math.cos(1.8*t+.802);
+    var r = -.3+1.96*t+1.04*Math.cos(2.57*t+.36);
+    var g = .26+.95*t+.47*Math.cos(2.85*t+.15);
+    var b = -.2+2.36*t+1.51*Math.cos(1.8*t+.8);
     return this.tocol(r, g, b);
   },
   Pastel: function(t) {
-    var r = 5.992-30.909*t+57.315*Math.cos(.549*t-1.662);
-    var g = 1.695-3.634*t+2.889*Math.cos(1.558*t-1.995);
-    var b = .813-.068*t+.215*Math.cos(5.582*t+.594);
+    var r = 5.99-30.91*t+57.32*Math.cos(.549*t-1.662);
+    var g = 1.69-3.63*t+2.89*Math.cos(1.56*t-1.99);
+    var b = .81-.07*t+.22*Math.cos(5.58*t+.59);
     return this.tocol(r, g, b);
   },
   BlueGreenYellow: function(t) {
-    var r = 2.083+4.676*t+6.451*Math.cos(.818*t+1.879);
-    var g = -.467+1.408*t+.504*Math.cos(2.071*t-.424);
-    var b = -1.062+1.975*t+1.607*Math.cos(1.481*t+.447);
+    var r = 2.08+4.68*t+6.45*Math.cos(.82*t+1.88);
+    var g = -.47+1.41*t+.5*Math.cos(2.07*t-.42);
+    var b = -1.06+1.97*t+1.61*Math.cos(1.48*t+.45);
     return this.tocol(r, g, b);
   },
   Rainbow: function(t) {
-    var r = 132.228-245.968*t+755.627*Math.cos(.3275*t-1.7461);
-    var g = .385-1.397*t+1.319*Math.cos(2.391*t-1.839);
-    var b = -142.825+270.693*t+891.307*Math.cos(.3053*t+1.4092);
+    var r = 132.23-245.97*t+755.63*Math.cos(.3275*t-1.7461);
+    var g = .39-1.4*t+1.32*Math.cos(2.39*t-1.84);
+    var b = -142.83+270.69*t+891.31*Math.cos(.3053*t+1.4092);
     return this.tocol(r, g, b);
   },
   DarkRainbow: function(t) {
-    var r = .25+.638*t+.163*Math.cos(7.885*t+1.194);
-    var g = .655-.343*t+.28*Math.cos(5.831*t+2.688);
-    var b = .523-.4*t+.113*Math.cos(6.931*t+.596);
+    var r = .25+.64*t+.16*Math.cos(7.89*t+1.19);
+    var g = .65-.34*t+.28*Math.cos(5.83*t+2.69);
+    var b = .52-.4*t+.11*Math.cos(6.93*t+.6);
     return this.tocol(r, g, b);
   },
   TemperatureMap: function(t) {
-    var r = .372+.707*t+.265*Math.cos(5.201*t-2.515);
-    var g = .888-2.123*t+1.556*Math.cos(2.483*t-1.959);
-    var b = 1.182-.943*t+.195*Math.cos(8.032*t+2.875);
+    var r = .37+.71*t+.26*Math.cos(5.2*t-2.51);
+    var g = .89-2.12*t+1.56*Math.cos(2.48*t-1.96);
+    var b = 1.18-.94*t+.2*Math.cos(8.03*t+2.87);
     return this.tocol(r, g, b);
   },
   LightTemperatureMap: function(t) {
-    var r = .385+.619*t+.238*Math.cos(4.903*t-2.61);
-    var g = -5.491+.959*t+6.089*Math.cos(.968*t-.329);
-    var b = 1.107-.734*t+.172*Math.cos(6.07*t-2.741);
+    var r = .38+.62*t+.24*Math.cos(4.9*t-2.61);
+    var g = -5.49+.96*t+6.09*Math.cos(.97*t-.33);
+    var b = 1.11-.73*t+.17*Math.cos(6.07*t-2.74);
     return this.tocol(r, g, b);
   },
 };
