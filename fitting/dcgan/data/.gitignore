@@ -1,0 +1,6 @@
+MNIST/*
+FFHQ/raw/*
+FFHQ/*/*.raw
+AnimeFace/images/*
+AnimeFace/*.zip
+AnimeFace/*.raw
