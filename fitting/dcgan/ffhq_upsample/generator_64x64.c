@@ -32,11 +32,11 @@ float* load_weights(const char* path) {
 int main() {
 
     // load weights
-    float* w01 = load_weights("raw-weights-64x64/w01_256_32.bin");
-    float* w02 = load_weights("raw-weights-64x64/w02_16_16_3_3.bin");
-    float* w03 = load_weights("raw-weights-64x64/w03_16_16_3_3.bin");
-    float* w04 = load_weights("raw-weights-64x64/w04_8_16_5_5.bin");
-    float* w05 = load_weights("raw-weights-64x64/w05_3_8_5_5.bin");
+    float* w01 = load_weights("raw-weights-ffhq-64x64/w01_256_32.bin");
+    float* w02 = load_weights("raw-weights-ffhq-64x64/w02_16_16_3_3.bin");
+    float* w03 = load_weights("raw-weights-ffhq-64x64/w03_16_16_3_3.bin");
+    float* w04 = load_weights("raw-weights-ffhq-64x64/w04_8_16_5_5.bin");
+    float* w05 = load_weights("raw-weights-ffhq-64x64/w05_3_8_5_5.bin");
     printf("All weights loaded.\n");
 
     // latent - N_IMAGES x 32
@@ -52,7 +52,7 @@ int main() {
     }
 
     // first layer - (32) => (256) => (16, 4, 4)
-    float *l01 = malloc(N_IMAGES * 256 * sizeof(float));
+    float* l01 = malloc(N_IMAGES * 256 * sizeof(float));
     for (int imgi = 0; imgi < N_IMAGES; imgi++) {
         float* imgsrc = &z[imgi * 32];
         float* imgres = &l01[imgi * 256];
@@ -66,7 +66,7 @@ int main() {
     }
 
     // second layer - (16, 4, 4) => (16, 8, 8), 3x3 filter
-    float *l02 = malloc(N_IMAGES * 1024 * sizeof(float));
+    float* l02 = malloc(N_IMAGES * 1024 * sizeof(float));
     for (int imgi = 0; imgi < N_IMAGES; imgi++) {
         float* imgsrc = &l01[imgi * 256];
         float* imgres = &l02[imgi * 1024];
@@ -91,7 +91,7 @@ int main() {
     }
 
     // third layer - (16, 8, 8) -> (16, 16, 16), 3x3 filter
-    float *l03 = malloc(N_IMAGES * 4096 * sizeof(float));
+    float* l03 = malloc(N_IMAGES * 4096 * sizeof(float));
     for (int imgi = 0; imgi < N_IMAGES; imgi++) {
         float* imgsrc = &l02[imgi * 1024];
         float* imgres = &l03[imgi * 4096];
@@ -116,7 +116,7 @@ int main() {
     }
 
     // fourth layer - (16, 16, 16) -> (8, 32, 32), 5x5 filter
-    float *l04 = malloc(N_IMAGES * 8192 * sizeof(float));
+    float* l04 = malloc(N_IMAGES * 8192 * sizeof(float));
     for (int imgi = 0; imgi < N_IMAGES; imgi++) {
         float* imgsrc = &l03[imgi * 4096];
         float* imgres = &l04[imgi * 8192];
@@ -141,7 +141,7 @@ int main() {
     }
 
     // fifth layer - (8, 32, 32) -> (3, 64, 64), 5x5 filter
-    float *l05 = malloc(N_IMAGES * 12288 * sizeof(float));
+    float* l05 = malloc(N_IMAGES * 12288 * sizeof(float));
     for (int imgi = 0; imgi < N_IMAGES; imgi++) {
         float* imgsrc = &l04[imgi * 8192];
         float* imgres = &l05[imgi * 12288];

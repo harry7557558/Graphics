@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<meta name="description" content="GAN test (64x64)." />
+
+	<title>GAN test (64x64)</title>
+	<style>
+		body {
+			margin: 10px;
+			background-color: gray;
+		}
+
+		#canvas {
+			touch-action: none;
+			image-rendering: pixelated;
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 340px;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="320"></canvas>
+	<p id="error-message"></p>
+
+	<p>My first GAN. Trained on <select id="model-select">
+			<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+			<option value="../raw-weights-anime-64x64">Anime</option>
+		</select> with PyTorch. Manually exported to WebGL 2.0.
+		<br />
+		I believe a GAN of this scale can do much better than this. The model may not be properly trained.
+	</p>
+	<pre>
+Latent - 32
+Dense layer - 256x32, LeakyReLU(0.1)
+Reshape to 16x4x4
+Upsample - 16x4x4 => 16x8x8
+Convolutional layer - 16x16x3x3, LeakyReLU(0.1)
+Upsample - 16x8x8 => 16x16x16
+Convolutional layer - 16x16x3x3, LeakyReLU(0.1)
+Upsample - 16x16x16 => 16x32x32
+Convolutional layer - 8x16x5x5, LeakyReLU(0.1)
+Upsample - 8x32x32 => 8x64x64
+Convolutional layer - 3x8x5x5, Sigmoid
+Output - 3x64x64
+</pre>
+
+</body>
+
+</html>
