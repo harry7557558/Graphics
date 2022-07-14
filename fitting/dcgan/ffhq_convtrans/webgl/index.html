@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<title>GAN test (64x64)</title>
+	<meta name="description" content="Traditional GAN at 64x64 with convolutional transpose layers and LeakyReLU activation." />
+
+	<style>
+		body {
+			margin: 10px;
+			background-color: gray;
+		}
+
+		#canvas {
+			touch-action: none;
+			/* image-rendering: pixelated; */
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 340px;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="320"></canvas>
+	<p id="error-message"></p>
+
+	<p>My second GAN after the <a href="../../ffhq_upsample/webgl/">previous one</a>.
+		Trained on <select id="model-select">
+			<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+			<option value="../raw-weights-anime-64x64">Anime</option>
+		</select> with PyTorch and manually exported to WebGL 2.0.
+		<br />
+		Surprisingly or not surprisingly,
+		this model runs only 1.5x as slow on my machine
+		despite having 5x number of parameters.
+		Visually, it produces less "duplicates".
+	</p>
+	<pre>
+Latent - 32
+Dense layer - 512x32
+ => 512, LeakyReLU(0.1)
+Reshape to 32x4x4
+ConvTranspose2d - 32x64x4x4
+ => 64x8x8, LeakyReLU(0.1)
+ConvTranspose2d - 64x32x4x4
+ => 32x16x16, LeakyReLU(0.1)
+ConvTranspose2d - 32x16x4x4
+ => 16x32x32, LeakyReLU(0.1)
+ConvTranspose2d - 16x3x4x4
+ => 3x64x64, Sigmoid
+Brightness/Gamma adjustment
+</pre>
+
+</body>
+
+</html>

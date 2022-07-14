@@ -1,0 +1,2 @@
+# skip directories with many small files to speed up site indexing
+*
