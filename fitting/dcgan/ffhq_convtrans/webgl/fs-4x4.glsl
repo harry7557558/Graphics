@@ -21,7 +21,10 @@ float randn(vec3 seed) {
     vec3 seed1 = seed + floor(t);
     vec3 seed2 = seed1 + 1.0;
     vec2 uv = mix(hash23(seed1), hash23(seed2), fract(t));
-    float a = sqrt(-2.*log(1.0-uv.x));
+    uv = 0.5 + 0.999999*(uv-0.5);  // prevent log 0
+    // https://www.desmos.com/calculator/sslqkllhdl by jvm#3121
+    uv = 0.5 - uv*uv*(log(uv)-0.5) + (uv-1.)*(uv-1.)*(log(1.-uv)-0.5);
+    float a = sqrt(-2.*log(uv.x));
     float b = 6.283185*uv.y;
     return a*sin(b);
 }

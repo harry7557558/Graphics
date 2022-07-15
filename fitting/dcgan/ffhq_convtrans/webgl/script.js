@@ -246,7 +246,7 @@ function loadModel() {
     if (/ffhq/.test(path))
         renderer.iBrightness = 1.05, renderer.iGamma = 1.0;
     if (/anime/.test(path))
-        renderer.iBrightness = 2.05, renderer.iGamma = 1.2;
+        renderer.iBrightness = 1.95, renderer.iGamma = 1.2;
 }
 
 // load renderer/interaction
