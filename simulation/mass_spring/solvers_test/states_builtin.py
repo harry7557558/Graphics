@@ -13,16 +13,17 @@ def ngrad(fun: Callable[[float], Vector2], p: Vector2) -> Vector2:
 
 def square_barred(has_ground: bool = False) -> State:
     """A square with a mass in the middle and cross springs, tied at one vertex"""
+    drag = 0.1
     masses = [
-        Mass(inv_m=0.0,  drag=0.1, x=Vector2(-0.5, 1.0)),   # bottom-left, static
-        Mass(inv_m=10.0, drag=0.1, x=Vector2(0.5, 1.0)),   # bottom-right, 100g
-        Mass(inv_m=10.0, drag=0.1, x=Vector2(0.5, 2.0)),   # top-right, 100g
-        Mass(inv_m=10.0, drag=0.1, x=Vector2(-0.5, 2.0)),  # top-left, 100g
-        Mass(inv_m=10.0, drag=0.1, x=Vector2(0.0, 1.5)),   # center, 100g
+        Mass(inv_m=0.0,  drag=drag, x=Vector2(-0.5, 1.0)),   # bottom-left, static
+        Mass(inv_m=10.0, drag=drag, x=Vector2(0.5, 1.0)),   # bottom-right, 100g
+        Mass(inv_m=10.0, drag=drag, x=Vector2(0.5, 2.0)),   # top-right, 100g
+        Mass(inv_m=10.0, drag=drag, x=Vector2(-0.5, 2.0)),  # top-left, 100g
+        Mass(inv_m=10.0, drag=drag, x=Vector2(0.0, 1.5)),   # center, 100g
     ]
 
     ks = 10.0  # spring constant in N/m for a 1m spring
-    kd = 1.0  # damping constant
+    kd = 5.0  # damping constant
     cl = masses[0].x.distance_to(masses[4].x)  # length of a cross spring
     springs = [
         # border springs

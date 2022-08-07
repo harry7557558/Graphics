@@ -9,6 +9,7 @@ from state import Mass, Spring, State
 import states_builtin
 
 import integrators
+import xpbd
 import colorsys
 
 
@@ -36,7 +37,13 @@ class Solver:
 
     def draw(self, surface, viewport, font, text_pos: tuple[int, int]) -> None:
         self.state.draw(surface, viewport, self.mass_color, self.spring_color)
-        self.state.draw_info(surface, font, text_pos, self.text_color)
+        name = self.integrator.__class__.__name__
+        is_upper = [ord('A') <= ord(c) <= ord('Z') for c in name]
+        if is_upper.count(True) == 2:
+            u1 = 1 + is_upper[1:].index(True)
+            name = name[:2] + name[u1:u1+2]
+        name = name[:4]
+        self.state.draw_info(surface, font, name, text_pos, self.text_color)
 
 
 RESOLUTION = (512, 512)
@@ -50,17 +57,20 @@ def main():
 
     font = pygame.font.SysFont('Consolas', 16)
 
-    #state = states_builtin.square_barred()
-    state = states_builtin.sheet_hang(1., 4.0, 0.7, 8, 4, 3, 1.5, False, False)
+    # state = states_builtin.square_barred()
+    state = states_builtin.sheet_hang(1., 4.0, 0.7, 8, 4, 3.0, 1.5, False, False)
+    # state = states_builtin.sheet_hang(1., 2.0, 0.1, 12, 6, 3.0, 1.5, True, False)
+    # state = states_builtin.sheet_hang(1., 1000.0, 20.0, 12, 3, 4.0, 1.0, False, False)
 
     viewport = Viewport(Vector2(RESOLUTION), 2.5, Vector2(0, 1))
 
     integrators_ = [
         integrators.Euler,
         integrators.EulerCromer,
-        integrators.Midpoint,
-        integrators.RungeKutta,
+        # integrators.Midpoint,
+        # integrators.RungeKutta,
         integrators.Verlet,
+        xpbd.XPBD
     ]
     solvers = []
     for i in range(len(integrators_)):

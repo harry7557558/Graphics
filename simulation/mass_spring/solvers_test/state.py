@@ -39,10 +39,46 @@ class State:
         else:
             self.acc_field = acc_field
 
-    def calc_acceleration(self) -> None:
+    def get_spring_force(self, spring: Spring):
+        """Returns a tuple of two vectors,
+            the spring force for each mass."""
+        m1 = self.masses[spring.masses[0]]
+        m2 = self.masses[spring.masses[1]]
+        dx = m2.x - m1.x
+        dv = m2.v - m1.v
+        l = dx.length()
+        dx_n = dx / l if l != 0.0 else dx
+        fs = spring.ks * (l-spring.l0)  # spring
+        fd = spring.kd * dx_n.dot(dv)  # damping
+        f = (fs + fd) * dx_n
+        return (f, -f)
+
+    def get_spring_constraint(self, spring: Spring):
+        """For XPBD. Returns a tuple of:
+            - stiffness constant ks (α^-1)
+            - damping constant kd (β)
+            - value of the constraint C(x1, x2)
+            - ∇C(x1)
+            - ∇C(x2)
+        """
+        m1 = self.masses[spring.masses[0]]
+        m2 = self.masses[spring.masses[1]]
+        dx = m2.x - m1.x
+        l = dx.length()
+        dl = l - spring.l0
+        dx_n = dx / l if l != 0.0 else dx
+        return (spring.ks, spring.kd, dl, -dx_n, dx_n)
+
+    def calc_acceleration(self, ext_only=False) -> None:
         # clear accelerations
         for mass in self.masses:
             mass.a = Vector2(0.0) if mass.inv_m == 0.0 else Vector2(self.g)
+        # force field
+        for mass in self.masses:
+            if mass.inv_m != 0.0:
+                mass.a += self.acc_field(mass.x, self.time)
+        if ext_only:
+            return
         # viscous drag
         for mass in self.masses:
             mass.a -= mass.drag * mass.v
@@ -50,17 +86,9 @@ class State:
         for spring in self.springs:
             m1 = self.masses[spring.masses[0]]
             m2 = self.masses[spring.masses[1]]
-            dx = m2.x - m1.x
-            dv = m2.v - m1.v
-            l = dx.length()
-            dx_n = dx / l if l != 0.0 else dx
-            f = spring.ks*(l-spring.l0) + spring.kd*dx_n.dot(dv)
-            m1.a += m1.inv_m * f * dx_n
-            m2.a -= m2.inv_m * f * dx_n
-        # force field
-        for mass in self.masses:
-            if mass.inv_m != 0.0:
-                mass.a += self.acc_field(mass.x, self.time)
+            f1, f2 = self.get_spring_force(spring)
+            m1.a += m1.inv_m * f1
+            m2.a += m2.inv_m * f2
 
     def draw(self, surface: pygame.Surface, viewport: Viewport,
              mass_color=(192, 192, 192), spring_color=(128, 128, 128)):
@@ -109,13 +137,13 @@ class State:
         return kinetic + gravitational + elastic
 
     def draw_info(self, surface: pygame.Surface, font: pygame.font.Font,
-                  topleft: tuple[int, int], color=(255, 255, 255)) -> None:
+                  name: str, topleft: tuple[int, int], color=(255, 255, 255)) -> None:
         time = self.time
         velocity = self.calc_system_momentum() / self.calc_system_mass()
         energy = self.calc_system_energy()
         text = font.render(
-            "{:.2f}s, ({:.2f},{:.2f})m/s, {:.2f}J".format(
-                time, *velocity, energy),
+            "{} {:.2f}s ({:.2f},{:.2f})m/s {:.2f}J".format(
+                name, time, *velocity, energy),
             True, color)
         text_rect = text.get_rect()
         text_rect.topleft = topleft
