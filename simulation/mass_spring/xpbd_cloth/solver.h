@@ -60,6 +60,21 @@ void XPBDNonIterative::update(float dt) {
 		v->x += (v->v + v->a * dt) * dt;
 	}
 
+	// XPBD solver
+	int *mi; Vertex* masses[3];
+	float ks, kd, c; vec3 dcdx[3];
+	auto xpbdStep = [&](int num_masses) {
+		float kt = kd / dt + ks;
+		float mc2 = 0.0f;
+		for (int k = 0; k < num_masses; k++)
+			mc2 += masses[k]->inv_m * dot(dcdx[k], dcdx[k]);
+		for (int k = 0; k < num_masses; k++) {
+			vec3 v = (masses[k]->x - x0[mi[k]]) / dt;
+			float dl = -(ks * c + kd * dot(dcdx[k], v)) / (kt * mc2 + 1.0f / (dt*dt));
+			masses[k]->x += masses[k]->inv_m * dcdx[k] * dl;
+		}
+	};
+
 	// implicitly solve for constraints
 	// Jacobi-like step is unstable. Shuffled Gauss-Seidel increases energy slightly.
 	int *iter_order = new int[triangles->size()];
@@ -69,26 +84,8 @@ void XPBDNonIterative::update(float dt) {
 	for (int ji = 0; ji < (int)triangles->size(); ji++) {
 		int j = iter_order[ji];
 		TriangleConstraint *trig = &(*triangles)[j];
-		int *mi = trig->vi;
-		Vertex* masses[3] = {
-			&(*vertices)[mi[0]], &(*vertices)[mi[1]],
-			&(*vertices)[mi[2]] };
-
-		// XPBD solver
-		float ks, kd, c; vec3 dcdx[3];
-		auto xpbdStep = [&](int num_masses) {
-			float kt = kd / dt + ks;
-			float mc2 = 0.0f;
-			for (int k = 0; k < num_masses; k++)
-				mc2 += masses[k]->inv_m * dot(dcdx[k], dcdx[k]);
-			for (int k = 0; k < num_masses; k++) {
-				vec3 v = (masses[k]->x - x0[mi[k]]) / dt;
-				float dl = -(ks * c + kd * dot(dcdx[k], v)) / (kt * mc2 + 1.0f / (dt*dt));
-				masses[k]->x += masses[k]->inv_m * dcdx[k] * dl;
-			}
-		};
-
-		// for each constraint
+		mi = trig->vi;
+		for (int _ = 0; _ < 3; _++) masses[_] = &(*vertices)[mi[_]];
 		state.getStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
 		xpbdStep(3);
 		state.getShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
@@ -102,8 +99,6 @@ void XPBDNonIterative::update(float dt) {
 		v->v = (v->x - x0[i]) / dt;
 	}
 	state.t += dt;
-
-	// clean-up
 	delete x0;
 }
 
@@ -147,41 +142,90 @@ void XPBDSolver::update(float dt) {
 		v->x += (v->v + v->a * dt) * dt;
 	}
 
+	// XPBD solver
+	int *mi; Vertex* masses[3];
+	float ks, kd, c; vec3 dcdx[3];
+#if 1
+	// assume ∇Cᵀλ = 0
+	auto xpbdStep = [&](int num_masses, float &l) {
+		float alpha = 1.0f / (dt * dt);
+		float kt = ks + kd / dt;
+		float mc2 = 0.0f, dcv = 0.0f;
+		for (int k = 0; k < num_masses; k++) {
+			mc2 += masses[k]->inv_m * dot(dcdx[k], dcdx[k]);
+			masses[k]->v = (masses[k]->x - x0[mi[k]]) / dt;
+			dcv += dot(dcdx[k], masses[k]->v);
+		}
+		float dl = -(ks * c + kd * dcv + alpha * l) / (kt * mc2 + alpha);
+		l += dl;
+		for (int k = 0; k < num_masses; k++) {
+			masses[k]->x += masses[k]->inv_m * dcdx[k] * dl;
+			//masses[k]->x += masses[k]->inv_m * dcdx[k] * l;
+		}
+	};
+#else
+	// ∇Cᵀλ ≠ 0
+	auto xpbdStep = [&](int num_masses, float &l) {
+		float alpha = 1.0f / (dt * dt);
+		float kt = ks + kd / dt;
+		// calculate C_t
+		float dcv = 0.0f;
+		for (int k = 0; k < num_masses; k++) {
+			masses[k]->v = (masses[k]->x - x0[mi[k]]) / dt;
+			dcv += dot(dcdx[k], masses[k]->v);
+		}
+		float ct = -(ks * c + kd * dcv + alpha * l);
+		// calculate Δλ (Cramer's rule)
+		float m[9], kc[9], cn[9], cl[9];
+		for (int k = 0; k < num_masses; k++) {
+			((vec3*)m)[k] = vec3(1.0f / max(masses[k]->inv_m, 1e-4f));
+			((vec3*)kc)[k] = kt * dcdx[k];
+			((vec3*)cn)[k] = -dcdx[k];
+			((vec3*)cl)[k] = dcdx[k] * l;
+		}
+		float det1 = alpha, det2 = ct;
+		for (int i = 0; i < 3 * num_masses; i++) {
+			//if (m[i] >= 1.0f / 1.01e-4f) continue;
+			float k = -kc[i] / m[i];
+			kc[i] += k * m[i];
+			det1 += cn[i] * m[i];
+			det2 += cl[i] * m[i];
+		}
+		float dl = det2 / det1;
+		l += dl;
+		// update positions
+		for (int k = 0; k < num_masses; k++) {
+			masses[k]->x += masses[k]->inv_m * dcdx[k] * l;
+		}
+	};
+#endif
+
 	// initialize Lagrange multipliers
 	float *l_trig = new float[triangles->size()];
 	for (int i = 0; i < (int)triangles->size(); i++)
 		l_trig[i] = 0.0f;
 
-	// iteratively solve for triangle constraints
+	// iteratively solve for constraints
+	int *iter_order = new int[triangles->size()];
+	for (int i = 0; i < (int)triangles->size(); i++)
+		iter_order[i] = i;
 	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < (int)triangles->size(); j++) {
+		// triangles
+		std::random_shuffle(iter_order, iter_order+(int)triangles->size());
+		for (int ji = 0; ji < (int)triangles->size(); ji++) {
+			int j = iter_order[ji];
 			TriangleConstraint *trig = &(*triangles)[j];
-			//int *mi = trig->vi;
-
-			// calculate constraints
-			float ks, kd, c; vec3 dcdx[3];
-			int mi[3];
+			mi = trig->vi;
+			for (int _ = 0; _ < 3; _++) masses[_] = &(*vertices)[mi[_]];
 			state.getStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
-			Vertex* masses[3] = {
-				&(*vertices)[mi[0]], &(*vertices)[mi[1]],
-				&(*vertices)[mi[2]] };
-			//if (j == 5) printf("%f%c", c, i==7 ? '\n' : ' ');
-
-			// XPBD
-			float alpha = 1.0f / (dt * dt);
-			float kt = kd / dt + ks;
-			float mc2 = 0.0f, dcv = 0.0f;
-			for (int k = 0; k < 3; k++) {
-				mc2 += masses[k]->inv_m * dot(dcdx[k], dcdx[k]);
-				masses[k]->v = (masses[k]->x - x0[mi[k]]) / dt;
-				dcv += dot(dcdx[k], masses[k]->v);
-			}
-			float dl = -(ks * c + kd * dcv + alpha * l_trig[j]) / (kt * mc2 + alpha);
-			l_trig[j] += dl;
-			for (int k = 0; k < 3; k++)
-				masses[k]->x += masses[k]->inv_m * dcdx[k] * dl;
+			xpbdStep(3, l_trig[j]);
+			state.getShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
+			xpbdStep(3, l_trig[j]);
 		}
 	}
+	delete iter_order;
+
+	delete l_trig;
 
 	// update velocity and time
 	for (int i = 0; i < vertices->size(); i++) {
@@ -189,10 +233,7 @@ void XPBDSolver::update(float dt) {
 		v->v = (v->x - x0[i]) / dt;
 	}
 	state.t += dt;
-
-	// clean-up
 	delete x0;
-	delete l_trig;
 }
 
 #endif

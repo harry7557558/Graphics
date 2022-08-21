@@ -83,7 +83,7 @@ State::State(
 State::State(
 	std::vector<vec3> vertices, std::vector<ivec3> triangles,
 	float tot_m, float k_drag = 0.1f,
-	float k_stretch = 1e6f, float k_shear = 1e4f, float damp = 0.2f
+	float k_stretch = 1e3f, float k_shear = 1e3f, float damp = 0.2f
 ) {
 	this->t = 0.0f;
 	this->vertices.resize(vertices.size());

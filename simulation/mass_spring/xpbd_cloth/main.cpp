@@ -17,7 +17,7 @@ using namespace glm;
 
 #define PI 3.1415927f
 #define iResolution ivec2(600, 600)
-#define FPS 60.0
+#define FPS 40.0
 
 #include "viewport.h"
 #include "state.h"
