@@ -108,10 +108,12 @@ void State::normalizeTriangles() {
 		TriangleConstraint *t = &triangles[i];
 		vec3 v[3];
 		for (int j = 0; j < 3; j++) v[j] = vertices[t->vi[j]].x;
-		vec3 du = v[1] - v[0], dv = v[2] - v[0];
-		float a = acos(dot(du, dv) / (length(du)*length(dv)));
-		t->duv1 = length(du) * vec2(1, 0);
-		t->duv2 = length(dv) * vec2(cos(a), sin(a));
+		vec3 dx1 = v[1] - v[0], dx2 = v[2] - v[0];
+		vec3 e1 = normalize(dx1);
+		vec3 e2 = normalize(dx2 - dot(dx2, e1) * e1);
+		mat2x3 r = mat2x3(e1, e2);
+		t->duv1 = dx1 * r;
+		t->duv2 = dx2 * r;
 		t->inv_dudv = inverse(mat2(t->duv1, t->duv2));
 		t->rest_area = 0.5f / abs(determinant(t->inv_dudv));
 	}
@@ -184,20 +186,55 @@ void State::getStretchConstraint(
 	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
 ) {
 	*ks = pc->k_stretch, *kd = pc->d_stretch;
+	float a = pow(pc->rest_area, 0.0f);
 	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
 	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
 	vec3 dx2 = vertices[xi[2]].x - vertices[xi[0]].x;
+#if 0
 	mat2x3 w = mat2x3(dx1, dx2) * pc->inv_dudv;
 	vec3 wu = w[0], wv = w[1];
 	float lwu = length(wu), lwv = length(wv);
 	vec3 nwu = lwu==0. ? wu : wu / lwu;
 	vec3 nwv = lwv==0. ? wv : wv / lwv;
 	// constraint
-	float a = pow(pc->rest_area, 0.0f);
 	*c = a * (lwu - pc->bu + lwv - pc->bv);
 	// dc/dx = dc/d|w| * d|w|/d[Δx] * d[Δx]/dx
 	vec3 dcdx1 = nwu * pc->inv_dudv[0][0] + nwv * pc->inv_dudv[1][0];
 	vec3 dcdx2 = nwu * pc->inv_dudv[0][1] + nwv * pc->inv_dudv[1][1];
+#else
+	// 3D to 2D
+	vec3 e1 = normalize(dx1);
+	vec3 e2d = dx2 - dot(dx2, e1) * e1;
+	vec3 e2 = normalize(e2d);
+	mat3x2 r = transpose(mat2x3(e1, e2));
+	vec2 duv1 = r * dx1, duv2 = r * dx2;
+	// gradient of basis vectors
+	auto d_normalize_x_dx = [](vec3 x) -> mat3 {
+		return (mat3(dot(x, x)) - outerProduct(x, x)) / pow(dot(x, x), 1.5f);
+	};
+	mat3 de2ddx = d_normalize_x_dx(e2d);
+	mat3 de1dx1 = d_normalize_x_dx(dx1);
+	mat3 de1dx2 = mat3(0);
+	mat3 de2dx1 = -de1dx1 * (outerProduct(dx2, e1) + mat3(dot(e1, dx2))) * de2ddx;
+	mat3 de2dx2 = (mat3(1) - outerProduct(e1, e1)) * de2ddx;
+	// strain and gradient
+	// strain[0][0] = invDudv[0][0] e1 dx1 + invDudv[0][1] e1 dx2
+	// strain[1][1] = invDudv[1][0] e2 dx1 + invDudv[1][1] e2 dx2
+	mat2 strain = mat2(duv1, duv2) * pc->inv_dudv;
+	*c = a * (strain[0][0] + strain[1][1]);
+	vec3 dcdx1 =
+		pc->inv_dudv[0][0] * (de1dx1 * dx1 + e1) +
+		pc->inv_dudv[0][1] * (de1dx1 * dx2) +
+		pc->inv_dudv[1][0] * (de2dx1 * dx1 + e2) +
+		pc->inv_dudv[1][1] * (de2dx1 * dx2);
+	vec3 dcdx2 =
+		pc->inv_dudv[0][0] * (de2dx2 * dx2) +
+		pc->inv_dudv[0][1] * (de1dx2 * dx2 + e1) +
+		pc->inv_dudv[1][0] * (de2dx2 * dx1) +
+		pc->inv_dudv[1][1] * (de2dx2 * dx2 + e2);
+	//*c = e2.y, dcdx1 = de2dx1[1], dcdx2 = de2dx2[1];
+	//*c = dot(dx1, e2), dcdx1 = de2dx1 * dx1 + e2, dcdx2 = vec3(0);
+#endif
 	dcdx[0] = -a * (dcdx1 + dcdx2);
 	dcdx[1] = a * dcdx1;
 	dcdx[2] = a * dcdx2;
@@ -208,15 +245,15 @@ void State::getShearConstraint(
 	const TriangleConstraint *pc,
 	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
 ) {
+	*ks = *kd = 0.0f; return;
 	*ks = pc->k_stretch, *kd = pc->d_stretch;
-	//*ks = *kd = 0.0f;
 	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
 	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
 	vec3 dx2 = vertices[xi[2]].x - vertices[xi[0]].x;
 	mat2x3 w = mat2x3(dx1, dx2) * pc->inv_dudv;
 	vec3 wu = w[0], wv = w[1];
 	// constraint
-	float a = pow(pc->rest_area, 0.0f);
+	float a = pow(pc->rest_area, 1.0f);
 	*c = a * dot(wu, wv);
 	// dc/dx = dc/dw * dw/d[Δx] * d[Δx]/dx
 	vec3 dcdx1 = wv * pc->inv_dudv[0][0] + wu * pc->inv_dudv[1][0];

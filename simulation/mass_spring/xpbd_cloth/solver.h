@@ -201,9 +201,10 @@ void XPBDSolver::update(float dt) {
 #endif
 
 	// initialize Lagrange multipliers
-	float *l_trig = new float[triangles->size()];
+	float *l_trig_b = new float[triangles->size()]; // bulk
+	float *l_trig_s = new float[triangles->size()]; // shear
 	for (int i = 0; i < (int)triangles->size(); i++)
-		l_trig[i] = 0.0f;
+		l_trig_b[i] = l_trig_s[i] = 0.0f;
 
 	// iteratively solve for constraints
 	int *iter_order = new int[triangles->size()];
@@ -218,14 +219,14 @@ void XPBDSolver::update(float dt) {
 			mi = trig->vi;
 			for (int _ = 0; _ < 3; _++) masses[_] = &(*vertices)[mi[_]];
 			state.getStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
-			xpbdStep(3, l_trig[j]);
+			xpbdStep(3, l_trig_b[j]);
 			state.getShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
-			xpbdStep(3, l_trig[j]);
+			xpbdStep(3, l_trig_s[j]);
 		}
 	}
 	delete iter_order;
 
-	delete l_trig;
+	delete l_trig_b; delete l_trig_s;
 
 	// update velocity and time
 	for (int i = 0; i < vertices->size(); i++) {
