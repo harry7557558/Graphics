@@ -134,10 +134,10 @@ namespace BuiltInStates {
 
 	State states[] = {
 		plane(vec2(1.5f, 1.0f), 15, 10),
-		plane(vec2(2.0f, 2.0f), 3, 3),
+		//plane(vec2(2.0f, 2.0f), 3, 3),
 		//plane(vec2(2.0f, 2.0f), 4, 4),
-		//plane(vec2(2.0f, 2.0f), 8, 8),
-		//plane(vec2(2.0f, 2.0f), 16, 16),
+		plane(vec2(2.0f, 2.0f), 8, 8),
+		plane(vec2(2.0f, 2.0f), 16, 16),
 	};
 
 }

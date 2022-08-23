@@ -90,7 +90,7 @@ State::State(
 	for (int i = 0; i < (int)vertices.size(); i++) {
 		Vertex *v = &this->vertices[i];
 		v->x = vertices[i];
-		v->inv_m = tot_m / (float)vertices.size();
+		v->inv_m = 1.0f / (tot_m / (float)vertices.size());
 		v->k_drag = k_drag;
 	}
 	this->triangles.resize(triangles.size());
@@ -180,35 +180,16 @@ void State::calcConstraintAcceleration() {
 	}
 }
 
-// evaluate a stretch constraint
-void State::getStretchConstraint(
-	const TriangleConstraint *pc,
-	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
+// Calculate the strain of a deformed triangle and its gradient
+void calcStrain(mat2 inv_dudv, vec3 dx1, vec3 dx2, mat2 &strain,
+	vec3 &de00dx1, vec3 &de00dx2, vec3 &de11dx1, vec3 &de11dx2, vec3 &de01dx1, vec3 &de01dx2
 ) {
-	*ks = pc->k_stretch, *kd = pc->d_stretch;
-	float a = pow(pc->rest_area, 0.0f);
-	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
-	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
-	vec3 dx2 = vertices[xi[2]].x - vertices[xi[0]].x;
-#if 0
-	mat2x3 w = mat2x3(dx1, dx2) * pc->inv_dudv;
-	vec3 wu = w[0], wv = w[1];
-	float lwu = length(wu), lwv = length(wv);
-	vec3 nwu = lwu==0. ? wu : wu / lwu;
-	vec3 nwv = lwv==0. ? wv : wv / lwv;
-	// constraint
-	*c = a * (lwu - pc->bu + lwv - pc->bv);
-	// dc/dx = dc/d|w| * d|w|/d[Δx] * d[Δx]/dx
-	vec3 dcdx1 = nwu * pc->inv_dudv[0][0] + nwv * pc->inv_dudv[1][0];
-	vec3 dcdx2 = nwu * pc->inv_dudv[0][1] + nwv * pc->inv_dudv[1][1];
-#else
 	// 3D to 2D
 	vec3 e1 = normalize(dx1);
 	vec3 e2d = dx2 - dot(dx2, e1) * e1;
 	vec3 e2 = normalize(e2d);
 	mat3x2 r = transpose(mat2x3(e1, e2));
 	vec2 duv1 = r * dx1, duv2 = r * dx2;
-	// gradient of basis vectors
 	auto d_normalize_x_dx = [](vec3 x) -> mat3 {
 		return (mat3(dot(x, x)) - outerProduct(x, x)) / pow(dot(x, x), 1.5f);
 	};
@@ -217,27 +198,77 @@ void State::getStretchConstraint(
 	mat3 de1dx2 = mat3(0);
 	mat3 de2dx1 = -de1dx1 * (outerProduct(dx2, e1) + mat3(dot(e1, dx2))) * de2ddx;
 	mat3 de2dx2 = (mat3(1) - outerProduct(e1, e1)) * de2ddx;
-	// strain and gradient
-	// strain[0][0] = invDudv[0][0] e1 dx1 + invDudv[0][1] e1 dx2
-	// strain[1][1] = invDudv[1][0] e2 dx1 + invDudv[1][1] e2 dx2
-	mat2 strain = mat2(duv1, duv2) * pc->inv_dudv;
-	*c = a * (strain[0][0] + strain[1][1]);
-	vec3 dcdx1 =
-		pc->inv_dudv[0][0] * (de1dx1 * dx1 + e1) +
-		pc->inv_dudv[0][1] * (de1dx1 * dx2) +
-		pc->inv_dudv[1][0] * (de2dx1 * dx1 + e2) +
-		pc->inv_dudv[1][1] * (de2dx1 * dx2);
-	vec3 dcdx2 =
-		pc->inv_dudv[0][0] * (de2dx2 * dx2) +
-		pc->inv_dudv[0][1] * (de1dx2 * dx2 + e1) +
-		pc->inv_dudv[1][0] * (de2dx2 * dx1) +
-		pc->inv_dudv[1][1] * (de2dx2 * dx2 + e2);
-	//*c = e2.y, dcdx1 = de2dx1[1], dcdx2 = de2dx2[1];
-	//*c = dot(dx1, e2), dcdx1 = de2dx1 * dx1 + e2, dcdx2 = vec3(0);
+	// deformation gradient
+	// dudx[0][0] = invDudv[0][0] e1 dx1 + invDudv[0][1] e1 dx2 - 1
+	// dudx[1][0] = invDudv[1][0] e1 dx1 + invDudv[1][1] e1 dx2
+	// dudx[0][1] = invDudv[0][0] e2 dx1 + invDudv[0][1] e2 dx2
+	// dudx[1][1] = invDudv[1][0] e2 dx1 + invDudv[1][1] e2 dx2 - 1
+	mat2 dudx = mat2(duv1, duv2) * inv_dudv - mat2(1);
+	mat2x3 ddudxi0dx1 = mat2x3(de1dx1 * dx1 + e1, de1dx1 * dx2);  // e1 dx1, e1 dx2
+	mat2x3 ddudxi1dx1 = mat2x3(de2dx1 * dx1 + e2, de2dx1 * dx2);  // e2 dx1, e2 dx2
+	vec3 ddudxdx1[2][2] = {
+		{ ddudxi0dx1 * inv_dudv[0], ddudxi1dx1 * inv_dudv[0] },
+		{ ddudxi0dx1 * inv_dudv[1], ddudxi1dx1 * inv_dudv[1] }
+	};
+	mat2x3 ddudxi0dx2 = mat2x3(de1dx2 * dx1, de1dx2 * dx2 + e1);  // e1 dx1, e1 dx2
+	mat2x3 ddudxi1dx2 = mat2x3(de2dx2 * dx1, de2dx2 * dx2 + e2);  // e2 dx1, e2 dx2
+	vec3 ddudxdx2[2][2] = {
+		{ ddudxi0dx2 * inv_dudv[0], ddudxi1dx2 * inv_dudv[0] },
+		{ ddudxi0dx2 * inv_dudv[1], ddudxi1dx2 * inv_dudv[1] }
+	};
+	// strain tensor (symmetric)
+	// 2 strain[0][0] = 2 dudx[0][0] + dudx[0][0]² + dudx[0][1]²
+	// 2 strain[1][1] = 2 dudx[1][1] + dudx[1][0]² + dudx[1][1]²
+	// 2 strain[0][1] = dudx[0][1] + dudx[1][0] + dudx[0][0] dudx[1][0] + dudx[0][1] dudx[1][1]
+	strain = 0.5f * (transpose(dudx) + dudx + transpose(dudx) * dudx);
+	de00dx1 = ddudxdx1[0][0] + dudx[0][0] * ddudxdx1[0][0] + dudx[0][1] * ddudxdx1[0][1];
+	de00dx2 = ddudxdx2[0][0] + dudx[0][0] * ddudxdx2[0][0] + dudx[0][1] * ddudxdx2[0][1];
+	de11dx1 = ddudxdx1[1][1] + dudx[1][1] * ddudxdx1[1][1] + dudx[1][0] * ddudxdx1[1][0];
+	de11dx2 = ddudxdx2[1][1] + dudx[1][1] * ddudxdx2[1][1] + dudx[1][0] * ddudxdx2[1][0];
+	de01dx1 = 0.5f * (ddudxdx1[0][1] + ddudxdx1[1][0] +
+		(ddudxdx1[0][0] * dudx[1][0] + ddudxdx1[1][0] * dudx[0][0]) +
+		(ddudxdx1[1][1] * dudx[0][1] + ddudxdx1[0][1] * dudx[1][1]));
+	de01dx2 = 0.5f * (ddudxdx2[0][1] + ddudxdx2[1][0] +
+		(ddudxdx2[0][0] * dudx[1][0] + ddudxdx2[1][0] * dudx[0][0]) +
+		(ddudxdx2[1][1] * dudx[0][1] + ddudxdx2[0][1] * dudx[1][1]));
+}
+
+// evaluate a stretch constraint
+void State::getStretchConstraint(
+	const TriangleConstraint *pc,
+	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
+) {
+	*ks = pc->k_stretch - (2.f/3.f)*pc->k_shear;
+	*kd = pc->d_stretch - (2.f/3.f)*pc->d_shear;
+	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
+	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
+	vec3 dx2 = vertices[xi[2]].x - vertices[xi[0]].x;
+#if 0
+	// Baraff cloth simulation paper, bad
+	mat2x3 w = mat2x3(dx1, dx2) * pc->inv_dudv;
+	vec3 wu = w[0], wv = w[1];
+	float lwu = length(wu), lwv = length(wv);
+	vec3 nwu = lwu==0. ? wu : wu / lwu;
+	vec3 nwv = lwv==0. ? wv : wv / lwv;
+	*c = lwu - pc->bu + lwv - pc->bv;
+	// dc/dx = dc/d|w| * d|w|/d[Δx] * d[Δx]/dx
+	vec3 dcdx1 = nwu * pc->inv_dudv[0][0] + nwv * pc->inv_dudv[1][0];
+	vec3 dcdx2 = nwu * pc->inv_dudv[0][1] + nwv * pc->inv_dudv[1][1];
+#else
+	// continuum formulation, slow
+	mat2 strain;
+	vec3 de00dx1, de00dx2, de11dx1, de11dx2, de01dx1, de01dx2;
+	calcStrain(pc->inv_dudv, dx1, dx2, strain,
+		de00dx1, de00dx2, de11dx1, de11dx2, de01dx1, de01dx2);
+	*c = strain[0][0] + strain[1][1];
+	vec3 dcdx1 = de00dx1 + de11dx1;
+	vec3 dcdx2 = de00dx2 + de11dx2;
 #endif
-	dcdx[0] = -a * (dcdx1 + dcdx2);
-	dcdx[1] = a * dcdx1;
-	dcdx[2] = a * dcdx2;
+	dcdx[0] = -(dcdx1 + dcdx2);
+	dcdx[1] = dcdx1;
+	dcdx[2] = dcdx2;
+	float a = pow(pc->rest_area, 1.0f);
+	*ks *= a, *kd *= a;
 }
 
 // evaluate a shear constraint
@@ -245,31 +276,55 @@ void State::getShearConstraint(
 	const TriangleConstraint *pc,
 	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
 ) {
-	*ks = *kd = 0.0f; return;
-	*ks = pc->k_stretch, *kd = pc->d_stretch;
+	*ks = pc->k_shear, *kd = pc->d_shear;
 	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
 	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
 	vec3 dx2 = vertices[xi[2]].x - vertices[xi[0]].x;
+#if 0
+	// Baraff cloth simulation paper, bad
 	mat2x3 w = mat2x3(dx1, dx2) * pc->inv_dudv;
 	vec3 wu = w[0], wv = w[1];
-	// constraint
-	float a = pow(pc->rest_area, 1.0f);
-	*c = a * dot(wu, wv);
+	*c = dot(wu, wv);
 	// dc/dx = dc/dw * dw/d[Δx] * d[Δx]/dx
 	vec3 dcdx1 = wv * pc->inv_dudv[0][0] + wu * pc->inv_dudv[1][0];
 	vec3 dcdx2 = wv * pc->inv_dudv[0][1] + wu * pc->inv_dudv[1][1];
-	dcdx[0] = -a * (dcdx1 + dcdx2);
-	dcdx[1] = a * dcdx1;
-	dcdx[2] = a * dcdx2;
+#else
+	// continuum formulation, slow
+	mat2 strain;
+	vec3 de00dx1, de00dx2, de11dx1, de11dx2, de01dx1, de01dx2;
+	calcStrain(pc->inv_dudv, dx1, dx2, strain,
+		de00dx1, de00dx2, de11dx1, de11dx2, de01dx1, de01dx2);
+	float eu =  // raw energy term
+		2.0f * strain[0][0] * strain[0][0] +
+		2.0f * strain[1][1] * strain[1][1] +
+		4.0f * strain[0][1] * strain[1][0];  // or ϵ[0][1]²
+	*c = sqrt(max(eu, 1e-12f));
+	vec3 dcdx1 = (
+		2.0f * strain[0][0] * de00dx1 +
+		2.0f * strain[1][1] * de11dx1 +
+		4.0f * strain[0][1] * de01dx1
+		) / (*c);
+	vec3 dcdx2 = (
+		2.0f * strain[0][0] * de00dx2 +
+		2.0f * strain[1][1] * de11dx2 +
+		4.0f * strain[0][1] * de01dx2
+		) / (*c);
+#endif
+	dcdx[0] = -(dcdx1 + dcdx2);
+	dcdx[1] = dcdx1;
+	dcdx[2] = dcdx2;
+	float a = pow(pc->rest_area, 1.0f);
+	*ks *= a, *kd *= a;
 }
 
 // get energy
 float State::getEnergy() {
 	// gravitational potential energy and kinetic energy
-	float eg = 0.0f, ek = 0.0f;
+	float eg = 0.0f, ek = 0.0f, totm = 0.0f;
 	for (int i = 0; i < (int)vertices.size(); i++) {
 		Vertex* v = &vertices[i];
 		if (v->inv_m != 0.0f) {
+			totm += 1.0f / v->inv_m;
 			eg += -dot(this->g, v->x) / v->inv_m;
 			ek += 0.5f / v->inv_m * dot(v->v, v->v);
 		}
@@ -282,7 +337,6 @@ float State::getEnergy() {
 		this->getStretchConstraint(&triangles[j], &ks, &kd, &c, xi, dcdx);
 		ec += 0.5f * ks * c * c;
 	}
-	ec = 0.0f;
 	//printf("%f %f %f\n", eg, ek, ec);
 	return eg + ek + ec;
 }

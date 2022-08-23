@@ -17,7 +17,7 @@ using namespace glm;
 
 #define PI 3.1415927f
 #define iResolution ivec2(600, 600)
-#define FPS 400.0
+#define FPS 40.0
 
 #include "viewport.h"
 #include "state.h"
@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
 		float dt = 1.0f / float(FPS);
 		for (int i = 0; i < (int)solvers.size(); i++)
 			solvers[i]->update(dt);
-		checkGrad(&State::getStretchConstraint, solvers[1]->state,
+		checkGrad(&State::getShearConstraint, solvers[1]->state,
 			&solvers[1]->state.triangles[rand() % solvers[1]->state.triangles.size()],
 			0.001f);
 		printf("E = ");
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
 			float e = solvers[i]->state.getEnergy();
 			printf("%f%s", e, i + 1 == solvers.size() ? "\n" : ", ");
 		}
-		//exit(0);
+		//if (solvers[0]->state.t>0.2f) exit(0);
 
 		// pause
 		std::this_thread::sleep_for(std::chrono::milliseconds(int(1000.0f*dt)));
