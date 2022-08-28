@@ -19,7 +19,33 @@ struct EulerCromer : BaseSolver {
 };
 void EulerCromer::update(float dt) {
 	state.calcExternalAcceleration(true);
-	state.calcConstraintAcceleration();
+
+	// constraint accelerations
+	float ks, kd, c; int mi[3]; vec3 dcdx[3];
+	auto updateConstraint = [&](int num_masses) {
+		for (int k = 0; k < num_masses; k++) {
+			Vertex *v = &state.vertices[mi[k]];
+			vec3 fs = -ks * c * dcdx[k];
+			vec3 fd = -kd * dot(dcdx[k], v->v) * dcdx[k];
+			v->a += v->inv_m * (fs + fd);
+		}
+	};
+
+	// triangle constraints
+	for (int j = 0; j < (int)state.triangles.size(); j++) {
+		state.getTriangleStretchConstraint(&state.triangles[j], &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) updateConstraint(3);
+		state.getTriangleShearConstraint(&state.triangles[j], &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) updateConstraint(3);
+	}
+
+	// edge constraints
+	for (int j = 0; j < (int)state.edges.size(); j++) {
+		state.getSpringConstraint(&state.edges[j], &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) updateConstraint(2);
+	}
+
+	// update
 	for (int i = 0; i < (int)state.vertices.size(); i++) {
 		Vertex *v = &state.vertices[i];
 		v->v += v->a * dt;
@@ -31,6 +57,7 @@ void EulerCromer::update(float dt) {
 
 // Implicit non-iterative solver. Found this working.
 // Might not be accurate for highly nonlinear constraints.
+// Matches the reference solution on startup but not on equilibrium.
 struct XPBDNonIterative : BaseSolver {
 	XPBDNonIterative(const State &state) : BaseSolver(state) {}
 	void update(float dt);
@@ -38,6 +65,7 @@ struct XPBDNonIterative : BaseSolver {
 void XPBDNonIterative::update(float dt) {
 	auto vertices = &state.vertices;
 	auto triangles = &state.triangles;
+	auto edges = &state.edges;
 
 	// backup initial positions
 	vec3 *x0 = new vec3[vertices->size()];
@@ -77,7 +105,9 @@ void XPBDNonIterative::update(float dt) {
 
 	// implicitly solve for constraints
 	// Jacobi-like step is unstable. Shuffled Gauss-Seidel increases energy slightly.
-	int *iter_order = new int[triangles->size()];
+	int *iter_order = new int[max(triangles->size(), edges->size())];
+
+	// triangles
 	for (int i = 0; i < (int)triangles->size(); i++)
 		iter_order[i] = i;
 	std::random_shuffle(iter_order, iter_order+(int)triangles->size());
@@ -86,11 +116,25 @@ void XPBDNonIterative::update(float dt) {
 		TriangleConstraint *trig = &(*triangles)[j];
 		mi = trig->vi;
 		for (int _ = 0; _ < 3; _++) masses[_] = &(*vertices)[mi[_]];
-		state.getStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
-		xpbdStep(3);
-		state.getShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
-		xpbdStep(3);
+		state.getTriangleStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) xpbdStep(3);
+		state.getTriangleShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) xpbdStep(3);
 	}
+
+	// edges
+	for (int i = 0; i < (int)edges->size(); i++)
+		iter_order[i] = i;
+	std::random_shuffle(iter_order, iter_order+(int)edges->size());
+	for (int ji = 0; ji < (int)edges->size(); ji++) {
+		int j = iter_order[ji];
+		EdgeConstraint *edge = &(*edges)[j];
+		mi = edge->ai;
+		for (int _ = 0; _ < 2; _++) masses[_] = &(*vertices)[mi[_]];
+		state.getSpringConstraint(edge, &ks, &kd, &c, mi, dcdx);
+		if (ks > 0.0f && kd > 0.0f) xpbdStep(2);
+	}
+
 	delete iter_order;
 
 	// update velocity and time
@@ -120,6 +164,7 @@ struct XPBDSolver : BaseSolver {
 void XPBDSolver::update(float dt) {
 	auto vertices = &state.vertices;
 	auto triangles = &state.triangles;
+	auto edges = &state.edges;
 
 	// backup initial positions
 	vec3 *x0 = new vec3[vertices->size()];
@@ -182,7 +227,7 @@ void XPBDSolver::update(float dt) {
 			((vec3*)kc)[k] = kt * dcdx[k];
 			((vec3*)cn)[k] = -dcdx[k];
 			((vec3*)cl)[k] = dcdx[k] * l;
-		}
+}
 		float det1 = alpha, det2 = ct;
 		for (int i = 0; i < 3 * num_masses; i++) {
 			//if (m[i] >= 1.0f / 1.01e-4f) continue;
@@ -203,30 +248,48 @@ void XPBDSolver::update(float dt) {
 	// initialize Lagrange multipliers
 	float *l_trig_b = new float[triangles->size()]; // bulk
 	float *l_trig_s = new float[triangles->size()]; // shear
+	float *l_edge_t = new float[edges->size()];  // spring, test
 	for (int i = 0; i < (int)triangles->size(); i++)
 		l_trig_b[i] = l_trig_s[i] = 0.0f;
+	for (int i = 0; i < (int)edges->size(); i++)
+		l_edge_t[i] = 0.0f;
 
 	// iteratively solve for constraints
-	int *iter_order = new int[triangles->size()];
-	for (int i = 0; i < (int)triangles->size(); i++)
-		iter_order[i] = i;
+	int *iter_order = new int[max(triangles->size(), edges->size())];
 	for (int i = 0; i < 8; i++) {
+
 		// triangles
+		for (int _ = 0; _ < (int)triangles->size(); _++)
+			iter_order[_] = _;
 		std::random_shuffle(iter_order, iter_order+(int)triangles->size());
 		for (int ji = 0; ji < (int)triangles->size(); ji++) {
 			int j = iter_order[ji];
 			TriangleConstraint *trig = &(*triangles)[j];
 			mi = trig->vi;
 			for (int _ = 0; _ < 3; _++) masses[_] = &(*vertices)[mi[_]];
-			state.getStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
-			xpbdStep(3, l_trig_b[j]);
-			state.getShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
-			xpbdStep(3, l_trig_s[j]);
+			state.getTriangleStretchConstraint(trig, &ks, &kd, &c, mi, dcdx);
+			if (ks > 0.0f && kd > 0.0f) xpbdStep(3, l_trig_b[j]);
+			state.getTriangleShearConstraint(trig, &ks, &kd, &c, mi, dcdx);
+			if (ks > 0.0f && kd > 0.0f) xpbdStep(3, l_trig_s[j]);
+		}
+
+		// edges
+		for (int _ = 0; _ < (int)edges->size(); _++)
+			iter_order[_] = _;
+		std::random_shuffle(iter_order, iter_order+(int)edges->size());
+		for (int ji = 0; ji < (int)edges->size(); ji++) {
+			int j = iter_order[ji];
+			EdgeConstraint *edge = &(*edges)[j];
+			mi = edge->ai;
+			for (int _ = 0; _ < 2; _++) masses[_] = &(*vertices)[mi[_]];
+			state.getSpringConstraint(edge, &ks, &kd, &c, mi, dcdx);
+			if (ks > 0.0f && kd > 0.0f) xpbdStep(2, l_edge_t[j]);
 		}
 	}
 	delete iter_order;
 
 	delete l_trig_b; delete l_trig_s;
+	delete l_edge_t;
 
 	// update velocity and time
 	for (int i = 0; i < vertices->size(); i++) {

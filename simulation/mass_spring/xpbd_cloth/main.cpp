@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
 	Slider sliderStep = Slider(vec2(10, 30), vec2(160, 45), 0.0f, 1.0f, 0.0f, 0.5f);
 
 	// states
-	State state_original = BuiltInStates::states[1];
+	State state_original = BuiltInStates::states[8];
 	State state = state_original;
 	std::vector<BaseSolver*> solvers({
 		new EulerCromer(state),
@@ -125,8 +125,8 @@ int main(int argc, char* argv[]) {
 		float dt = 1.0f / float(FPS);
 		for (int i = 0; i < (int)solvers.size(); i++)
 			solvers[i]->update(dt);
-		checkGrad(&State::getShearConstraint, solvers[1]->state,
-			&solvers[1]->state.triangles[rand() % solvers[1]->state.triangles.size()],
+		checkGrad(&State::getSpringConstraint, solvers[1]->state,
+			&solvers[1]->state.edges[rand() % solvers[1]->state.edges.size()],
 			0.001f);
 		printf("E = ");
 		for (int i = 0; i < (int)solvers.size(); i++) {

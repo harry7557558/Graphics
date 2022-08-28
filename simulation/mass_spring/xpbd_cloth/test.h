@@ -51,6 +51,35 @@ float checkGrad(
 	return err;
 }
 
+float checkGrad(
+	void (State::*constraint)(const EdgeConstraint *pc,
+		float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]),
+	State &state, const EdgeConstraint *pc,
+	float eps = 0.001f
+) {
+	auto vertices = &state.vertices;
+	// get points
+	vec3 x0[3];
+	for (int i = 0; i < 2; i++)
+		x0[i] = (*vertices)[pc->ai[i]].x;
+	// function to differentiate
+	float ks, kd, c; int xi[2]; vec3 dcdx[2];
+	auto fun = [&](float* x) -> float {
+		for (int i = 0; i < 2; i++)
+			(*vertices)[pc->ai[i]].x = ((vec3*)x)[i];
+		(state.*constraint)(pc, &ks, &kd, &c, xi, dcdx);
+		return c;
+	};
+	// calculated gradient
+	fun((float*)&x0[0]);
+	vec3 dcdx0[2] = { dcdx[0], dcdx[1] };
+	// check gradient
+	float err = checkGrad(3*2, fun, (float*)&x0[0], (float*)&dcdx0[0], eps);
+	// reset gradient
+	fun((float*)&x0[0]);
+	return err;
+}
+
 
 // Built-in states for testing
 
@@ -133,11 +162,15 @@ namespace BuiltInStates {
 	}
 
 	State states[] = {
-		plane(vec2(1.5f, 1.0f), 15, 10),
-		//plane(vec2(2.0f, 2.0f), 3, 3),
-		//plane(vec2(2.0f, 2.0f), 4, 4),
+		plane(vec2(1.5f, 0.5f), 3, 1),
+		plane(vec2(1.5f, 0.25f), 6, 1),
+		plane(vec2(1.5f, 0.1f), 15, 1),
+		plane(vec2(1.5f, 0.5f), 6, 2),
+		plane(vec2(2.0f, 2.0f), 3, 3),
+		plane(vec2(2.0f, 2.0f), 4, 4),
 		plane(vec2(2.0f, 2.0f), 8, 8),
 		plane(vec2(2.0f, 2.0f), 16, 16),
+		plane(vec2(1.5f, 1.0f), 15, 10),
 	};
 
 }

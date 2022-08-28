@@ -2,10 +2,12 @@
 
 #include <functional>
 #include <vector>
+#include <unordered_map>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 using namespace glm;
+
 
 
 // Large Steps in Cloth Simulation
@@ -28,21 +30,35 @@ struct TriangleConstraint {
 	float rest_area;  // area in parameter space
 	float k_stretch = 1.0, k_shear = 1.0;  // stiffness constants
 	float d_stretch = 0.0, d_shear = 0.0;  // damping constants
-	float bu = 1.0, bv = 1.0;  // >1 => lengthen, <1 => tighten
+};
+
+struct EdgeConstraint {
+	int ai[2] = { -1, -1 };  // indices of adjacent vertices
+	int oi[2] = { -1, -1 };  // indices of opposite vertices
+	float rest_l;  // rest length
+	float inv_l;  // reciprocal of length
+	float k_stretch = 1.0, k_shear = 1.0;  // stiffness constants
+	float d_stretch = 0.0, d_shear = 0.0;  // damping constants
 };
 
 
 class State {
+
+	// called by the constructor
+	// calculates common edges shared by triangles
+	void calcEdges();
+
+	// called by the constructor
+	// calculates the orientation of the triangles and edges based on the initial state
+	void normalizeConstraints();
+
 public:
 
 	// geometry/constraints
 	float t;
 	std::vector<Vertex> vertices;
 	std::vector<TriangleConstraint> triangles;
-
-	// called by the constructor
-	// calculates the orientation of the triangles based on the initial state
-	void normalizeTriangles();
+	std::vector<EdgeConstraint> edges;
 
 	static vec3 g;  // acceleration due to gravity
 
@@ -57,12 +73,16 @@ public:
 	void draw(Viewport *viewport, vec3 color) const;
 
 	// dynamics
+	static bool enableTriangleStretchConstraint;
+	static bool enableTriangleShearConstraint;
+	static bool enableSpringConstraint;
 	void calcExternalAcceleration(bool requires_drag);
-	void calcConstraintAcceleration();
-	void getStretchConstraint(const TriangleConstraint *pc,
+	void getTriangleStretchConstraint(const TriangleConstraint *pc,
 		float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]);
-	void getShearConstraint(const TriangleConstraint *pc,
+	void getTriangleShearConstraint(const TriangleConstraint *pc,
 		float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]);
+	void getSpringConstraint(const EdgeConstraint *pc,
+		float *ks, float *kd, float *c, int xi[2], vec3 dcdx[2]);
 	float getEnergy();
 };
 
@@ -71,21 +91,33 @@ public:
 
 vec3 State::g = vec3(0, 0, -9.8);
 
+#if 0
+bool State::enableTriangleStretchConstraint = true;
+bool State::enableTriangleShearConstraint = true;
+bool State::enableSpringConstraint = false;
+#else
+bool State::enableTriangleStretchConstraint = false;
+bool State::enableTriangleShearConstraint = false;
+bool State::enableSpringConstraint = true;
+#endif
+
 State::State(
 	std::vector<Vertex> vertices, std::vector<TriangleConstraint> triangles
 ) {
 	this->t = 0.0f;
 	this->vertices = vertices;
 	this->triangles = triangles;
-	this->normalizeTriangles();
+	this->calcEdges();
+	this->normalizeConstraints();
 }
 
 State::State(
 	std::vector<vec3> vertices, std::vector<ivec3> triangles,
 	float tot_m, float k_drag = 0.1f,
-	float k_stretch = 1e3f, float k_shear = 1e3f, float damp = 0.2f
+	float k_stretch = 1.0f, float k_shear = 1.0f, float damp = 0.2f
 ) {
 	this->t = 0.0f;
+	// vertices
 	this->vertices.resize(vertices.size());
 	for (int i = 0; i < (int)vertices.size(); i++) {
 		Vertex *v = &this->vertices[i];
@@ -93,6 +125,7 @@ State::State(
 		v->inv_m = 1.0f / (tot_m / (float)vertices.size());
 		v->k_drag = k_drag;
 	}
+	// triangles
 	this->triangles.resize(triangles.size());
 	for (int i = 0; i < (int)triangles.size(); i++) {
 		TriangleConstraint *t = &this->triangles[i];
@@ -100,10 +133,48 @@ State::State(
 		t->k_stretch = k_stretch, t->k_shear = k_shear;
 		t->d_stretch = k_stretch * damp, t->d_shear = k_shear * damp;
 	}
-	this->normalizeTriangles();
+	// edges
+	this->calcEdges();
+	for (int i = 0; i < (int)edges.size(); i++) {
+		EdgeConstraint *e = &this->edges[i];
+		e->k_stretch = k_stretch, e->k_shear = k_shear;
+		e->d_stretch = k_stretch * damp, e->d_shear = k_shear * damp;
+	}
+	// normalize constraints
+	this->normalizeConstraints();
 }
 
-void State::normalizeTriangles() {
+
+void State::calcEdges() {
+	std::unordered_map<uint64_t, ivec2> edgemap;
+	for (int ti = 0; ti < (int)triangles.size(); ti++) {
+		for (int vi = 0; vi < 3; vi++) {
+			uint64_t v1 = (uint64_t)triangles[ti].vi[vi];
+			uint64_t v2 = (uint64_t)triangles[ti].vi[(vi + 1) % 3];
+			int v3 = triangles[ti].vi[(vi + 2) % 3];
+			uint64_t ei = min(v1, v2) | (max(v1, v2) << 32);
+			ivec2 e = ivec2(-1);
+			if (edgemap.find(ei) != edgemap.end()) e = edgemap[ei];
+			if (e.x == -1) e.x = v3;
+			else e.y = v3;
+			edgemap[ei] = e;
+		}
+	}
+	this->edges.clear();
+	this->edges.reserve(edgemap.size());
+	for (std::pair<uint64_t, ivec2> edge : edgemap) {
+		ivec2 ai = *(ivec2*)&edge.first;
+		ivec2 oi = edge.second;
+		//printf("%d %d  %d %d\n", ai.x, ai.y, oi.x, oi.y);
+		EdgeConstraint ec;
+		*(ivec2*)ec.ai = ai;
+		*(ivec2*)ec.oi = oi;
+		this->edges.push_back(ec);
+	}
+}
+
+void State::normalizeConstraints() {
+	// triangle constraints
 	for (int i = 0; i < (int)triangles.size(); i++) {
 		TriangleConstraint *t = &triangles[i];
 		vec3 v[3];
@@ -116,6 +187,15 @@ void State::normalizeTriangles() {
 		t->duv2 = dx2 * r;
 		t->inv_dudv = inverse(mat2(t->duv1, t->duv2));
 		t->rest_area = 0.5f / abs(determinant(t->inv_dudv));
+	}
+	// edge constraints
+	for (int i = 0; i < (int)edges.size(); i++) {
+		EdgeConstraint *e = &edges[i];
+		int ai[2] = { e->ai[0], e->ai[1] };
+		int oi[2] = { e->oi[0], e->oi[1] };
+		vec3 dx = vertices[ai[1]].x - vertices[ai[0]].x;
+		e->rest_l = length(dx);
+		e->inv_l = 1.0f / e->rest_l;
 	}
 }
 
@@ -159,26 +239,6 @@ void State::calcExternalAcceleration(bool requires_drag) {
 	}
 }
 
-// constraint accelerations
-void State::calcConstraintAcceleration() {
-	// update constraints
-	float ks, kd, c; int mi[3]; vec3 dcdx[3];
-	auto updateConstraint = [&](int num_masses) {
-		for (int k = 0; k < num_masses; k++) {
-			Vertex *v = &vertices[mi[k]];
-			vec3 fs = -ks * c * dcdx[k];
-			vec3 fd = -kd * dot(dcdx[k], v->v) * dcdx[k];
-			v->a += v->inv_m * (fs + fd);
-		}
-	};
-	// triangle constraints
-	for (int j = 0; j < (int)triangles.size(); j++) {
-		getStretchConstraint(&triangles[j], &ks, &kd, &c, mi, dcdx);
-		updateConstraint(3);
-		getShearConstraint(&triangles[j], &ks, &kd, &c, mi, dcdx);
-		updateConstraint(3);
-	}
-}
 
 // Calculate the strain of a deformed triangle and its gradient
 void calcStrain(mat2 inv_dudv, vec3 dx1, vec3 dx2, mat2 &strain,
@@ -233,11 +293,16 @@ void calcStrain(mat2 inv_dudv, vec3 dx1, vec3 dx2, mat2 &strain,
 		(ddudxdx2[1][1] * dudx[0][1] + ddudxdx2[0][1] * dudx[1][1]));
 }
 
-// evaluate a stretch constraint
-void State::getStretchConstraint(
+// Evaluate a stretch constraint
+void State::getTriangleStretchConstraint(
 	const TriangleConstraint *pc,
 	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
 ) {
+	if (!enableTriangleStretchConstraint) {
+		*ks = *kd = *c = 0.0f;
+		dcdx[0] = dcdx[1] = dcdx[2] = vec3(0.0f);
+		return;
+	}
 	*ks = pc->k_stretch - (2.f/3.f)*pc->k_shear;
 	*kd = pc->d_stretch - (2.f/3.f)*pc->d_shear;
 	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
@@ -250,7 +315,7 @@ void State::getStretchConstraint(
 	float lwu = length(wu), lwv = length(wv);
 	vec3 nwu = lwu==0. ? wu : wu / lwu;
 	vec3 nwv = lwv==0. ? wv : wv / lwv;
-	*c = lwu - pc->bu + lwv - pc->bv;
+	*c = lwu - 1.0f + lwv - 1.0f;
 	// dc/dx = dc/d|w| * d|w|/d[Δx] * d[Δx]/dx
 	vec3 dcdx1 = nwu * pc->inv_dudv[0][0] + nwv * pc->inv_dudv[1][0];
 	vec3 dcdx2 = nwu * pc->inv_dudv[0][1] + nwv * pc->inv_dudv[1][1];
@@ -271,11 +336,16 @@ void State::getStretchConstraint(
 	*ks *= a, *kd *= a;
 }
 
-// evaluate a shear constraint
-void State::getShearConstraint(
+// Evaluate a shear constraint
+void State::getTriangleShearConstraint(
 	const TriangleConstraint *pc,
 	float *ks, float *kd, float *c, int xi[3], vec3 dcdx[3]
 ) {
+	if (!enableTriangleShearConstraint) {
+		*ks = *kd = *c = 0.0f;
+		dcdx[0] = dcdx[1] = dcdx[2] = vec3(0.0f);
+		return;
+	}
 	*ks = pc->k_shear, *kd = pc->d_shear;
 	for (int i = 0; i < 3; i++) xi[i] = pc->vi[i];
 	vec3 dx1 = vertices[xi[1]].x - vertices[xi[0]].x;
@@ -317,7 +387,28 @@ void State::getShearConstraint(
 	*ks *= a, *kd *= a;
 }
 
-// get energy
+
+// Hooken springs for testing
+void State::getSpringConstraint(const EdgeConstraint *pc,
+	float *ks, float *kd, float *c, int xi[2], vec3 dcdx[2]
+) {
+	if (!enableSpringConstraint) {
+		*ks = *kd = *c = 0.0f;
+		dcdx[0] = dcdx[1] = vec3(0.0f);
+		return;
+	}
+	*ks = pc->k_stretch, *kd = pc->d_stretch;
+	*ks *= 10.0f, *kd *= 10.0f;
+	for (int i = 0; i < 2; i++) xi[i] = pc->ai[i];
+	vec3 dx = vertices[xi[1]].x - vertices[xi[0]].x;
+	float l = length(dx);
+	*c = pc->inv_l * l - 1.0f;
+	dcdx[0] = -pc->inv_l * dx / l;
+	dcdx[1] = -dcdx[0];
+}
+
+
+// Calculate the energy of the system (constraint + gravitational + kinetic)
 float State::getEnergy() {
 	// gravitational potential energy and kinetic energy
 	float eg = 0.0f, ek = 0.0f, totm = 0.0f;
@@ -332,11 +423,17 @@ float State::getEnergy() {
 	// constraint energy
 	float ec = 0.0f;
 	for (int j = 0; j < (int)triangles.size(); j++) {
-		// stretch constraints
 		float ks, kd, c; int xi[3]; vec3 dcdx[3];
-		this->getStretchConstraint(&triangles[j], &ks, &kd, &c, xi, dcdx);
+		this->getTriangleStretchConstraint(&triangles[j], &ks, &kd, &c, xi, dcdx);
+		this->getTriangleShearConstraint(&triangles[j], &ks, &kd, &c, xi, dcdx);
+		ec += 0.5f * ks * c * c;
+	}
+	for (int j = 0; j < (int)edges.size(); j++) {
+		float ks, kd, c; int xi[2]; vec3 dcdx[2];
+		this->getSpringConstraint(&edges[j], &ks, &kd, &c, xi, dcdx);
 		ec += 0.5f * ks * c * c;
 	}
 	//printf("%f %f %f\n", eg, ek, ec);
+	return eg + ec;
 	return eg + ek + ec;
 }
