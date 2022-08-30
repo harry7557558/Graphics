@@ -7,14 +7,17 @@ var renderer = {
     gl: null,
     width: -1,
     height: -1,
-    eps: 0.5,
-    dt: 0.008,
+    eps: 1.0 / 400.0,
+    dt: 0.01,
     iFrame: 0,
     iMouse: [0, 0, 0, 0],
     vsSource: "",
+    targetVelocity: null,
+    fsViscosity: "",
+    programViscosity: "",
+    targetViscosity: null,
     fsAdvectU: "",
     programAdvectU: null,
-    targetVelocity: null,
     fsDivU: "",
     programDivU: null,
     fsPressure: "",
@@ -139,19 +142,41 @@ async function drawScene() {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // initialize + advect u=u-u*∇u
+    // iteratively solve for viscosity
+    for (var iter = 0; iter < 10; iter++) {
+        gl.useProgram(renderer.programViscosity);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetViscosity.framebuffer);
+        setPositionBuffer(renderer.programViscosity);
+        setUniforms(renderer.programViscosity);
+        gl.uniform1i(gl.getUniformLocation(renderer.programViscosity, "iterIndex"), iter);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.targetViscosity.sampler);
+        gl.uniform1i(gl.getUniformLocation(renderer.programViscosity, "samplerDu"), 1);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.bindTexture(gl.TEXTURE_2D, renderer.targetViscosity.sampler);
+        gl.copyTexImage2D(gl.TEXTURE_2D,
+            0, gl.RGBA32F, 0, 0, renderer.width, renderer.height, 0);
+    }
+
+    // initialize, advect velocity, apply viscosity and viscous drag
     gl.useProgram(renderer.programAdvectU);
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetVelocity.framebuffer);
+    // if (renderer.iFrame == 1) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     setPositionBuffer(renderer.programAdvectU);
     setUniforms(renderer.programAdvectU);
     gl.uniform4f(gl.getUniformLocation(renderer.programAdvectU, "iMouse"),
         renderer.iMouse[0], renderer.iMouse[1], renderer.iMouse[2], renderer.iMouse[3]);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, renderer.targetViscosity.sampler);
+    gl.uniform1i(gl.getUniformLocation(renderer.programAdvectU, "samplerDu"), 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindTexture(gl.TEXTURE_2D, renderer.targetVelocity.sampler);
     gl.copyTexImage2D(gl.TEXTURE_2D,
         0, gl.RGBA32F, 0, 0, renderer.width, renderer.height, 0);
+    // console.log(renderer.iFrame);
+    // return;
 
-    // calculate the divergence of advected velocity
+    // calculate the divergence of advected velocity (store in .z)
     gl.useProgram(renderer.programDivU);
     gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.targetVelocity.framebuffer);
     setPositionBuffer(renderer.programDivU);
@@ -241,6 +266,7 @@ window.onload = function () {
     console.time("load glsl code");
     renderer.vsSource = "#version 300 es\nin vec4 vertexPosition;" +
         "void main(){gl_Position=vertexPosition;}";
+    renderer.fsViscosity = loadShaderSource("fs-viscosity.glsl");
     renderer.fsAdvectU = loadShaderSource("fs-advect-u.glsl");
     renderer.fsDivU = loadShaderSource("fs-div-u.glsl");
     renderer.fsPressure = loadShaderSource("fs-pressure.glsl");
@@ -252,6 +278,7 @@ window.onload = function () {
     // compile shaders
     console.time("compile shader");
     try {
+        renderer.programViscosity = createShaderProgram(renderer.vsSource, renderer.fsViscosity);
         renderer.programAdvectU = createShaderProgram(renderer.vsSource, renderer.fsAdvectU);
         renderer.programDivU = createShaderProgram(renderer.vsSource, renderer.fsDivU);
         renderer.programPressure = createShaderProgram(renderer.vsSource, renderer.fsPressure);
@@ -272,6 +299,7 @@ window.onload = function () {
 
     // framebuffers
     renderer.targetVelocity = createRenderTarget(renderer.width, renderer.height);
+    renderer.targetViscosity = createRenderTarget(renderer.width, renderer.height);
     renderer.targetPressure = createRenderTarget(renderer.width, renderer.height);
     renderer.targetColor = createRenderTarget(renderer.width, renderer.height);
 
