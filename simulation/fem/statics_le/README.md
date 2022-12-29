@@ -1,1 +1,1 @@
-3D FEM analysis of objects made of linearly elastic materials.
+3D FEM analysis of solid objects made of linearly elastic materials.

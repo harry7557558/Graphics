@@ -70,7 +70,7 @@ Linearized strain $\epsilon=\dfrac{1}{2}(\nabla u+\nabla u^T)$
 
  - $2\epsilon_{23}=D_5+D_7$, $2\epsilon_{13}=D_2+D_6$, $2\epsilon_{12}=D_1+D_3$
 
- - $S=\begin{bmatrix}1&&&&&&&&\\&&&&1&&&&\\&&&&&&&&1\\&&&&&1&&1&\\&&1&&&&1&&\\&1&&1&&&&&\end{bmatrix}$: convert 9-component $\epsilon$ to 6-component $\epsilon$.
+ - $S=\begin{bmatrix}1&&&&&&&&\\&&&&1&&&&\\&&&&&&&&1\\&&&&&1&&1&\\&&1&&&&1&&\\&1&&1&&&&&\end{bmatrix}$: convert 9-component $\dfrac{\partial\nabla u}{\partial x}$ to 6-component $\epsilon$.
 
 Stress-strain relationship: $\sigma=C\epsilon$.
 
@@ -175,7 +175,9 @@ https://help.febio.org/FEBio/FEBio_tm_2_7/FEBio_tm_2-7-Subsection-4.1.4.html
 
    - Weights add up to $1/6$? Normalize it to $1$.
 
-   - Optimize: add $(WX)^{-1}W$ before $\otimes I_3$
+   - $(WX)^{-1}W$ is a sub-grid of $\otimes I_3$, the overall stiffness matrix isn't.
+
+   - Volume: $\dfrac{1}{6}\det(WX)$
 
 Calculating $W$:
 
