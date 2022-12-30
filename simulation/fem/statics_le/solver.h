@@ -4,6 +4,16 @@
 #include "sparse.h"
 
 
+// timer
+#include <chrono>
+auto _TIME_START = std::chrono::high_resolution_clock::now();
+double getTimePast() {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(t1 - _TIME_START).count();
+}
+
+
+
 // PRNG
 #define PI 3.1415926535897932384626
 unsigned int _IDUM = 1;
@@ -44,6 +54,7 @@ std::vector<vec3> solveStructure(
     assert(X.size() == F.size());
     int N = (int)X.size(), M = (int)SE.size();
     printf("%d vertices, %d elements.\n", N, M);
+    double time0 = getTimePast();
 
     // map vertex indices to indices in the linear system
     // (don't consider fixed vertices)
@@ -58,6 +69,8 @@ std::vector<vec3> solveStructure(
     // construct the matrix
     double K[9 * MAX_SOLID_ELEMENT_N * MAX_SOLID_ELEMENT_N];
     LilMatrix lil(3 * Ns);
+    mat3* invDiag = new mat3[Ns];
+    for (int i = 0; i < Ns; i++) invDiag[i] = mat3(0);
     for (const SolidElement* c : SE) {
         int n = c->getN();
         const int* vi = c->getVi();
@@ -66,12 +79,18 @@ std::vector<vec3> solveStructure(
             int i = Imap[vi[i0]]; if (i == -1) continue;
             for (int j0 = 0; j0 < n; j0++) {
                 int j = Imap[vi[j0]]; if (j == -1) continue;
-                for (int u = 0; u < 3; u++) for (int v = 0; v < 3; v++)
-                    lil.addValue(3 * i + u, 3 * j + v,
-                        K[(3 * i0 + u) * (3 * n) + (3 * j0 + v)]);
+                mat3 m;
+                for (int u = 0; u < 3; u++) for (int v = 0; v < 3; v++) {
+                    double k = K[(3 * i0 + u) * (3 * n) + (3 * j0 + v)];
+                    lil.addValue(3 * i + u, 3 * j + v, k);
+                    m[u][v] = k;
+                }
+                if (i == j) invDiag[i] += m;
             }
         }
     }
+    for (int i = 0; i < Ns; i++)
+        invDiag[i] = inverse(invDiag[i]);
 
     // construct the vectors
     vec3* f = new vec3[Ns];
@@ -80,15 +99,48 @@ std::vector<vec3> solveStructure(
             f[Imap[i]] = F[i];
     vec3* u = new vec3[Ns];
     for (int i = 0; i < Ns; i++)
-        u[i] = 1e-10 * vec3(randn(), randn(), randn());
+        u[i] = 1e-100 * vec3(randn(), randn(), randn());
 
     // solve the linear system
     CsrMatrix csr(lil);
     auto linopr = [&](const double* src, double* res) {
         csr.matvecmul(src, res);
     };
-    int niters = conjugateGradient(3 * Ns, linopr, (double*)f, (double*)u, 10000, 1e-10);
+    double time1 = getTimePast();
+    printf("Linear system constructed in %.2lf secs. (%dx%d, %d nonzeros)\n",
+        time1 - time0, 3 * Ns, 3 * Ns, csr.getNonzeros());
+    // tolerance
+    double tol = 0.0;
+    for (int i = 0; i < Ns; i++)
+        tol += dot(f[i], f[i]);
+    tol = 1e-10 * sqrt(tol);
+#if 0  // w/o preconditioning
+    double time2 = time1;
+    int niters = conjugateGradient(
+        3 * Ns, linopr, (double*)f, (double*)u, 10000, tol);
+#else  // w/o preconditioning
+#if 0  // preconditioner
+    auto precond = [&](const double* src, double* res) {
+        for (int i = 0; i < Ns; i++)
+            ((vec3*)res)[i] = invDiag[i] * ((vec3*)src)[i];
+    };
+#else  // preconditioner
+    LilMatrix iclil = lil.incompleteCholesky1();
+    CsrMatrix precondL(iclil), precondU(iclil.transpose());
+    auto precond = [&](const double* src, double* res) {
+        memcpy(res, src, sizeof(double) * 3 * Ns);
+        precondL.lowerSolve(res);
+        precondU.upperSolve(res);
+    };
+#endif  // preconditioner
+    double time2 = getTimePast();
+    printf("Linear system preconditioned in %.2lf secs.\n", time2 - time1);
+    int niters = conjugateGradientPreconditioned(
+        3 * Ns, linopr, precond, (double*)f, (double*)u, 10000, tol);
+#endif  // w/o preconditioning
     printf("%d iterations.\n", niters);
+    double time3 = getTimePast();
+    printf("Linear system solved in %.2lf secs. (includes preconditioning)\n", time3 - time1);
 
     // get the result
     std::vector<vec3> U(N, vec3(0));
@@ -96,5 +148,6 @@ std::vector<vec3> solveStructure(
         if (Imap[i] != -1)
             U[i] = u[Imap[i]];
     delete[] Imap; delete[] f; delete[] u;
+    delete[] invDiag;
     return U;
 }

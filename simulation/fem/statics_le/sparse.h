@@ -92,16 +92,54 @@ public:
         return res;
     }
 
-    // factorization, may change the current matrix
-    // result in a upper triangular matrix
-    LilMatrix incompleteCholesky1(double default_diag) {
+    // Incomplete Cholesky factorization
+    // result in an lower triangular matrix
+    LilMatrix incompleteCholesky1() const {
         LilMatrix res(n);
         for (int i = 0; i < n; i++) {
-            double diag = sqrt(abs(this->at(i, i, default_diag)));
+            double diag = sqrt(abs(this->at(i, i)));
             res.addValue(i, i, diag);
             for (std::pair<int, double> kw : mat[i]) {
                 int k = kw.first;
-                if (k > i) res.addValue(i, k, kw.second / diag);
+                if (k > i) res.addValue(k, i, kw.second / diag);
+            }
+        }
+        return res;
+    }
+    // 3x3 block
+    LilMatrix incompleteCholesky3() const {
+        assert(n % 3 == 0);
+        LilMatrix res(n);
+        for (int i = 0; i < n; i += 3) {
+            // get the diagonal
+            mat3 diag;
+            for (int u = 0; u < 3; u++)
+                for (int v = 0; v < 3; v++)
+                    diag[u][v] = this->at(i + u, i + v);
+            for (int u = 0; u < 3; u++)
+                for (int v = 0; v <= u; v++) {
+                    double s = 0.0;
+                    for (int w = 0; w < v; w++)
+                        s += diag[u][w] * diag[v][w];
+                    diag[u][v] = (u == v) ? sqrt(diag[u][u] - s)
+                        : (diag[v][u] - s) / diag[v][v];
+                    res.addValue(i + u, i + v, diag[u][v]);
+                }
+            diag[0][1] = diag[0][2] = diag[1][2] = 0.0;
+            // this should work because all 3x3 blocks (including zeros)
+            // were added in stiffness matrix construction
+            mat3 invDiag = inverse(diag.transpose());
+            for (std::pair<int, double> kw : mat[i]) {
+                int k = kw.first;
+                if (k <= i || k % 3 != 0) continue;
+                mat3 vik;  // transposed
+                for (int u = 0; u < 3; u++)
+                    for (int v = 0; v < 3; v++)
+                        vik[v][u] = this->at(i + u, k + v);
+                mat3 m = vik * invDiag;
+                for (int u = 0; u < 3; u++)
+                    for (int v = 0; v < 3; v++)
+                        res.addValue(k + u, i + v, m[u][v]);
             }
         }
         return res;
@@ -124,7 +162,7 @@ public:
         rows.push_back(0);
         for (int i = 0; i < n; i++) {
             for (std::pair<int, double> indice : lil.mat[i]) {
-                if (indice.second != 0.0) {
+                if (indice.second != 0.0 || indice.first == i) {
                     cols.push_back(indice.first);
                     vals.push_back(indice.second);
                 }
@@ -133,6 +171,7 @@ public:
         }
     }
     int getN() const { return n; }
+    int getNonzeros() const { return (int)vals.size(); }
 
     // square of norm of a vector
     double vecnorm2(const double* r) const {
@@ -238,12 +277,12 @@ double vecdot(int n, const double* u, const double* v) {
 
 // conjugate gradient from symmetric linear operator
 // x must be initialized
+// returns the number of iterations
 int conjugateGradient(
     int n,
     std::function<void(const double* src, double* res)> A,
     const double* b, double* x, int maxiter, double tol
 ) {
-    tol = double(n) * tol * tol;
     // r = b - Ax
     double* r = new double[n];
     A(x, r);
@@ -264,16 +303,69 @@ int conjugateGradient(
         for (int i = 0; i < n; i++) r[i] -= alpha * Ap[i];
         // β = r₁ᵀr₁ / r₀ᵀr₀
         double r21 = vecnorm2(n, r);
-        if (r21 < tol) { k++; break; }
+        if (r21 < tol * tol || std::isnan(r21)) { k++; break; }
         double beta = r21 / r20;
         r20 = r21;
         // p = r + βp
         for (int i = 0; i < n; i++) p[i] = r[i] + beta * p[i];
-        if ((k + 1) % 100 == 0) printf("%d %lg\n", k + 1, sqrt(r21));
-        if (std::isnan(r21)) break;
+        // verbose
+        if ((k + 1) % 100 == 0) {
+            double maxdif = 0.0;
+            for (int i = 0; i < n; i += 3)
+                maxdif = max(maxdif, length(*((vec3*)&r[i])));
+            printf("%d %lg\n", k + 1, maxdif);
+        }
     }
     delete[] r; delete[] p; delete[] Ap;
     return k;
 }
 
-
+// preconditioned conjugate gradient
+int conjugateGradientPreconditioned(
+    int n,
+    std::function<void(const double* src, double* res)> A,
+    std::function<void(const double* src, double* res)> M,
+    const double* b, double* x, int maxiter, double tol
+) {
+    // r = b - Ax
+    double* r = new double[n];
+    A(x, r);
+    for (int i = 0; i < n; i++) r[i] = b[i] - r[i];
+    // z = M⁻¹ r
+    double* z = new double[n];
+    M(r, z);
+    double rz0 = vecdot(n, r, z);
+    // p = r
+    double* p = new double[n];
+    std::memcpy(p, z, n * sizeof(double));
+    // loop
+    double* Ap = new double[n];
+    int k; for (k = 0; k < maxiter; k++) {
+        // α = rᵀz / pᵀAp
+        A(p, Ap);
+        double alpha = rz0 / vecdot(n, p, Ap);
+        // x = x + αp
+        for (int i = 0; i < n; i++) x[i] += alpha * p[i];
+        // r = r - αAp
+        for (int i = 0; i < n; i++) r[i] -= alpha * Ap[i];
+        double r2 = vecnorm2(n, r);
+        if (r2 < tol * tol || std::isnan(r2)) { k++; break; }
+        // z₁ = M⁻¹ r₁
+        M(r, z);
+        // β = r₁ᵀz₁ / r₀ᵀz₀
+        double rz1 = vecdot(n, r, z);
+        double beta = rz1 / rz0;
+        rz0 = rz1;
+        // p = z + βp
+        for (int i = 0; i < n; i++) p[i] = z[i] + beta * p[i];
+        // verbose
+        if ((k + 1) % 100 == 0) {
+            double maxdif = 0.0;
+            for (int i = 0; i < n; i += 3)
+                maxdif = max(maxdif, length(*((vec3*)&r[i])));
+            printf("%d %lg\n", k + 1, maxdif);
+        }
+    }
+    delete[] r; delete[] z; delete[] p; delete[] Ap;
+    return k;
+}

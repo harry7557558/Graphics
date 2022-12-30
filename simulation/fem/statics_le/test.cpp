@@ -1,3 +1,5 @@
+#pragma GCC optimize "Ofast"
+
 #include <cstdio>
 #include "solver.h"
 
@@ -35,11 +37,12 @@ void test_1() {
 // slope: 0.0267; deflection: 106.7mm
 void test_2() {
     // seems like the error is O(h^2)
-    // int N = 40, S = 1;  // size 150mm, deflection -70.5mm, diff by 36.2mm
+    // int N = 40, S = 1;  // size 150mm, deflection -70.4mm, diff by 36.3mm
     int N = 80, S = 2;  // size 75mm, deflection -96.0mm, diff by 10.7mm
-    // int N = 120, S = 3;  // size 50mm, deflection -102.0mm, diff by 4.7mm
+    // int N = 120, S = 3;  // size 50mm, deflection -102.1mm, diff by 4.6mm
     // int N = 160, S = 4;  // size 37.5mm, deflection -104.2mm, diff by 2.5mm
     int si = (2 * S + 1) * (2 * S + 1), sj = (2 * S + 1), sk = 1;
+    printf("Test 2 (cantilevel beam) started.\n");
     // vertices
     std::vector<vec3> X;
     for (int i = 0; i <= N; i++)
@@ -71,14 +74,19 @@ void test_2() {
             }
     // forces
     std::vector<vec3> F(N * si, vec3(0));
-    for (int i = 0; i < si; i++) F.push_back(vec3(0, 0, -200e3) / si);
+    for (int j = -S; j <= S; j++)
+        for (int k = -S; k <= S; k++) {
+            vec3 perFace = vec3(0, 0, -200e3) / (4 * S * S);
+            double count = max(2 * int(abs(j) != S) + 2 * int(abs(k) != S), 1) / 4.0;
+            F.push_back(perFace * count);
+        }
     // fixed
     std::vector<int> fixed;
     for (int i = 0; i < si; i++) fixed.push_back(i);
     // solve
     double C[36]; calculateStressStrainMatrix(200e3, 0.33, C);
     std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
-    for (int i = N * si; i < (int)F.size(); i++)
+    for (int i = N * si; i < (int)F.size() - si + 1; i++)
         printf("%lg %lg %lg\n", U[i].x, U[i].y, U[i].z);
 }
 
