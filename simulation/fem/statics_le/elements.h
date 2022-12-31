@@ -30,6 +30,18 @@ struct ivec4 {
     int x, y, z, w;
     ivec4(int a = 0):x(a), y(a), z(a), w(a) {}
     ivec4(int a, int b, int c, int d):x(a), y(b), z(c), w(d) {}
+    ivec4(const int* p):x(p[0]), y(p[1]), z(p[2]), w(p[3]) {}
+};
+
+struct ivec8 {
+    int a, b, c, d, e, f, g, h;
+    ivec8(int x = 0): a(x), b(x), c(x), d(x), e(x), f(x), g(x), h(x) {}
+    ivec8(int a, int b, int c, int d, int e, int f, int g, int h)
+        :a(a), b(b), c(c), d(d), e(e), f(f), g(g), h(g) {}
+    ivec8(const int* p) {
+        for (int i = 0; i < 8; i++)
+            ((int*)this)[i] = p[i];
+    }
 };
 
 
@@ -66,6 +78,8 @@ struct vec3 {
     friend double det(vec3 a, vec3 b, vec3 c) { return dot(a, cross(b, c)); }
     friend double ndot(const vec3& u, const vec3& v) { return dot(u, v) / sqrt(u.sqr() * v.sqr()); }
     friend vec3 ncross(vec3 u, vec3 v) { return normalize(cross(u, v)); }
+    bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
+    bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
 };
 
 struct mat3 {
@@ -145,11 +159,31 @@ mat3 axis_angle(vec3 n, double a) {
 }
 
 
+/* Applied Forces */
+
+// triangular surface: ccw outward normal
+struct ElementForce3: ivec3 {
+    vec3 F;
+};
+
+// tetrahedral volume: any order
+// quad surface: ccw outward normal
+struct ElementForce4: ivec4 {
+    vec3 F;
+};
+
+// brick volume:
+// 000, 100, 110, 010, 001, 101, 111, 011
+struct ElementForce8: ivec8 {
+    vec3 F;
+};
+
+
 
 /* FEM Elements */
 
 
-#define MAX_SOLID_ELEMENT_N 6
+#define MAX_SOLID_ELEMENT_N 10
 
 struct SolidElement {
 protected:
@@ -199,12 +233,12 @@ public:
     // get vertice indices
     virtual const int* getVi() const = 0;
 
-    // evaluate the gradient of deformation gradient to deflection
-    // \partial \nabla u \over \partial u
-    // X: a list of global vertex initial positions
-    // D: a 3xN matrix, the gradient, before a tensor product with I3
-    // t: interpolation parameter, where to evaluate
-    virtual void evalD(const vec3* X, double* D, vec3 t) const = 0;
+    // precompute D and dV
+    // X: global list of vertices
+    virtual void calcDV(const vec3* X) = 0;
+
+    // get the undeformed volume of the element
+    virtual double getVolume() const = 0;
 
     // evaluate the stiffness matrix
     // X: a list of global vertex initial positions
@@ -215,44 +249,51 @@ public:
 };
 
 
+
 struct LinearTetrahedralElement: SolidElement {
 private:
     // 4 vertices
     int vi[4];
 
-    // precomputed X^{-1}
-    mat3 invX;
+    // precomputed D, ∂∇u/∂u
+    double D[3][4];
     // volume of the element
     double dV;
 
-    void calcXV(const vec3 *X) {
+public:
+
+    // calculate D and dV
+    void calcDV(const vec3* X) {
         mat3 X3 = transpose(mat3(
             X[vi[1]] - X[vi[0]],
             X[vi[2]] - X[vi[0]],
             X[vi[3]] - X[vi[0]]
         ));
         dV = abs(determinant(X3)) / 6.0;
-        invX = inverse(X3);
+        mat3 invX = inverse(X3);
+        for (int i = 0; i < 3 * 4; i++) (&D[0][0])[i] = 0.0;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                D[i][0] -= invX[i][j];
+                D[i][j + 1] += invX[i][j];
+            }
+        }
     }
 
-    // get an element in the matrix D with row and column indices
-    static double& getDij(double* D, int i, int j) {
-        return D[4 * i + j];
-    }
-
-public:
+    // get volume
+    double getVolume() const { return dV; }
 
     // vi: the global indices of vertices
     // X: the initial global vertex positions
     LinearTetrahedralElement(int vi[4], const vec3* X) {
         for (int i = 0; i < 4; i++)
             this->vi[i] = vi[i];
-        calcXV(X);
+        if (X != nullptr) calcDV(X);
     }
-    LinearTetrahedralElement(std::initializer_list<int> vi, const vec3 *X) {
+    LinearTetrahedralElement(std::initializer_list<int> vi, const vec3* X) {
         for (int i = 0; i < 4; i++)
             this->vi[i] = vi.begin()[i];
-        calcXV(X);
+        if (X != nullptr) calcDV(X);
     }
     LinearTetrahedralElement() { }
 
@@ -262,24 +303,238 @@ public:
     // get vertice indices
     const int* getVi() const { return &vi[0]; }
 
-    // evaluate the gradient (3x4)
-    void evalD(const vec3* X, double* D, vec3 t) const {
-        for (int i = 0; i < 3 * 4; i++) D[i] = 0.0;
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                getDij(D, i, 0) -= invX[i][j];
-                getDij(D, i, j + 1) += invX[i][j];
+    // evaluate the stiffness matrix (12x12)
+    void evalK(const vec3* X, const double* C, double* K) const {
+        double SD[6 * 3 * 4];
+        getLinearizedStrainGradient(4, &D[0][0], SD);
+        getElementStiffnessMatrix(4, dV, SD, C, K);
+    }
+
+};
+
+
+
+struct QuadraticTetrahedralElement: SolidElement {
+private:
+    const static vec3 params[11];
+    const static double weights[11];
+    const static double W[11][3][10];
+
+    // 10 vertices
+    // 0, 1, 2, 3, 01, 02, 03, 12, 13, 23
+    int vi[10];
+
+    // precomputed D, ∂∇u/∂u
+    double D[11][3][10];
+    // volume of the element
+    double dV[11];
+
+public:
+
+    // calculate D and dV
+    void calcDV(const vec3* X) {
+        for (int _ = 0; _ < 11; _++) {
+            vec3 dX[3];
+            for (int i = 0; i < 3; i++) {
+                dX[i] = vec3(0);
+                for (int j = 0; j < 10; j++)
+                    dX[i] += W[_][i][j] * X[vi[j]];
+            }
+            mat3 X3 = transpose(mat3(
+                dX[0], dX[1], dX[2]
+            ));
+            dV[_] = abs(determinant(X3)) / 6.0;
+            mat3 invX = inverse(X3);
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 10; j++) {
+                    double s = 0.0;
+                    for (int k = 0; k < 3; k++)
+                        s += invX[i][k] * W[_][k][j];
+                    D[_][i][j] = s;
+                }
             }
         }
     }
 
-    // evaluate the stiffness matrix (12x12)
-    void evalK(const vec3* X, const double* C, double* K) const {
-        double D[12], SD[72];
-        this->evalD(&X[0], D, vec3(0.25));
-        this->getLinearizedStrainGradient(4, D, SD);
-        this->getElementStiffnessMatrix(4, dV, SD, C, K);
+    // get volume
+    double getVolume() const {
+        double V = 0.0;
+        for (int i = 0; i < 11; i++)
+            V += weights[i] * dV[i];
+        return V;
     }
 
+    // vi: the global indices of vertices
+    // 0, 1, 2, 3, 01, 02, 03, 12, 13, 23
+    // X: the initial global vertex positions
+    QuadraticTetrahedralElement(int vi[10], const vec3* X) {
+        for (int i = 0; i < 10; i++)
+            this->vi[i] = vi[i];
+        if (X != nullptr) calcDV(X);
+    }
+    // vi: the global indices of vertices
+    // 0, 1, 2, 3, 01, 02, 03, 12, 13, 23
+    // X: the initial global vertex positions
+    QuadraticTetrahedralElement(std::initializer_list<int> vi, const vec3* X) {
+        for (int i = 0; i < 10; i++)
+            this->vi[i] = vi.begin()[i];
+        if (X != nullptr) calcDV(X);
+    }
+    QuadraticTetrahedralElement() { }
+
+    // get the number of vertices
+    int getN() const { return 10; }
+
+    // get vertice indices
+    const int* getVi() const { return &vi[0]; }
+
+    // evaluate the stiffness matrix (30x30)
+    void evalK(const vec3* X, const double* C, double* K) const {
+        double SD[6 * 3 * 10];
+        double Kt[9 * 10 * 10];
+        for (int i = 0; i < 900; i++) K[i] = 0.0;
+        for (int _ = 0; _ < 11; _++) {
+            getLinearizedStrainGradient(10, &D[_][0][0], SD);
+            getElementStiffnessMatrix(10, dV[_], SD, C, Kt);
+            for (int i = 0; i < 900; i++)
+                K[i] += weights[_] * Kt[i];
+        }
+    }
+
+};
+
+const vec3 QuadraticTetrahedralElement::params[11] = {
+    vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1),
+    vec3(0.5, 0, 0), vec3(0.5, 0.5, 0), vec3(0, 0.5, 0), vec3(0, 0, 0.5),
+    vec3(0.5, 0, 0.5), vec3(0, 0.5, 0.5), vec3(0.25, 0.25, 0.25)
+};
+const double QuadraticTetrahedralElement::weights[11] = {
+    0.016666666666666666,0.016666666666666666,0.016666666666666666,0.016666666666666666,
+    0.06666666666666667,0.06666666666666667,0.06666666666666667,0.06666666666666667,
+    0.06666666666666667,0.06666666666666667,0.5333333333333333
+};
+const double QuadraticTetrahedralElement::W[11][3][10] = {
+    {{-3,-1,0,0,4,0,0,0,0,0}, {-3,0,-1,0,0,4,0,0,0,0}, {-3,0,0,-1,0,0,4,0,0,0}},
+    {{1,3,0,0,-4,0,0,0,0,0}, {1,0,-1,0,-4,0,0,4,0,0}, {1,0,0,-1,-4,0,0,0,4,0}},
+    {{1,-1,0,0,0,-4,0,4,0,0}, {1,0,3,0,0,-4,0,0,0,0}, {1,0,0,-1,0,-4,0,0,0,4}},
+    {{1,-1,0,0,0,0,-4,0,4,0}, {1,0,-1,0,0,0,-4,0,0,4}, {1,0,0,3,0,0,-4,0,0,0}},
+    {{-1,1,0,0,0,0,0,0,0,0}, {-1,0,-1,0,-2,2,0,2,0,0}, {-1,0,0,-1,-2,0,2,0,2,0}},
+    {{1,1,0,0,-2,-2,0,2,0,0}, {1,0,1,0,-2,-2,0,2,0,0}, {1,0,0,-1,-2,-2,0,0,2,2}},
+    {{-1,-1,0,0,2,-2,0,2,0,0}, {-1,0,1,0,0,0,0,0,0,0}, {-1,0,0,-1,0,-2,2,0,0,2}},
+    {{-1,-1,0,0,2,0,-2,0,2,0}, {-1,0,-1,0,0,2,-2,0,0,2}, {-1,0,0,1,0,0,0,0,0,0}},
+    {{1,1,0,0,-2,0,-2,0,2,0}, {1,0,-1,0,-2,0,-2,2,0,2}, {1,0,0,1,-2,0,-2,0,2,0}},
+    {{1,-1,0,0,0,-2,-2,2,2,0}, {1,0,1,0,0,-2,-2,0,0,2}, {1,0,0,1,0,-2,-2,0,0,2}},
+    {{0,0,0,0,0,-1,-1,1,1,0}, {0,0,0,0,-1,0,-1,1,0,1}, {0,0,0,0,-1,-1,0,0,1,1}},
+};
+
+
+
+struct LinearBrickElement: SolidElement {
+private:
+    const static vec3 params[8];
+    const static double weights[8];
+    const static double W[8][3][8];
+
+    // 8 vertices
+    // 000, 100, 110, 010, 001, 101, 111, 011
+    int vi[8];
+
+    // precomputed D, ∂∇u/∂u
+    double D[8][3][8];
+    // volume of the element
+    double dV[8];
+
+public:
+
+    // calculate D and dV
+    void calcDV(const vec3* X) {
+        for (int _ = 0; _ < 8; _++) {
+            vec3 dX[3];
+            for (int i = 0; i < 3; i++) {
+                dX[i] = vec3(0);
+                for (int j = 0; j < 8; j++)
+                    dX[i] += W[_][i][j] * X[vi[j]];
+            }
+            mat3 X3 = transpose(mat3(
+                dX[0], dX[1], dX[2]
+            ));
+            dV[_] = abs(determinant(X3)) * 8.0;
+            mat3 invX = inverse(X3);
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 8; j++) {
+                    double s = 0.0;
+                    for (int k = 0; k < 3; k++)
+                        s += invX[i][k] * W[_][k][j];
+                    D[_][i][j] = s;
+                }
+            }
+        }
+    }
+
+    // get volume
+    double getVolume() const {
+        double V = 0.0;
+        for (int i = 0; i < 8; i++)
+            V += weights[i] * dV[i];
+        return V;
+    }
+
+    // vi: the global indices of vertices
+    // 000, 100, 110, 010, 001, 101, 111, 011
+    // X: the initial global vertex positions
+    LinearBrickElement(int vi[8], const vec3* X) {
+        for (int i = 0; i < 8; i++)
+            this->vi[i] = vi[i];
+        if (X != nullptr) calcDV(X);
+    }
+    // vi: the global indices of vertices
+    // 000, 100, 110, 010, 001, 101, 111, 011
+    // X: the initial global vertex positions
+    LinearBrickElement(std::initializer_list<int> vi, const vec3* X) {
+        for (int i = 0; i < 8; i++)
+            this->vi[i] = vi.begin()[i];
+        if (X != nullptr) calcDV(X);
+    }
+    LinearBrickElement() { }
+
+    // get the number of vertices
+    int getN() const { return 8; }
+
+    // get vertice indices
+    const int* getVi() const { return &vi[0]; }
+
+    // evaluate the stiffness matrix (24x24)
+    void evalK(const vec3* X, const double* C, double* K) const {
+        double SD[6 * 3 * 8];
+        double Kt[9 * 8 * 8];
+        for (int i = 0; i < 576; i++) K[i] = 0.0;
+        for (int _ = 0; _ < 8; _++) {
+            getLinearizedStrainGradient(8, &D[_][0][0], SD);
+            getElementStiffnessMatrix(8, dV[_], SD, C, Kt);
+            for (int i = 0; i < 576; i++)
+                K[i] += weights[_] * Kt[i];
+        }
+    }
+
+};
+
+#define C 0.5773502691896257
+const vec3 LinearBrickElement::params[8] = {
+    vec3(-C, -C, -C), vec3(C, -C, -C), vec3(C, C, -C), vec3(-C, C, -C),
+    vec3(-C, -C, C), vec3(C, -C, C), vec3(C, C, C), vec3(-C, C, C)
+};
+#undef C
+const double LinearBrickElement::weights[8] = {
+    0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125
+};
+const double LinearBrickElement::W[8][3][8] = {
+    {{-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.022329099369260225}, {-0.3110042339640731,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.08333333333333333,-0.022329099369260225,0.022329099369260225,0.08333333333333333}, {-0.3110042339640731,-0.08333333333333333,-0.022329099369260225,-0.08333333333333333,0.3110042339640731,0.08333333333333333,0.022329099369260225,0.08333333333333333}},
+    {{-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.022329099369260225}, {-0.08333333333333333,-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.022329099369260225,-0.08333333333333333,0.08333333333333333,0.022329099369260225}, {-0.08333333333333333,-0.3110042339640731,-0.08333333333333333,-0.022329099369260225,0.08333333333333333,0.3110042339640731,0.08333333333333333,0.022329099369260225}},
+    {{-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731,-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333}, {-0.08333333333333333,-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.022329099369260225,-0.08333333333333333,0.08333333333333333,0.022329099369260225}, {-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731,0.08333333333333333}},
+    {{-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731,-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333}, {-0.3110042339640731,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.08333333333333333,-0.022329099369260225,0.022329099369260225,0.08333333333333333}, {-0.08333333333333333,-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731}},
+    {{-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.022329099369260225,-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.08333333333333333}, {-0.08333333333333333,-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.08333333333333333,0.3110042339640731}, {-0.3110042339640731,-0.08333333333333333,-0.022329099369260225,-0.08333333333333333,0.3110042339640731,0.08333333333333333,0.022329099369260225,0.08333333333333333}},
+    {{-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.022329099369260225,-0.3110042339640731,0.3110042339640731,0.08333333333333333,-0.08333333333333333}, {-0.022329099369260225,-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.3110042339640731,0.08333333333333333}, {-0.08333333333333333,-0.3110042339640731,-0.08333333333333333,-0.022329099369260225,0.08333333333333333,0.3110042339640731,0.08333333333333333,0.022329099369260225}},
+    {{-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731}, {-0.022329099369260225,-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.3110042339640731,0.08333333333333333}, {-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731,0.08333333333333333}},
+    {{-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731}, {-0.08333333333333333,-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.08333333333333333,0.3110042339640731}, {-0.08333333333333333,-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731}},
 };
 

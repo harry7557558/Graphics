@@ -161,7 +161,7 @@ https://help.febio.org/FEBio/FEBio_tm_2_7/FEBio_tm_2-7-Subsection-4.1.4.html
 
  - Parameters $t_0=1-t_1-t_2-t_3$, $t_1$, $t_2$, $t_3$
 
- - $x=[t_0(2t_0-1)\ \ t_1(2t_1-1)\ \ t_2(2t_2-1)\ \ t_3(2t_3-1)\ \ 4t_0t_1\ \ 4t_0t_2\ \ 4t_0t_3\ \ 4t_1t_2\ \ 4t_2t_3\ \ 4t_1t_3][x_{0}\ \ x_{1}\ \ x_{2}\ \ x_{3}\ \ x_{01}\ \ x_{02}\ \ x_{03}\ \ x_{12}\ \ x_{23}\ \ x_{13}]^T = t^TX$
+ - $x=[t_0(2t_0-1)\ \ t_1(2t_1-1)\ \ t_2(2t_2-1)\ \ t_3(2t_3-1)\ \ 4t_0t_1\ \ 4t_0t_2\ \ 4t_0t_3\ \ 4t_1t_2\ \ 4t_1t_3\ \ 4t_2t_3][x_{0}\ \ x_{1}\ \ x_{2}\ \ x_{3}\ \ x_{01}\ \ x_{02}\ \ x_{03}\ \ x_{12}\ \ x_{13}\ \ x_{23}]^T = t^TX$
 
  - For the three-vector matrix in calculating $\nabla u$: take the derivative to $t_1,t_2,t_3$.
 
@@ -187,7 +187,7 @@ from sympy import *
 t1, t2, t3 = symbols('t1 t2 t3')
 t0 = 1 - (t1+t2+t3)
 T = [t0*(2*t0-1), t1*(2*t1-1), t2*(2*t2-1), t3*(2*t3-1),
-     4*t0*t1, 4*t0*t2, 4*t0*t3, 4*t1*t2, 4*t2*t3, 4*t1*t3]
+     4*t0*t1, 4*t0*t2, 4*t0*t3, 4*t1*t2, 4*t1*t3, 4*t2*t3]
 W = []
 for t in [t1, t2, t3]:
     W.append([diff(ti, t) for ti in T])
@@ -219,16 +219,16 @@ for t1, t2, t3, w in GL:
 ```cpp
 {0.016666666666666666,0.016666666666666666,0.016666666666666666,0.016666666666666666,0.06666666666666667,0.06666666666666667,0.06666666666666667,0.06666666666666667,0.06666666666666667,0.06666666666666667,0.5333333333333333}
 {{-3,-1,0,0,4,0,0,0,0,0}, {-3,0,-1,0,0,4,0,0,0,0}, {-3,0,0,-1,0,0,4,0,0,0}},
-{{1,3,0,0,-4,0,0,0,0,0}, {1,0,-1,0,-4,0,0,4,0,0}, {1,0,0,-1,-4,0,0,0,0,4}},
-{{1,-1,0,0,0,-4,0,4,0,0}, {1,0,3,0,0,-4,0,0,0,0}, {1,0,0,-1,0,-4,0,0,4,0}},
-{{1,-1,0,0,0,0,-4,0,0,4}, {1,0,-1,0,0,0,-4,0,4,0}, {1,0,0,3,0,0,-4,0,0,0}},
-{{-1,1,0,0,0,0,0,0,0,0}, {-1,0,-1,0,-2,2,0,2,0,0}, {-1,0,0,-1,-2,0,2,0,0,2}},
+{{1,3,0,0,-4,0,0,0,0,0}, {1,0,-1,0,-4,0,0,4,0,0}, {1,0,0,-1,-4,0,0,0,4,0}},
+{{1,-1,0,0,0,-4,0,4,0,0}, {1,0,3,0,0,-4,0,0,0,0}, {1,0,0,-1,0,-4,0,0,0,4}},
+{{1,-1,0,0,0,0,-4,0,4,0}, {1,0,-1,0,0,0,-4,0,0,4}, {1,0,0,3,0,0,-4,0,0,0}},
+{{-1,1,0,0,0,0,0,0,0,0}, {-1,0,-1,0,-2,2,0,2,0,0}, {-1,0,0,-1,-2,0,2,0,2,0}},
 {{1,1,0,0,-2,-2,0,2,0,0}, {1,0,1,0,-2,-2,0,2,0,0}, {1,0,0,-1,-2,-2,0,0,2,2}},
-{{-1,-1,0,0,2,-2,0,2,0,0}, {-1,0,1,0,0,0,0,0,0,0}, {-1,0,0,-1,0,-2,2,0,2,0}},
-{{-1,-1,0,0,2,0,-2,0,0,2}, {-1,0,-1,0,0,2,-2,0,2,0}, {-1,0,0,1,0,0,0,0,0,0}},
-{{1,1,0,0,-2,0,-2,0,0,2}, {1,0,-1,0,-2,0,-2,2,2,0}, {1,0,0,1,-2,0,-2,0,0,2}},
-{{1,-1,0,0,0,-2,-2,2,0,2}, {1,0,1,0,0,-2,-2,0,2,0}, {1,0,0,1,0,-2,-2,0,2,0}},
-{{0,0,0,0,0,-1,-1,1,0,1}, {0,0,0,0,-1,0,-1,1,1,0}, {0,0,0,0,-1,-1,0,0,1,1}},
+{{-1,-1,0,0,2,-2,0,2,0,0}, {-1,0,1,0,0,0,0,0,0,0}, {-1,0,0,-1,0,-2,2,0,0,2}},
+{{-1,-1,0,0,2,0,-2,0,2,0}, {-1,0,-1,0,0,2,-2,0,0,2}, {-1,0,0,1,0,0,0,0,0,0}},
+{{1,1,0,0,-2,0,-2,0,2,0}, {1,0,-1,0,-2,0,-2,2,0,2}, {1,0,0,1,-2,0,-2,0,2,0}},
+{{1,-1,0,0,0,-2,-2,2,2,0}, {1,0,1,0,0,-2,-2,0,0,2}, {1,0,0,1,0,-2,-2,0,0,2}},
+{{0,0,0,0,0,-1,-1,1,1,0}, {0,0,0,0,-1,0,-1,1,0,1}, {0,0,0,0,-1,-1,0,0,1,1}},
 ```
 
 
@@ -239,6 +239,8 @@ https://help.febio.org/FEBio/FEBio_tm_2_7/FEBio_tm_2-7-Subsection-4.1.1.html
  - $[x_{000},x_{100},x_{110},x_{010},x_{001},x_{101},x_{111},x_{011}]^T$
 
  - Parameters: $r,s,t$, from $-1$ to $1$, $x_{\frac{1+r}{2},\frac{1+s}{2},\frac{1+t}{2}}$
+
+ - Volume: $\dfrac{\partial X}{\partial uvw}\dfrac{\partial uvw}{\partial xyz}=8\cdot\dfrac{\partial X}{\partial uvw}$
 
 ```py
 from sympy import *
@@ -287,6 +289,56 @@ Won't include the program output here because it's pretty long.
 The last slide of `[lt2]`.
 
 https://www.fidelisfea.com/post/what-are-shape-functions-in-fea-and-how-are-they-derived
+
+
+# Element force to joint force
+
+Linear triangle: $F/3$
+ - Splitting a rectangle into two triangles gives uneven force distribution on vertices?!
+   - A "good" mesh matters in FEM?
+
+Linear tetrahedron: $F/4$
+
+Quadratic triangle (assume linear initially)
+ - Each vertex node is $(F/4)/3=F/12$
+ - Each edge node is $F/12\times3=F/4$
+ - Check: $F/12\times3+F/4\times3=F$
+
+Quadratic tetrahedron (assume linear initially)
+ - Each vertex node is $(F/8)/4=F/32$
+ - After cutting four "vertices", the remaining octahedron has a force of $F/2$, distributed equally on $6$ vertices ($F/12$)
+ - Each edge node: $F/32\times2+F/12=7F/48$
+ - Check: $1/32\times4+7/48\times6=1$
+
+Linear quadrilateral
+ - Force isn't distributed equally
+ - CCW vertices $x_0,x_1,x_2,x_3$
+ - Bilinear interpolation, split edges in the middle, split the patch into $4$ faces
+ - Estimate the area of each patch in the middle: $||x_u'\times x_v'||$
+   - Middle might not be the best location? Too lazy to do an analysis using series expansion.
+   - Intuitively, the cross product isn't zero for non-colinear $x$ and $u,v\notin\{0,1\}$
+ - Weight forces by areas
+
+```py
+from sympy import *
+
+u, v = symbols('u v')
+T = [(1-u)*(1-v), u*(1-v), (1-u)*v, u*v]
+assert sum(T).equals(1)
+
+Tu = [diff(t, u) for t in T]
+Tv = [diff(t, v) for t in T]
+
+uv = [(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)]
+cu, cv = [], []
+for u, v in uv:
+    tu = [float(t.subs({'u': u, 'v': v})) for t in Tu]
+    tv = [float(t.subs({'u': u, 'v': v})) for t in Tv]
+    cu.append('{'+','.join(["{:.12g}".format(_) for _ in tu])+'}')
+    cv.append('{'+','.join(["{:.12g}".format(_) for _ in tv])+'}')
+print('{'+', '.join(cu)+'},')
+print('{'+', '.join(cv)+'},')
+```
 
 
 # Tetrahedral mesh generation

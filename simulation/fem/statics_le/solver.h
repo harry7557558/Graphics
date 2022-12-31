@@ -1,5 +1,8 @@
 // solve the FEM problem
 
+#include <vector>
+#include <unordered_map>
+
 #include "elements.h"
 #include "sparse.h"
 
@@ -37,7 +40,7 @@ void calculateStressStrainMatrix(double E, double nu, double* C) {
 }
 
 
-// solve a structure
+// solve a discretized structure
 // X: a list of vertices
 // SE: a list of elements
 // F: a list of forces on vertices
@@ -70,7 +73,9 @@ std::vector<vec3> solveStructure(
     double K[9 * MAX_SOLID_ELEMENT_N * MAX_SOLID_ELEMENT_N];
     LilMatrix lil(3 * Ns);
     mat3* invDiag = new mat3[Ns];
+    double* diag = new double[3 * Ns];
     for (int i = 0; i < Ns; i++) invDiag[i] = mat3(0);
+    for (int i = 0; i < 3 * Ns; i++) diag[i] = 0.0;
     for (const SolidElement* c : SE) {
         int n = c->getN();
         const int* vi = c->getVi();
@@ -85,7 +90,11 @@ std::vector<vec3> solveStructure(
                     lil.addValue(3 * i + u, 3 * j + v, k);
                     m[u][v] = k;
                 }
-                if (i == j) invDiag[i] += m;
+                if (i == j) {
+                    invDiag[i] += m;
+                    for (int t = 0; t < 3; t++)
+                        diag[3 * i + t] += m[t][t];
+                }
             }
         }
     }
@@ -114,22 +123,35 @@ std::vector<vec3> solveStructure(
     for (int i = 0; i < Ns; i++)
         tol += dot(f[i], f[i]);
     tol = 1e-10 * sqrt(tol);
-#if 0  // w/o preconditioning
+#define PRECOND 3  // 1: diag; 2: cholesky; 3: ssor
+#if !PRECOND
     double time2 = time1;
     int niters = conjugateGradient(
         3 * Ns, linopr, (double*)f, (double*)u, 10000, tol);
-#else  // w/o preconditioning
-#if 0  // preconditioner
+#else  // !PRECOND
+#if PRECOND == 1
+    // block diagonal preconditioning
     auto precond = [&](const double* src, double* res) {
         for (int i = 0; i < Ns; i++)
             ((vec3*)res)[i] = invDiag[i] * ((vec3*)src)[i];
     };
-#else  // preconditioner
-    LilMatrix iclil = lil.incompleteCholesky1();
+#elif PRECOND == 2
+    // incomplete Cholesky decomposition
+    LilMatrix iclil = lil.incompleteCholesky3();
     CsrMatrix precondL(iclil), precondU(iclil.transpose());
     auto precond = [&](const double* src, double* res) {
         memcpy(res, src, sizeof(double) * 3 * Ns);
         precondL.lowerSolve(res);
+        precondU.upperSolve(res);
+    };
+#elif PRECOND == 3
+    // SSoR preconditioning
+    CsrMatrix precondL(lil, CsrMatrix::FROM_LIL_LOWER);
+    CsrMatrix precondU(lil, CsrMatrix::FROM_LIL_UPPER);
+    auto precond = [&](const double* src, double* res) {
+        memcpy(res, src, sizeof(double) * 3 * Ns);
+        precondL.lowerSolve(res);
+        for (int i = 0; i < 3 * Ns; i++) res[i] *= diag[i];
         precondU.upperSolve(res);
     };
 #endif  // preconditioner
@@ -137,7 +159,7 @@ std::vector<vec3> solveStructure(
     printf("Linear system preconditioned in %.2lf secs.\n", time2 - time1);
     int niters = conjugateGradientPreconditioned(
         3 * Ns, linopr, precond, (double*)f, (double*)u, 10000, tol);
-#endif  // w/o preconditioning
+#endif  // !PRECOND
     printf("%d iterations.\n", niters);
     double time3 = getTimePast();
     printf("Linear system solved in %.2lf secs. (includes preconditioning)\n", time3 - time1);
@@ -148,6 +170,167 @@ std::vector<vec3> solveStructure(
         if (Imap[i] != -1)
             U[i] = u[Imap[i]];
     delete[] Imap; delete[] f; delete[] u;
-    delete[] invDiag;
+    delete[] invDiag; delete diag;
     return U;
+}
+
+
+// solve a structure discretized into tetrahedra
+// X: list of vertex initial positions
+// E: list of elements
+// Fs: list of surface tractions
+// Fv: list of volume tractions
+// fixed: list of fixed vertices
+// C: strain to stress matrix
+// order: the order of elements, must be 1 or 2
+// returns: a list of deflections
+std::vector<vec3> solveStructureTetrahedral(
+    std::vector<vec3> X,
+    std::vector<ivec4> E,
+    std::vector<ElementForce3> Fs,
+    std::vector<ElementForce4> Fv,
+    std::vector<int> fixed,
+    const double* C,
+    int order
+) {
+    assert(order == 1 || order == 2);
+
+    // linear tetrahedral
+    if (order == 1) {
+        std::vector<const SolidElement*> SE;
+        for (ivec4 e : E)
+            SE.push_back(new LinearTetrahedralElement((int*)&e, &X[0]));
+        std::vector<vec3> F(X.size(), vec3(0));
+        for (ElementForce3 ef : Fs) {
+            vec3 f = ef.F / 3.0;
+            F[ef.x] += f, F[ef.y] += f, F[ef.z] += f;
+        }
+        for (ElementForce4 ef : Fv) {
+            vec3 f = ef.F / 4.0;
+            F[ef.x] += f, F[ef.y] += f, F[ef.z] += f, F[ef.w] += f;
+        }
+        std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
+        for (const SolidElement* se : SE) delete se;
+        return U;
+    }
+
+    // quadratic tetrahedral
+
+    // edges
+    int N0 = (int)X.size();
+    printf("%d vertices.\n", N0);
+    std::unordered_map<uint64_t, int> edges;  // ivec2 -> index
+    auto e2e = [&](int a, int b) -> uint64_t {
+        ivec2 e2(max(a, b), min(a, b));
+        return *((uint64_t*)&e2);
+    };
+    std::vector<bool> isFixed(X.size(), false);
+    for (int i : fixed) isFixed[i] = true;
+    auto addEdge = [&](int a, int b) {
+        assert(a != b);
+        uint64_t e = e2e(a, b);
+        auto i = edges.find(e);
+        if (i == edges.end()) {
+            edges[e] = X.size();
+            if (isFixed[a] && isFixed[b])
+                fixed.push_back(X.size());
+            X.push_back(0.5 * (X[a] + X[b]));
+        }
+    };
+    for (ivec4 e : E) {
+        addEdge(e.x, e.y); addEdge(e.x, e.z); addEdge(e.x, e.w);
+        addEdge(e.y, e.z); addEdge(e.y, e.w); addEdge(e.z, e.w);
+    }
+    printf("%d edge nodes for quadratic elements.\n", edges.size());
+    // elements
+    std::vector<const SolidElement*> SE;
+    for (ivec4 e : E) {
+        SE.push_back(new QuadraticTetrahedralElement({
+            e.x, e.y, e.z, e.w,
+            edges[e2e(e.x, e.y)], edges[e2e(e.x, e.z)], edges[e2e(e.x, e.w)],
+            edges[e2e(e.y, e.z)], edges[e2e(e.y, e.w)], edges[e2e(e.z, e.w)]
+            }, &X[0]));
+    }
+    // forces
+    std::vector<vec3> F(X.size(), vec3(0));
+    auto addEForce = [&](int a, int b, vec3 f) {
+        int i = edges[e2e(a, b)];
+        assert(i >= N0 && i < (int)F.size());
+        F[i] += f;
+    };
+    for (ElementForce3 ef : Fs) {
+        vec3 fv = ef.F / 12.0, fe = ef.F / 4.0;
+        F[ef.x] += fv, F[ef.y] += fv, F[ef.z] += fv;
+        addEForce(ef.x, ef.y, fe), addEForce(ef.x, ef.z, fe), addEForce(ef.y, ef.z, fe);
+    }
+    for (ElementForce4 ef : Fv) {
+        vec3 fv = ef.F / 32.0, fe = ef.F * (7.0 / 48.0);
+        int* e = (int*)&ef;
+        for (int i = 0; i < 4; i++) {
+            F[e[i]] += fv;
+            for (int j = 0; j < i; j++)
+                addEForce(e[i], e[j], fe);
+        }
+    }
+    // solve
+    std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
+    U.resize(N0);
+    for (const SolidElement* se : SE) delete se;
+    return U;
+}
+
+
+// solve a structure discretized into bricks
+// X: list of vertex initial positions
+// E: list of elements
+// Fs: list of surface tractions
+// Fv: list of volume tractions
+// fixed: list of fixed vertices
+// C: strain to stress matrix
+// order: the order of elements, must be 1 or 2
+// returns: a list of deflections
+std::vector<vec3> solveStructureBrick(
+    std::vector<vec3> X,
+    std::vector<ivec8> E,
+    std::vector<ElementForce4> Fs,
+    std::vector<ElementForce8> Fv,
+    std::vector<int> fixed,
+    const double* C,
+    int order
+) {
+    assert(order == 1 || order == 2);
+
+    // linear brick
+    if (order == 1) {
+        std::vector<const SolidElement*> SE;
+        for (ivec8 e : E)
+            SE.push_back(new LinearBrickElement((int*)&e, &X[0]));
+        std::vector<vec3> F(X.size(), vec3(0));
+        for (ElementForce4 ef : Fs) {
+            // not mathematically analyzed but hope this works
+            vec3 x[4] = { X[ef.x], X[ef.y], X[ef.z], X[ef.w] };
+            vec3 c = 0.25 * (x[0] + x[1] + x[2] + x[3]);
+            const static double WU[4][4] = {{-0.75,0.75,-0.25,0.25}, {-0.75,0.75,-0.25,0.25}, {-0.25,0.25,-0.75,0.75}, {-0.25,0.25,-0.75,0.75}};
+            const static double WV[4][4] = {{-0.75,-0.25,0.75,0.25}, {-0.25,-0.75,0.25,0.75}, {-0.25,-0.75,0.25,0.75}, {-0.75,-0.25,0.75,0.25}};
+            double dA[4], totA = 0.0;
+            for (int i = 0; i < 4; i++) {
+                vec3 dxdu(0), dxdv(0);
+                for (int j = 0; j < 4; j++)
+                    dxdu += WU[i][j] * x[j], dxdv += WV[i][j] * x[j];
+                dA[i] = length(cross(dxdu, dxdv));
+                totA += dA[i];
+            }
+            for (int i = 0; i < 4; i++)
+                F[((int*)&ef)[i]] += ef.F * dA[i] / totA;
+        }
+        for (ElementForce8 ef : Fv) {
+            assert(false); // not implemented
+        }
+        std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
+        for (const SolidElement* se : SE) delete se;
+        return U;
+    }
+
+    assert(false);
+
 }

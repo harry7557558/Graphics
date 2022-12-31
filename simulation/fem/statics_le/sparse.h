@@ -155,14 +155,25 @@ class CsrMatrix {
     std::vector<double> vals;
 
 public:
+    // for convertion from LiLMatrix
+    enum FromLilMode {
+        FROM_LIL_NONZERO,  // only nonzero elements
+        FROM_LIL_FORCE_DIAG,  // must have diagonal, including zeros
+        FROM_LIL_LOWER,  // lower triangular with diagonal
+        FROM_LIL_UPPER,  // upper triangular with diagonal
+    };
 
     CsrMatrix(): n(0) {}
-    CsrMatrix(const LilMatrix& lil) {
+    CsrMatrix(const LilMatrix& lil, FromLilMode mode = FROM_LIL_FORCE_DIAG) {
         this->n = lil.n;
         rows.push_back(0);
         for (int i = 0; i < n; i++) {
             for (std::pair<int, double> indice : lil.mat[i]) {
-                if (indice.second != 0.0 || indice.first == i) {
+                if (
+                    (indice.second != 0.0 || (mode != FROM_LIL_NONZERO && indice.first == i))
+                    && !(mode == FROM_LIL_LOWER && indice.first > i)
+                    && !(mode == FROM_LIL_UPPER && indice.first < i)
+                 ) {
                     cols.push_back(indice.first);
                     vals.push_back(indice.second);
                 }
