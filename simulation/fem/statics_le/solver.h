@@ -1,5 +1,7 @@
 // solve the FEM problem
 
+#pragma once
+
 #include <vector>
 #include <unordered_map>
 
@@ -40,30 +42,108 @@ void calculateStressStrainMatrix(double E, double nu, double* C) {
 }
 
 
-// solve a discretized structure
-// X: a list of vertices
-// SE: a list of elements
-// F: a list of forces on vertices
-// fixed: indices of fixed vertices
-// C: 6x6 matrix transforming strain to stress
-// returns: a list of deflections
-std::vector<vec3> solveStructure(
-    std::vector<vec3> X,
-    std::vector<const SolidElement*> SE,
-    std::vector<vec3> F,
-    std::vector<int> fixed,
-    const double* C
-) {
-    assert(X.size() == F.size());
-    int N = (int)X.size(), M = (int)SE.size();
-    printf("%d vertices, %d elements.\n", N, M);
+struct DiscretizedStructure {
+    int N;  // number of vertices
+    int M;  // number of elements
+    std::vector<vec3> X;  // vertices, N
+    std::vector<const SolidElement*> SE;  // elements, M
+    std::vector<vec3> F;  // forces at vertices, N
+    std::vector<int> fixed;  // indices of fixed vertices
+    std::vector<bool> isFixed;  // fixed vertex? N
+    std::vector<vec3> U;  // vertice deflections, N
+    std::vector<mat3> Sigma;  // stress tensors, N
+
+    void startSolver() {
+        assert(X.size() == F.size());
+        N = (int)X.size();
+        M = (int)SE.size();
+        printf("%d vertices, %d elements.\n", N, M);
+        isFixed.resize(N, false);
+        for (int i : fixed) {
+            assert(i >= 0 && i < N);
+            isFixed[i] = true;
+        }
+        U.resize(N, vec3(0));
+        Sigma.resize(N, mat3(0));
+    }
+
+    void solveDeflection(const double* C);
+
+    // do this after `solveDeflection()`
+    void calcForceStress(const double* C);
+
+    // need to do this manually
+    void destroyElements() {
+        for (const SolidElement* se : SE)
+            delete se;
+        SE.clear();
+    }
+
+    // scalars that may be visualized
+    std::vector<float> getSigmaComp(int i, int j) const {
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++) res[k] = (float)Sigma[k][i][j];
+        return res;
+    }
+    std::vector<float> getSigmaX() const { return getSigmaComp(0, 0); }  // stress x
+    std::vector<float> getSigmaY() const { return getSigmaComp(1, 1); }  // stress y
+    std::vector<float> getSigmaZ() const { return getSigmaComp(2, 2); }  // stress z
+    std::vector<float> getTauYZ() const { return getSigmaComp(1, 2); }  // shear yz
+    std::vector<float> getTauXZ() const { return getSigmaComp(0, 2); }  // shear xz
+    std::vector<float> getTauXY() const { return getSigmaComp(0, 1); }  // shear xy
+    std::vector<float> getSigmaVonMises() const {  // von mises stress
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++) {
+            mat3 s = Sigma[k];
+            vec3 p(s[1][1] - s[2][2], s[0][0] - s[2][2], s[0][0] - s[1][1]);
+            vec3 q(s[1][2], s[0][2], s[0][1]);
+            res[k] = (float)sqrt(0.5 * dot(p, p) + 3.0 * dot(q, q));
+        }
+        return res;
+    }
+    std::vector<float> getSigmaT() const {  // tensile stress
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++) {
+            vec3 eigs = eigvalsh(Sigma[k]);
+            res[k] = (float)max(max(eigs.x, eigs.y), max(eigs.z, 0.0));
+        }
+        return res;
+    }
+    std::vector<float> getSigmaC() const {  // compressive stress
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++) {
+            vec3 eigs = eigvalsh(Sigma[k]);
+            res[k] = (float)min(min(eigs.x, eigs.y), min(eigs.z, 0.0));
+        }
+        return res;
+    }
+    std::vector<float> getVecComp(const std::vector<vec3>& v, int i) const {
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++)
+            res[k] = float(((double*)&v[k])[i]);
+        return res;
+    }
+    std::vector<float> getUX() const { return getVecComp(U, 0); }  // deflection x
+    std::vector<float> getUY() const { return getVecComp(U, 1); }  // deflection y
+    std::vector<float> getUZ() const { return getVecComp(U, 2); }  // deflection z
+    std::vector<float> getUM() const {  // deflection magnitude
+        std::vector<float> res(N);
+        for (int k = 0; k < N; k++) res[k] = length(U[k]);
+        return res;
+    }
+};
+
+
+// find the deflection
+void DiscretizedStructure::solveDeflection(const double* C) {
     double time0 = getTimePast();
+    startSolver();
 
     // map vertex indices to indices in the linear system
     // (don't consider fixed vertices)
     int* Imap = new int[N];
     for (int i = 0; i < N; i++) Imap[i] = 0;
-    for (int i : fixed) assert(i >= 0 && i < N), Imap[i] = -1;
+    for (int i : fixed) Imap[i] = -1;
     int Ns = 0;
     for (int i = 0; i < N; i++) {
         if (Imap[i] != -1) Imap[i] = Ns++;
@@ -76,8 +156,10 @@ std::vector<vec3> solveStructure(
     double* diag = new double[3 * Ns];
     for (int i = 0; i < Ns; i++) invDiag[i] = mat3(0);
     for (int i = 0; i < 3 * Ns; i++) diag[i] = 0.0;
+    int maxPossibleRank = 0;
     for (const SolidElement* c : SE) {
         int n = c->getN();
+        maxPossibleRank += n;
         const int* vi = c->getVi();
         c->evalK(&X[0], C, K);
         for (int i0 = 0; i0 < n; i0++) {
@@ -98,6 +180,7 @@ std::vector<vec3> solveStructure(
             }
         }
     }
+    assert(maxPossibleRank >= Ns);
     for (int i = 0; i < Ns; i++)
         invDiag[i] = inverse(invDiag[i]);
 
@@ -165,13 +248,10 @@ std::vector<vec3> solveStructure(
     printf("Linear system solved in %.2lf secs. (includes preconditioning)\n", time3 - time1);
 
     // get the result
-    std::vector<vec3> U(N, vec3(0));
     for (int i = 0; i < N; i++)
-        if (Imap[i] != -1)
-            U[i] = u[Imap[i]];
+        U[i] = Imap[i] == -1 ? vec3(0) : u[Imap[i]];
     delete[] Imap; delete[] f; delete[] u;
     delete[] invDiag; delete diag;
-    return U;
 }
 
 
@@ -184,99 +264,101 @@ std::vector<vec3> solveStructure(
 // C: strain to stress matrix
 // order: the order of elements, must be 1 or 2
 // returns: a list of deflections
-std::vector<vec3> solveStructureTetrahedral(
-    std::vector<vec3> X,
-    std::vector<ivec4> E,
+DiscretizedStructure solveStructureTetrahedral(
+    std::vector<vec3> X_,
+    std::vector<ivec4> E_,
     std::vector<ElementForce3> Fs,
     std::vector<ElementForce4> Fv,
-    std::vector<int> fixed,
+    std::vector<int> fixed_,
     const double* C,
     int order
 ) {
     assert(order == 1 || order == 2);
+    DiscretizedStructure structure;
+    structure.X = X_;
+    structure.F.resize(structure.X.size(), vec3(0));
+    structure.fixed = fixed_;
 
     // linear tetrahedral
     if (order == 1) {
-        std::vector<const SolidElement*> SE;
-        for (ivec4 e : E)
-            SE.push_back(new LinearTetrahedralElement((int*)&e, &X[0]));
-        std::vector<vec3> F(X.size(), vec3(0));
+        for (ivec4 e : E_)
+            structure.SE.push_back(new LinearTetrahedralElement(
+                (int*)&e, &structure.X[0]));
         for (ElementForce3 ef : Fs) {
             vec3 f = ef.F / 3.0;
-            F[ef.x] += f, F[ef.y] += f, F[ef.z] += f;
+            for (int i = 0; i < 3; i++)
+                structure.F[((int*)&ef)[i]] += f;
         }
         for (ElementForce4 ef : Fv) {
             vec3 f = ef.F / 4.0;
-            F[ef.x] += f, F[ef.y] += f, F[ef.z] += f, F[ef.w] += f;
+            for (int i = 0; i < 4; i++)
+                structure.F[((int*)&ef)[i]] += f;
         }
-        std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
-        for (const SolidElement* se : SE) delete se;
-        return U;
+        structure.solveDeflection(C);
+        return structure;
     }
 
     // quadratic tetrahedral
 
     // edges
-    int N0 = (int)X.size();
+    int N0 = (int)structure.X.size();
     printf("%d vertices.\n", N0);
     std::unordered_map<uint64_t, int> edges;  // ivec2 -> index
     auto e2e = [&](int a, int b) -> uint64_t {
         ivec2 e2(max(a, b), min(a, b));
         return *((uint64_t*)&e2);
     };
-    std::vector<bool> isFixed(X.size(), false);
-    for (int i : fixed) isFixed[i] = true;
+    std::vector<bool> isFixed(N0, false);
+    for (int i : structure.fixed) isFixed[i] = true;
     auto addEdge = [&](int a, int b) {
-        assert(a != b);
+        assert(a != b && a < N0&& b < N0);
         uint64_t e = e2e(a, b);
         auto i = edges.find(e);
         if (i == edges.end()) {
-            edges[e] = X.size();
+            edges[e] = structure.X.size();
             if (isFixed[a] && isFixed[b])
-                fixed.push_back(X.size());
-            X.push_back(0.5 * (X[a] + X[b]));
+                structure.fixed.push_back(structure.X.size());
+            structure.X.push_back(0.5 * (structure.X[a] + structure.X[b]));
         }
     };
-    for (ivec4 e : E) {
+    for (ivec4 e : E_) {
         addEdge(e.x, e.y); addEdge(e.x, e.z); addEdge(e.x, e.w);
         addEdge(e.y, e.z); addEdge(e.y, e.w); addEdge(e.z, e.w);
     }
     printf("%d edge nodes for quadratic elements.\n", edges.size());
     // elements
-    std::vector<const SolidElement*> SE;
-    for (ivec4 e : E) {
-        SE.push_back(new QuadraticTetrahedralElement({
+    for (ivec4 e : E_) {
+        structure.SE.push_back(new QuadraticTetrahedralElement({
             e.x, e.y, e.z, e.w,
             edges[e2e(e.x, e.y)], edges[e2e(e.x, e.z)], edges[e2e(e.x, e.w)],
             edges[e2e(e.y, e.z)], edges[e2e(e.y, e.w)], edges[e2e(e.z, e.w)]
-            }, &X[0]));
+            }, &structure.X[0]));
     }
     // forces
-    std::vector<vec3> F(X.size(), vec3(0));
+    structure.F.resize(structure.X.size(), vec3(0));
     auto addEForce = [&](int a, int b, vec3 f) {
         int i = edges[e2e(a, b)];
-        assert(i >= N0 && i < (int)F.size());
-        F[i] += f;
+        assert(i >= N0 && i < (int)structure.F.size());
+        structure.F[i] += f;
     };
     for (ElementForce3 ef : Fs) {
         vec3 fv = ef.F / 12.0, fe = ef.F / 4.0;
-        F[ef.x] += fv, F[ef.y] += fv, F[ef.z] += fv;
+        for (int i = 0; i < 3; i++)
+            structure.F[((int*)&ef)[i]] += fv;
         addEForce(ef.x, ef.y, fe), addEForce(ef.x, ef.z, fe), addEForce(ef.y, ef.z, fe);
     }
     for (ElementForce4 ef : Fv) {
         vec3 fv = ef.F / 32.0, fe = ef.F * (7.0 / 48.0);
         int* e = (int*)&ef;
         for (int i = 0; i < 4; i++) {
-            F[e[i]] += fv;
+            structure.F[e[i]] += fv;
             for (int j = 0; j < i; j++)
                 addEForce(e[i], e[j], fe);
         }
     }
     // solve
-    std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
-    U.resize(N0);
-    for (const SolidElement* se : SE) delete se;
-    return U;
+    structure.solveDeflection(C);
+    return structure;
 }
 
 
@@ -289,7 +371,7 @@ std::vector<vec3> solveStructureTetrahedral(
 // C: strain to stress matrix
 // order: the order of elements, must be 1 or 2
 // returns: a list of deflections
-std::vector<vec3> solveStructureBrick(
+DiscretizedStructure solveStructureBrick(
     std::vector<vec3> X,
     std::vector<ivec8> E,
     std::vector<ElementForce4> Fs,
@@ -299,19 +381,21 @@ std::vector<vec3> solveStructureBrick(
     int order
 ) {
     assert(order == 1 || order == 2);
+    DiscretizedStructure structure;
+    structure.X = X;
+    structure.F.resize(X.size(), vec3(0));
+    structure.fixed = fixed;
 
     // linear brick
     if (order == 1) {
-        std::vector<const SolidElement*> SE;
         for (ivec8 e : E)
-            SE.push_back(new LinearBrickElement((int*)&e, &X[0]));
-        std::vector<vec3> F(X.size(), vec3(0));
+            structure.SE.push_back(new LinearBrickElement((int*)&e, &X[0]));
         for (ElementForce4 ef : Fs) {
             // not mathematically analyzed but hope this works
             vec3 x[4] = { X[ef.x], X[ef.y], X[ef.z], X[ef.w] };
             vec3 c = 0.25 * (x[0] + x[1] + x[2] + x[3]);
-            const static double WU[4][4] = {{-0.75,0.75,-0.25,0.25}, {-0.75,0.75,-0.25,0.25}, {-0.25,0.25,-0.75,0.75}, {-0.25,0.25,-0.75,0.75}};
-            const static double WV[4][4] = {{-0.75,-0.25,0.75,0.25}, {-0.25,-0.75,0.25,0.75}, {-0.25,-0.75,0.25,0.75}, {-0.75,-0.25,0.75,0.25}};
+            const static double WU[4][4] = { {-0.75,0.75,0.25,-0.25}, {-0.75,0.75,0.25,-0.25}, {-0.25,0.25,0.75,-0.75}, {-0.25,0.25,0.75,-0.75} };
+            const static double WV[4][4] = { {-0.75,-0.25,0.25,0.75}, {-0.25,-0.75,0.75,0.25}, {-0.25,-0.75,0.75,0.25}, {-0.75,-0.25,0.25,0.75} };
             double dA[4], totA = 0.0;
             for (int i = 0; i < 4; i++) {
                 vec3 dxdu(0), dxdv(0);
@@ -321,16 +405,46 @@ std::vector<vec3> solveStructureBrick(
                 totA += dA[i];
             }
             for (int i = 0; i < 4; i++)
-                F[((int*)&ef)[i]] += ef.F * dA[i] / totA;
+                structure.F[((int*)&ef)[i]] += ef.F * dA[i] / totA;
         }
         for (ElementForce8 ef : Fv) {
-            assert(false); // not implemented
+            vec3 x[8] = { X[ef.a], X[ef.b], X[ef.c], X[ef.d], X[ef.e], X[ef.f], X[ef.g], X[ef.h] };
+            vec3 c = 0.125 * (x[0] + x[1] + x[2] + x[3] + x[4] + x[5] + x[6] + x[7]);
+            const static double WU[8][8] = { {-0.5625,0.5625,0.1875,-0.1875,-0.1875,0.1875,0.0625,-0.0625}, {-0.5625,0.5625,0.1875,-0.1875,-0.1875,0.1875,0.0625,-0.0625}, {-0.1875,0.1875,0.5625,-0.5625,-0.0625,0.0625,0.1875,-0.1875}, {-0.1875,0.1875,0.5625,-0.5625,-0.0625,0.0625,0.1875,-0.1875}, {-0.1875,0.1875,0.0625,-0.0625,-0.5625,0.5625,0.1875,-0.1875}, {-0.1875,0.1875,0.0625,-0.0625,-0.5625,0.5625,0.1875,-0.1875}, {-0.0625,0.0625,0.1875,-0.1875,-0.1875,0.1875,0.5625,-0.5625}, {-0.1875,0.1875,0.5625,-0.5625,-0.0625,0.0625,0.1875,-0.1875} };
+            const static double WV[8][8] = { {-0.5625,-0.1875,0.1875,0.5625,-0.1875,-0.0625,0.0625,0.1875}, {-0.1875,-0.5625,0.5625,0.1875,-0.0625,-0.1875,0.1875,0.0625}, {-0.1875,-0.5625,0.5625,0.1875,-0.0625,-0.1875,0.1875,0.0625}, {-0.5625,-0.1875,0.1875,0.5625,-0.1875,-0.0625,0.0625,0.1875}, {-0.1875,-0.0625,0.0625,0.1875,-0.5625,-0.1875,0.1875,0.5625}, {-0.0625,-0.1875,0.1875,0.0625,-0.1875,-0.5625,0.5625,0.1875}, {-0.0625,-0.1875,0.1875,0.0625,-0.1875,-0.5625,0.5625,0.1875}, {-0.5625,-0.1875,0.1875,0.5625,-0.1875,-0.0625,0.0625,0.1875} };
+            const static double WW[8][8] = { {-0.5625,-0.1875,-0.0625,-0.1875,0.5625,0.1875,0.0625,0.1875}, {-0.1875,-0.5625,-0.1875,-0.0625,0.1875,0.5625,0.1875,0.0625}, {-0.0625,-0.1875,-0.5625,-0.1875,0.0625,0.1875,0.5625,0.1875}, {-0.1875,-0.0625,-0.1875,-0.5625,0.1875,0.0625,0.1875,0.5625}, {-0.5625,-0.1875,-0.0625,-0.1875,0.5625,0.1875,0.0625,0.1875}, {-0.1875,-0.5625,-0.1875,-0.0625,0.1875,0.5625,0.1875,0.0625}, {-0.0625,-0.1875,-0.5625,-0.1875,0.0625,0.1875,0.5625,0.1875}, {-0.1875,-0.0625,-0.1875,-0.5625,0.1875,0.0625,0.1875,0.5625} };
+            double dV[8], totV = 0.0;
+            for (int i = 0; i < 8; i++) {
+                vec3 dxdu(0), dxdv(0), dxdw(0);
+                for (int j = 0; j < 8; j++)
+                    dxdu += WU[i][j] * x[j], dxdv += WV[i][j] * x[j], dxdw += WW[i][j] * x[j];
+                dV[i] = determinant(mat3(dxdu, dxdv, dxdw));
+                assert(dV[i] > 0.0);
+                totV += dV[i];
+            }
+            for (int i = 0; i < 8; i++)
+                structure.F[((int*)&ef)[i]] += ef.F * dV[i] / totV;
         }
-        std::vector<vec3> U = solveStructure(X, SE, F, fixed, C);
-        for (const SolidElement* se : SE) delete se;
-        return U;
+        structure.solveDeflection(C);
+        return structure;
     }
 
-    assert(false);
+    else {
+        assert(false);
+    }
+
+
+    return structure;
 
 }
+
+
+void DiscretizedStructure::calcForceStress(const double* C) {
+    for (int i = 0; i < N; i++) Sigma[i] = mat3(0);
+    std::vector<double> SigmaW(N, 0.0);
+    for (const SolidElement* e : SE)
+        e->addStress(&X[0], C, &U[0], &Sigma[0], &SigmaW[0]);
+    for (int i = 0; i < N; i++)
+        Sigma[i] *= (1.0 / SigmaW[i]);
+}
+

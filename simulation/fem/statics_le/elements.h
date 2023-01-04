@@ -1,8 +1,11 @@
 // FEM elements
 
+#pragma once
+
 
 #include <cmath>
 #include <initializer_list>
+#include <cassert>
 
 #undef max
 #undef min
@@ -78,8 +81,8 @@ struct vec3 {
     friend double det(vec3 a, vec3 b, vec3 c) { return dot(a, cross(b, c)); }
     friend double ndot(const vec3& u, const vec3& v) { return dot(u, v) / sqrt(u.sqr() * v.sqr()); }
     friend vec3 ncross(vec3 u, vec3 v) { return normalize(cross(u, v)); }
-    bool operator == (const vec3 &v) const { return x == v.x && y == v.y && z == v.z; }
-    bool operator != (const vec3 &v) const { return x != v.x || y != v.y || z != v.z; }
+    bool operator == (const vec3& v) const { return x == v.x && y == v.y && z == v.z; }
+    bool operator != (const vec3& v) const { return x != v.x || y != v.y || z != v.z; }
 };
 
 struct mat3 {
@@ -159,6 +162,37 @@ mat3 axis_angle(vec3 n, double a) {
 }
 
 
+vec3 eigvalsh(mat3 A) {
+    double tj[3], ti[3];
+    for (int d = 0; d < 64; d++) {
+        double err = 0.;
+        for (int i = 0; i < 3; i++) for (int j = 0; j < i; j++) {
+            err += A[i][j] * A[i][j];
+            // calculate given rotation
+            double a = A[j][j], b = A[i][i], d = A[i][j];
+            double t = 0.5 * atan2(2.0 * d, a - b);
+            double c = cos(t), s = sin(t);
+            // apply inverse rotation to left side
+            for (int k = 0; k < 3; k++) {
+                tj[k] = c * A[j][k] + s * A[i][k];
+                ti[k] = c * A[i][k] - s * A[j][k];
+            }
+            for (int k = 0; k < 3; k++)
+                A[j][k] = tj[k], A[i][k] = ti[k];
+            // apply rotation to right side
+            for (int k = 0; k < 3; k++) {
+                tj[k] = c * A[k][j] + s * A[k][i];
+                ti[k] = c * A[k][i] - s * A[k][j];
+            }
+            for (int k = 0; k < 3; k++)
+                A[k][j] = tj[k], A[k][i] = ti[k];
+        }
+        if (err < 1e-32) break;
+    }
+    return vec3(A[0][0], A[1][1], A[2][2]);
+}
+
+
 /* Applied Forces */
 
 // triangular surface: ccw outward normal
@@ -183,7 +217,8 @@ struct ElementForce8: ivec8 {
 /* FEM Elements */
 
 
-#define MAX_SOLID_ELEMENT_N 10
+#define MAX_SOLID_ELEMENT_N 20
+#define MAX_SOLID_ELEMENT_TN 48
 
 struct SolidElement {
 protected:
@@ -225,6 +260,15 @@ protected:
         }
     }
 
+    // convert 6-component stress to 3x3 stress tensor
+    static mat3 stress2tensor(const double sigma[6]) {
+        return mat3(
+            sigma[0], sigma[5], sigma[4],
+            sigma[5], sigma[1], sigma[3],
+            sigma[4], sigma[3], sigma[2]
+        );
+    }
+
 public:
 
     // get the number of vertices
@@ -232,6 +276,10 @@ public:
 
     // get vertice indices
     virtual const int* getVi() const = 0;
+
+    // get triangles for rendering
+    virtual int getNumTriangles() const = 0;
+    virtual void getTriangles(ivec3 ts[]) const = 0;
 
     // precompute D and dV
     // X: global list of vertices
@@ -246,13 +294,24 @@ public:
     // K: the 3Nx3N stiffness matrix
     virtual void evalK(const vec3* X, const double* C, double* K) const = 0;
 
+    // add the forces and stresses at joints exerted by the element
+    // X: a list of global vertex initial positions
+    // C: strain to stress matrix
+    // U: a list of global vertex deflections
+    // To calculate the stresses of the structure at joints:
+    //   - Initialize Sigma and SigmaW to zero, same length as vertex list
+    //   - Call this function for each element
+    //   - Divide Sigma by SigmaW for stresses
+    virtual void addStress(
+        const vec3* X, const double* C, const vec3* U,
+        mat3* Sigma, double* SigmaW) const = 0;
 };
 
 
 
 struct LinearTetrahedralElement: SolidElement {
 private:
-    // 4 vertices
+    // 4 vertices, positive volume
     int vi[4];
 
     // precomputed D, ∂∇u/∂u
@@ -269,7 +328,8 @@ public:
             X[vi[2]] - X[vi[0]],
             X[vi[3]] - X[vi[0]]
         ));
-        dV = abs(determinant(X3)) / 6.0;
+        dV = determinant(X3) / 6.0;
+        assert(dV > 0.0);
         mat3 invX = inverse(X3);
         for (int i = 0; i < 3 * 4; i++) (&D[0][0])[i] = 0.0;
         for (int i = 0; i < 3; i++) {
@@ -303,11 +363,48 @@ public:
     // get vertice indices
     const int* getVi() const { return &vi[0]; }
 
+    // get triangles for rendering
+    int getNumTriangles() const { return 4; }
+    void getTriangles(ivec3 ts[4]) const {
+        ts[0] = ivec3(vi[0], vi[2], vi[1]);
+        ts[1] = ivec3(vi[0], vi[1], vi[3]);
+        ts[2] = ivec3(vi[0], vi[3], vi[2]);
+        ts[3] = ivec3(vi[1], vi[2], vi[3]);
+    }
+
     // evaluate the stiffness matrix (12x12)
     void evalK(const vec3* X, const double* C, double* K) const {
         double SD[6 * 3 * 4];
         getLinearizedStrainGradient(4, &D[0][0], SD);
         getElementStiffnessMatrix(4, dV, SD, C, K);
+    }
+
+    // used to calculate stresses at joints
+    void addStress(
+        const vec3* X, const double* C, const vec3* U,
+        mat3* Sigma, double* SigmaW) const
+    {
+        vec3 SD[6][4];
+        getLinearizedStrainGradient(4, &D[0][0], (double*)&SD[0][0]);
+        // strain
+        double epsilon[6];
+        for (int i = 0; i < 6; i++) {
+            epsilon[i] = 0.0;
+            for (int j = 0; j < 4; j++)
+                epsilon[i] += dot(SD[i][j], U[vi[j]]);
+        }
+        // stress
+        double sigma[6];
+        for (int i = 0; i < 6; i++) {
+            sigma[i] = 0.0;
+            for (int j = 0; j < 6; j++)
+                sigma[i] += C[6 * i + j] * epsilon[j];
+        }
+        for (int i = 0; i < 4; i++) {
+            double w = 1.0 / cbrt(dV);
+            Sigma[vi[i]] += w * stress2tensor(sigma);
+            SigmaW[vi[i]] += w;
+        }
     }
 
 };
@@ -343,7 +440,8 @@ public:
             mat3 X3 = transpose(mat3(
                 dX[0], dX[1], dX[2]
             ));
-            dV[_] = abs(determinant(X3)) / 6.0;
+            dV[_] = determinant(X3) / 6.0;
+            assert(dV[_] > 0.0);
             mat3 invX = inverse(X3);
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 10; j++) {
@@ -388,6 +486,20 @@ public:
     // get vertice indices
     const int* getVi() const { return &vi[0]; }
 
+    // get triangles for rendering
+    int getNumTriangles() const { return 16; }
+    void getTriangles(ivec3 t[16]) const {
+        t[0] = ivec3(0, 4, 6), t[1] = ivec3(4, 1, 8), t[2] = ivec3(6, 8, 3), t[3] = ivec3(4, 8, 6);
+        t[4] = ivec3(1, 7, 8), t[5] = ivec3(7, 2, 9), t[6] = ivec3(8, 9, 3), t[7] = ivec3(8, 7, 9);
+        t[8] = ivec3(2, 5, 9), t[9] = ivec3(5, 0, 6), t[10] = ivec3(9, 6, 3), t[11] = ivec3(9, 5, 6);
+        t[12] = ivec3(0, 5, 4), t[13] = ivec3(4, 7, 1), t[14] = ivec3(5, 2, 7), t[15] = ivec3(5, 7, 4);
+        for (int i = 0; i < 16; i++) {
+            t[i].x = vi[t[i].x];
+            t[i].y = vi[t[i].y];
+            t[i].z = vi[t[i].z];
+        }
+    }
+
     // evaluate the stiffness matrix (30x30)
     void evalK(const vec3* X, const double* C, double* K) const {
         double SD[6 * 3 * 10];
@@ -399,6 +511,14 @@ public:
             for (int i = 0; i < 900; i++)
                 K[i] += weights[_] * Kt[i];
         }
+    }
+
+    // used to calculate force densities and stresses at joints
+    void addStress(
+        const vec3* X, const double* C, const vec3* U,
+        mat3* Sigma, double* SigmaW) const
+    {
+        assert(false);
     }
 
 };
@@ -434,9 +554,11 @@ private:
     const static vec3 params[8];
     const static double weights[8];
     const static double W[8][3][8];
+    const static double WV[8][3][8];  // for vertices
 
     // 8 vertices
     // 000, 100, 110, 010, 001, 101, 111, 011
+    // three parametric axes in order -> positive volume
     int vi[8];
 
     // precomputed D, ∂∇u/∂u
@@ -458,7 +580,8 @@ public:
             mat3 X3 = transpose(mat3(
                 dX[0], dX[1], dX[2]
             ));
-            dV[_] = abs(determinant(X3)) * 8.0;
+            dV[_] = determinant(X3) * 8.0;
+            assert(dV[_] > 0.0);
             mat3 invX = inverse(X3);
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 8; j++) {
@@ -468,6 +591,22 @@ public:
                     D[_][i][j] = s;
                 }
             }
+        }
+    }
+
+    // get triangles for rendering
+    int getNumTriangles() const { return 12; }
+    void getTriangles(ivec3 ts[12]) const {
+        ts[0] = ivec3(0, 1, 5), ts[1] = ivec3(0, 5, 4);
+        ts[2] = ivec3(1, 2, 6), ts[3] = ivec3(1, 6, 5);
+        ts[4] = ivec3(2, 3, 7), ts[5] = ivec3(2, 7, 6);
+        ts[6] = ivec3(3, 0, 4), ts[7] = ivec3(3, 4, 7);
+        ts[8] = ivec3(4, 5, 6), ts[9] = ivec3(4, 6, 7);
+        ts[10] = ivec3(0, 3, 2), ts[11] = ivec3(0, 2, 1);
+        for (int i = 0; i < 12; i++) {
+            ts[i].x = vi[ts[i].x];
+            ts[i].y = vi[ts[i].y];
+            ts[i].z = vi[ts[i].z];
         }
     }
 
@@ -516,6 +655,55 @@ public:
         }
     }
 
+    // used to calculate force densities and stresses at joints
+    void addStress(
+        const vec3* X, const double* C, const vec3* U,
+        mat3* Sigma, double* SigmaW) const
+    {
+        // strain gradient
+        double D[8][3][8], dV[8];
+        for (int _ = 0; _ < 8; _++) {
+            vec3 dX[3];
+            for (int i = 0; i < 3; i++) {
+                dX[i] = vec3(0);
+                for (int j = 0; j < 8; j++)
+                    dX[i] += WV[_][i][j] * X[vi[j]];
+            }
+            mat3 X3 = transpose(mat3(
+                dX[0], dX[1], dX[2]
+            ));
+            dV[_] = determinant(X3) * 8.0;
+            assert(dV[_] > 0.0);
+            mat3 invX = inverse(X3);
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 8; j++) {
+                    double s = 0.0;
+                    for (int k = 0; k < 3; k++)
+                        s += invX[i][k] * WV[_][k][j];
+                    D[_][i][j] = s;
+                }
+            }
+        }
+        for (int _ = 0; _ < 8; _++) {
+            vec3 SD[6][8];
+            getLinearizedStrainGradient(8, &D[_][0][0], (double*)&SD[0][0]);
+            // strain
+            double epsilon[6] = { 0,0,0,0,0,0 };
+            for (int i = 0; i < 6; i++)
+                for (int j = 0; j < 8; j++)
+                    epsilon[i] += dot(SD[i][j], U[vi[j]]);
+            // stress
+            double sigma[6];
+            for (int i = 0; i < 6; i++) {
+                sigma[i] = 0.0;
+                for (int j = 0; j < 6; j++)
+                    sigma[i] += C[6 * i + j] * epsilon[j];
+            }
+            double w = 1.0 / cbrt(dV[_]);
+            Sigma[vi[_]] += w * stress2tensor(sigma);
+            SigmaW[vi[_]] += w;
+        }
+    }
 };
 
 #define C 0.5773502691896257
@@ -537,4 +725,13 @@ const double LinearBrickElement::W[8][3][8] = {
     {{-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731}, {-0.022329099369260225,-0.08333333333333333,0.08333333333333333,0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.3110042339640731,0.08333333333333333}, {-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731,0.08333333333333333}},
     {{-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.08333333333333333,-0.08333333333333333,0.08333333333333333,0.3110042339640731,-0.3110042339640731}, {-0.08333333333333333,-0.022329099369260225,0.022329099369260225,0.08333333333333333,-0.3110042339640731,-0.08333333333333333,0.08333333333333333,0.3110042339640731}, {-0.08333333333333333,-0.022329099369260225,-0.08333333333333333,-0.3110042339640731,0.08333333333333333,0.022329099369260225,0.08333333333333333,0.3110042339640731}},
 };
-
+const double LinearBrickElement::WV[8][3][8] = {
+    {{-0.5,0.5,0.0,0.0,0.0,0.0,0.0,0.0}, {-0.5,0.0,0.0,0.5,0.0,0.0,0.0,0.0}, {-0.5,0.0,0.0,0.0,0.5,0.0,0.0,0.0}},
+    {{-0.5,0.5,0.0,0.0,0.0,0.0,0.0,0.0}, {0.0,-0.5,0.5,0.0,0.0,0.0,0.0,0.0}, {0.0,-0.5,0.0,0.0,0.0,0.5,0.0,0.0}},
+    {{0.0,0.0,0.5,-0.5,0.0,0.0,0.0,0.0}, {0.0,-0.5,0.5,0.0,0.0,0.0,0.0,0.0}, {0.0,0.0,-0.5,0.0,0.0,0.0,0.5,0.0}},
+    {{0.0,0.0,0.5,-0.5,0.0,0.0,0.0,0.0}, {-0.5,0.0,0.0,0.5,0.0,0.0,0.0,0.0}, {0.0,0.0,0.0,-0.5,0.0,0.0,0.0,0.5}},
+    {{0.0,0.0,0.0,0.0,-0.5,0.5,0.0,0.0}, {0.0,0.0,0.0,0.0,-0.5,0.0,0.0,0.5}, {-0.5,0.0,0.0,0.0,0.5,0.0,0.0,0.0}},
+    {{0.0,0.0,0.0,0.0,-0.5,0.5,0.0,0.0}, {0.0,0.0,0.0,0.0,0.0,-0.5,0.5,0.0}, {0.0,-0.5,0.0,0.0,0.0,0.5,0.0,0.0}},
+    {{0.0,0.0,0.0,0.0,0.0,0.0,0.5,-0.5}, {0.0,0.0,0.0,0.0,0.0,-0.5,0.5,0.0}, {0.0,0.0,-0.5,0.0,0.0,0.0,0.5,0.0}},
+    {{0.0,0.0,0.0,0.0,0.0,0.0,0.5,-0.5}, {0.0,0.0,0.0,0.0,-0.5,0.0,0.0,0.5}, {0.0,0.0,0.0,-0.5,0.0,0.0,0.0,0.5}},
+};

@@ -323,7 +323,7 @@ Linear quadrilateral
 from sympy import *
 
 u, v = symbols('u v')
-T = [(1-u)*(1-v), u*(1-v), (1-u)*v, u*v]
+T = [(1-u)*(1-v), u*(1-v), u*v, (1-u)*v]
 assert sum(T).equals(1)
 
 Tu = [diff(t, u) for t in T]
@@ -338,6 +338,38 @@ for u, v in uv:
     cv.append('{'+','.join(["{:.12g}".format(_) for _ in tv])+'}')
 print('{'+', '.join(cu)+'},')
 print('{'+', '.join(cv)+'},')
+```
+
+Linear brick: similar to linear quadrilteral, split into $8$ volumes and use the determinant of three vectors instead of the cross product norm.
+
+```py
+from sympy import *
+
+u, v, w = symbols('u v w')
+T = [(1-u)*(1-v)*(1-w), u*(1-v)*(1-w), u*v*(1-w), (1-u)*v*(1-w),
+     (1-u)*(1-v)*w, u*(1-v)*w, u*v*w, (1-u)*v*w]
+assert sum(T).equals(1)
+
+Tu = [diff(t, u) for t in T]
+Tv = [diff(t, v) for t in T]
+Tw = [diff(t, w) for t in T]
+
+uvw = [(0.25, 0.25, 0.25), (0.75, 0.25, 0.25),
+       (0.75, 0.75, 0.25), (0.25, 0.75, 0.25),
+       (0.25, 0.25, 0.75), (0.75, 0.25, 0.75),
+       (0.75, 0.75, 0.75), (0.25, 0.75, 0.25)]
+cu, cv, cw = [], [], []
+for u, v, w in uvw:
+    sub = {'u': u, 'v': v, 'w': w}
+    tu = [float(t.subs(sub)) for t in Tu]
+    tv = [float(t.subs(sub)) for t in Tv]
+    tw = [float(t.subs(sub)) for t in Tw]
+    cu.append('{'+','.join(["{:.12g}".format(_) for _ in tu])+'}')
+    cv.append('{'+','.join(["{:.12g}".format(_) for _ in tv])+'}')
+    cw.append('{'+','.join(["{:.12g}".format(_) for _ in tw])+'}')
+print('{'+', '.join(cu)+'},')
+print('{'+', '.join(cv)+'},')
+print('{'+', '.join(cw)+'},')
 ```
 
 
