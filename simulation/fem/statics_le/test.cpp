@@ -19,10 +19,11 @@ void test_1() {
 // cross-section: 300mm, I = 675e6 mm^4, Q/Ib = 16.67e-6 mm^-2, E = 200e3 MPa
 // (density, load) = (0, 200e3): uz -106.7mm, ux 4mm, flexural 267MPa, shear 3.33MPa
 // (density, load) = (100e-6, 0): uz -10.8mm, ux 0.36mm, flexural 36MPa, shear 0.9MPa
+// principle of superposition holds
 DiscretizedStructure test_2(double density, double load) {
     // int N = 40, S = 1;
-    // int N = 80, S = 2;
-    int N = 120, S = 3;
+    int N = 80, S = 2;
+    // int N = 120, S = 3;
     // int N = 160, S = 4;
     // int N = 240, S = 6;
     // int N = 480, S = 12;
