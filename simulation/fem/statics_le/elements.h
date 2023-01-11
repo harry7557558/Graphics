@@ -416,6 +416,7 @@ private:
     const static vec3 params[11];
     const static double weights[11];
     const static double W[11][3][10];
+    const static double WV[10][3][10];
 
     // 10 vertices
     // 0, 1, 2, 3, 01, 02, 03, 12, 13, 23
@@ -487,6 +488,15 @@ public:
     const int* getVi() const { return &vi[0]; }
 
     // get triangles for rendering
+#if 0
+    int getNumTriangles() const { return 4; }
+    void getTriangles(ivec3 ts[4]) const {
+        ts[0] = ivec3(vi[0], vi[2], vi[1]);
+        ts[1] = ivec3(vi[0], vi[1], vi[3]);
+        ts[2] = ivec3(vi[0], vi[3], vi[2]);
+        ts[3] = ivec3(vi[1], vi[2], vi[3]);
+    }
+#else
     int getNumTriangles() const { return 16; }
     void getTriangles(ivec3 t[16]) const {
         t[0] = ivec3(0, 4, 6), t[1] = ivec3(4, 1, 8), t[2] = ivec3(6, 8, 3), t[3] = ivec3(4, 8, 6);
@@ -499,6 +509,7 @@ public:
             t[i].z = vi[t[i].z];
         }
     }
+#endif
 
     // evaluate the stiffness matrix (30x30)
     void evalK(const vec3* X, const double* C, double* K) const {
@@ -518,7 +529,76 @@ public:
         const vec3* X, const double* C, const vec3* U,
         mat3* Sigma, double* SigmaW) const
     {
-        assert(false);
+#if 1
+        // strain gradient
+        double D[10][3][10], dV[10];
+        for (int _ = 0; _ < 10; _++) {
+            vec3 dX[3];
+            for (int i = 0; i < 3; i++) {
+                dX[i] = vec3(0);
+                for (int j = 0; j < 10; j++)
+                    dX[i] += WV[_][i][j] * X[vi[j]];
+            }
+            mat3 X3 = transpose(mat3(
+                dX[0], dX[1], dX[2]
+            ));
+            dV[_] = determinant(X3) / 6.0;
+            assert(dV[_] > 0.0);
+            mat3 invX = inverse(X3);
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 10; j++) {
+                    double s = 0.0;
+                    for (int k = 0; k < 3; k++)
+                        s += invX[i][k] * WV[_][k][j];
+                    D[_][i][j] = s;
+                }
+            }
+        }
+        for (int _ = 0; _ < 10; _++) {
+            vec3 SD[6][10];
+            getLinearizedStrainGradient(10, &D[_][0][0], (double*)&SD[0][0]);
+            // strain
+            double epsilon[6] = { 0,0,0,0,0,0 };
+            for (int i = 0; i < 6; i++)
+                for (int j = 0; j < 10; j++)
+                    epsilon[i] += dot(SD[i][j], U[vi[j]]);
+            // stress
+            double sigma[6];
+            for (int i = 0; i < 6; i++) {
+                sigma[i] = 0.0;
+                for (int j = 0; j < 6; j++)
+                    sigma[i] += C[6 * i + j] * epsilon[j];
+            }
+            double w = 1.0 / cbrt(dV[_]);
+            Sigma[vi[_]] += w * stress2tensor(sigma);
+            SigmaW[vi[_]] += w;
+        }
+#else
+        // more stable but might involve some diffusion?
+        vec3 SD[6][10]; double sd[6 * 3 * 10];
+        for (int i = 0; i < 60; i++) (&SD[0][0])[i] = vec3(0);
+        double V = 0.0;
+        for (int _ = 0; _ < 11; _++) {
+            getLinearizedStrainGradient(10, &D[_][0][0], sd);
+            for (int i = 0; i < 6 * 3 * 10; i++)
+                ((double*)&SD[0][0])[i] += weights[_] * sd[i];
+            V += dV[_];
+        }
+        double epsilon[6] = { 0,0,0,0,0,0 };
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 10; j++)
+                epsilon[i] += dot(SD[i][j], U[vi[j]]);
+        double sigma[6] = { 0,0,0,0,0,0 };
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 6; j++)
+                sigma[i] += C[6 * i + j] * epsilon[j];
+        mat3 sigmaT = stress2tensor(sigma);
+        for (int _ = 0; _ < 10; _++) {
+            double w = 1.0 / cbrt(V);
+            Sigma[vi[_]] += w * sigmaT;
+            SigmaW[vi[_]] += w;
+        }
+#endif
     }
 
 };
@@ -545,6 +625,18 @@ const double QuadraticTetrahedralElement::W[11][3][10] = {
     {{1,1,0,0,-2,0,-2,0,2,0}, {1,0,-1,0,-2,0,-2,2,0,2}, {1,0,0,1,-2,0,-2,0,2,0}},
     {{1,-1,0,0,0,-2,-2,2,2,0}, {1,0,1,0,0,-2,-2,0,0,2}, {1,0,0,1,0,-2,-2,0,0,2}},
     {{0,0,0,0,0,-1,-1,1,1,0}, {0,0,0,0,-1,0,-1,1,0,1}, {0,0,0,0,-1,-1,0,0,1,1}},
+};
+const double QuadraticTetrahedralElement::WV[10][3][10] = {
+    {{-3,-1,0,0,4,0,0,0,0,0}, {-3,0,-1,0,0,4,0,0,0,0}, {-3,0,0,-1,0,0,4,0,0,0}},
+    {{1,3,0,0,-4,0,0,0,0,0}, {1,0,-1,0,-4,0,0,4,0,0}, {1,0,0,-1,-4,0,0,0,4,0}},
+    {{1,-1,0,0,0,-4,0,4,0,0}, {1,0,3,0,0,-4,0,0,0,0}, {1,0,0,-1,0,-4,0,0,0,4}},
+    {{1,-1,0,0,0,0,-4,0,4,0}, {1,0,-1,0,0,0,-4,0,0,4}, {1,0,0,3,0,0,-4,0,0,0}},
+    {{-1,1,0,0,0,0,0,0,0,0}, {-1,0,-1,0,-2,2,0,2,0,0}, {-1,0,0,-1,-2,0,2,0,2,0}},
+    {{-1,-1,0,0,2,-2,0,2,0,0}, {-1,0,1,0,0,0,0,0,0,0}, {-1,0,0,-1,0,-2,2,0,0,2}},
+    {{-1,-1,0,0,2,0,-2,0,2,0}, {-1,0,-1,0,0,2,-2,0,0,2}, {-1,0,0,1,0,0,0,0,0,0}},
+    {{1,1,0,0,-2,-2,0,2,0,0}, {1,0,1,0,-2,-2,0,2,0,0}, {1,0,0,-1,-2,-2,0,0,2,2}},
+    {{1,1,0,0,-2,0,-2,0,2,0}, {1,0,-1,0,-2,0,-2,2,0,2}, {1,0,0,1,-2,0,-2,0,2,0}},
+    {{1,-1,0,0,0,-2,-2,2,2,0}, {1,0,1,0,0,-2,-2,0,0,2}, {1,0,0,1,0,-2,-2,0,0,2}},
 };
 
 

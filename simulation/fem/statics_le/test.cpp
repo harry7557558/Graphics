@@ -20,14 +20,15 @@ void test_1() {
 // (density, load) = (0, 200e3): uz -106.7mm, ux 4mm, flexural 267MPa, shear 3.33MPa
 // (density, load) = (100e-6, 0): uz -10.8mm, ux 0.36mm, flexural 36MPa, shear 0.9MPa
 // principle of superposition holds
+// (density, load) = (100e-6, 36e3): uz 30mm, ux 1.08mm, flexural 84MPa, shear 1.5MPa
 DiscretizedStructure test_2(double density, double load) {
-    // int N = 40, S = 1;
-    int N = 80, S = 2;
+    int N = 40, S = 1;
+    // int N = 80, S = 2;
     // int N = 120, S = 3;
     // int N = 160, S = 4;
     // int N = 240, S = 6;
     // int N = 480, S = 12;
-    /* (density, load) = (0, 200e3)
+    /* (density, load) = (0, 200e3), no deformation
     * Linear tets - seems like the error is O(h^2)
     size 150mm, deflection (-72.6 z, 2.72mm x), z diff by 34.1mm
     size 75mm, deflection (-95.2mm z, 3.57mm x), z diff by 11.5mm
@@ -45,6 +46,23 @@ DiscretizedStructure test_2(double density, double load) {
     size 75mm, deflection (-106.35mm z, 3.988mm x), z diff by 0.32mm
     size 50mm, deflection (-106.39mm z, 3.989mm x), z diff by 0.28mm
     */
+    /* (density, load) = (100e-6, 36e3), with deformation
+    * Linear tets -
+    size (80, 2), deflection (26.9, 19.9, -82.2)
+    size (120, 3), deflection (33.8, 23.5, -102.0)
+    size (160, 4), deflection (39.8, 24.7, -117.0)
+    size (240, 6), deflection (50.6, 23.5, -140.3)
+    * Quadratic tets -
+    size (40, 1), deflection (111.1, -21.6, -230.8)
+    size (80, 2), deflection (124.6, -30.3, -250.0)
+    * Linear bricks -
+    size (40, 1), deflection (20.7, 18.4, -65.8)
+    size (80, 2), deflection (29.8, 23.8, -92.2)
+    size (120, 3), deflection (37.5, 25.3, -111.5)
+    size (160, 4), deflection (45.0, 24.5, -127.5)
+    size (240, 6), deflection (58.9, 19.3, -153.5)
+    size (480, 12), deflection (89.1, -0.5, -200.9)
+    */
     int si = (2 * S + 1) * (2 * S + 1), sj = (2 * S + 1), sk = 1;
     printf("Test 2 (cantilevel beam) started.\n");
     // vertices
@@ -56,9 +74,11 @@ DiscretizedStructure test_2(double density, double load) {
                     (6000. / N) * i,
                     (150. / S) * j, (150. / S) * k
                 );
-                float t = 0.5 + 0.5 * tanh(10.0 * (i / (double)N - 0.4));
-                p = vec3(p.x, p.y * (1.0 + 3.0 * t * t), p.z);
-                p += vec3(0, 2400, 2400) * t;
+                if (1) {  // deformation
+                    float t = 0.5 + 0.5 * tanh(10.0 * (i / (double)N - 0.4));
+                    p = vec3(p.x, p.y * (1.0 + 3.0 * t * t), p.z);
+                    p += vec3(0, 2400, 2400) * t;
+                }
                 X.push_back(p);
             }
     // elements
@@ -151,8 +171,8 @@ DiscretizedStructure test_2(double density, double load) {
     for (int i = 0; i < si; i++) fixed.push_back(i);
     // solve
     double C[36]; calculateStressStrainMatrix(200e3, 0.33, C);
-    // DiscretizedStructure structure = solveStructureTetrahedral(X, SE4, F4s, F4v, fixed, C, 1);
-    DiscretizedStructure structure = solveStructureBrick(X, SE8, F8s, F8v, fixed, C, 1);
+    DiscretizedStructure structure = solveStructureTetrahedral(X, SE4, F4s, F4v, fixed, C, 2);
+    // DiscretizedStructure structure = solveStructureBrick(X, SE8, F8s, F8v, fixed, C, 1);
     if (true) {  // check
         for (int i = N * si; i < X.size(); i++) {
             vec3 u = structure.U[i];
