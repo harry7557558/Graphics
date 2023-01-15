@@ -27,6 +27,24 @@ struct ivec3 {
     int x, y, z;
     ivec3(int a = 0):x(a), y(a), z(a) {}
     ivec3(int a, int b, int c):x(a), y(b), z(c) {}
+    ivec3 operator - () const { return ivec3(-x, -y, -z); }
+    ivec3 operator + (const ivec3& v) const { return ivec3(x + v.x, y + v.y, z + v.z); }
+    ivec3 operator - (const ivec3& v) const { return ivec3(x - v.x, y - v.y, z - v.z); }
+    ivec3 operator * (const ivec3& v) const { return ivec3(x * v.x, y * v.y, z * v.z); }
+    ivec3 operator / (const ivec3& v) const { return ivec3(x / v.x, y / v.y, z / v.z); }
+    ivec3 operator % (const ivec3& v) const { return ivec3(x % v.x, y % v.y, z % v.z); }
+    ivec3 operator & (const ivec3& v) const { return ivec3(x & v.x, y & v.y, z & v.z); }
+    ivec3 operator | (const ivec3& v) const { return ivec3(x | v.x, y | v.y, z | v.z); }
+    ivec3 operator ^ (const ivec3& v) const { return ivec3(x ^ v.x, y ^ v.y, z ^ v.z); }
+    ivec3 operator * (const int& k) const { return ivec3(x * k, y * k, z * k); }
+    ivec3 operator / (const int& k) const { return ivec3(x / k, y / k, z / k); }
+    ivec3 operator % (const int& k) const { return ivec3(x % k, y % k, z % k); }
+    friend ivec3 operator * (const int& a, const ivec3& v) { return ivec3(a * v.x, a * v.y, a * v.z); }
+    friend int dot(ivec3 u, ivec3 v) { return u.x * v.x + u.y * v.y + u.z * v.z; }
+    friend ivec3 cross(ivec3 u, ivec3 v) { return ivec3(u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x); }
+    friend int det(ivec3 a, ivec3 b, ivec3 c) { return dot(a, cross(b, c)); }  // be careful about overflow
+    bool operator == (const ivec3& v) const { return x == v.x && y == v.y && z == v.z; }
+    bool operator != (const ivec3& v) const { return x != v.x || y != v.y || z != v.z; }
 };
 
 struct ivec4 {
@@ -55,6 +73,7 @@ struct vec3 {
     vec3() {}
     explicit vec3(double a):x(a), y(a), z(a) {}
     explicit vec3(double x, double y, double z):x(x), y(y), z(z) {}
+    explicit vec3(ivec3 p):x(p.x), y(p.y), z(p.z) {}
     vec3 operator - () const { return vec3(-x, -y, -z); }
     vec3 operator + (const vec3& v) const { return vec3(x + v.x, y + v.y, z + v.z); }
     vec3 operator - (const vec3& v) const { return vec3(x - v.x, y - v.y, z - v.z); }
@@ -162,6 +181,7 @@ mat3 axis_angle(vec3 n, double a) {
 }
 
 
+// eigenvalues of a symmetric matrix
 vec3 eigvalsh(mat3 A) {
     double tj[3], ti[3];
     for (int d = 0; d < 64; d++) {
@@ -219,6 +239,7 @@ struct ElementForce8: ivec8 {
 
 #define MAX_SOLID_ELEMENT_N 20
 #define MAX_SOLID_ELEMENT_TN 48
+#define MAX_SOLID_ELEMENT_EN 24
 
 struct SolidElement {
 protected:
@@ -277,9 +298,11 @@ public:
     // get vertice indices
     virtual const int* getVi() const = 0;
 
-    // get triangles for rendering
+    // get triangles and edges for rendering
     virtual int getNumTriangles() const = 0;
     virtual void getTriangles(ivec3 ts[]) const = 0;
+    virtual int getNumEdges() const = 0;
+    virtual void getEdges(ivec2 es[]) const = 0;
 
     // precompute D and dV
     // X: global list of vertices
@@ -363,13 +386,22 @@ public:
     // get vertice indices
     const int* getVi() const { return &vi[0]; }
 
-    // get triangles for rendering
+    // get triangles and edges for rendering
     int getNumTriangles() const { return 4; }
     void getTriangles(ivec3 ts[4]) const {
         ts[0] = ivec3(vi[0], vi[2], vi[1]);
         ts[1] = ivec3(vi[0], vi[1], vi[3]);
         ts[2] = ivec3(vi[0], vi[3], vi[2]);
         ts[3] = ivec3(vi[1], vi[2], vi[3]);
+    }
+    int getNumEdges() const { return 6; }
+    void getEdges(ivec2 es[6]) const {
+        es[0] = ivec2(vi[0], vi[1]);
+        es[1] = ivec2(vi[0], vi[2]);
+        es[2] = ivec2(vi[0], vi[3]);
+        es[3] = ivec2(vi[1], vi[2]);
+        es[4] = ivec2(vi[1], vi[3]);
+        es[5] = ivec2(vi[2], vi[3]);
     }
 
     // evaluate the stiffness matrix (12x12)
@@ -487,7 +519,7 @@ public:
     // get vertice indices
     const int* getVi() const { return &vi[0]; }
 
-    // get triangles for rendering
+    // get triangles and edges for rendering
 #if 0
     int getNumTriangles() const { return 4; }
     void getTriangles(ivec3 ts[4]) const {
@@ -510,6 +542,15 @@ public:
         }
     }
 #endif
+    int getNumEdges() const { return 12; }
+    void getEdges(ivec2 es[12]) const {
+        int e[24] = {
+            0, 4, 4, 1, 0, 5, 5, 2, 0, 6, 6, 3,
+            1, 7, 7, 2, 1, 8, 8, 3, 3, 9, 9, 2
+        };
+        for (int i = 0; i < 24; i++)
+            ((int*)&es[0])[i] = vi[e[i]];
+    }
 
     // evaluate the stiffness matrix (30x30)
     void evalK(const vec3* X, const double* C, double* K) const {
@@ -686,7 +727,7 @@ public:
         }
     }
 
-    // get triangles for rendering
+    // get triangles and edges for rendering
     int getNumTriangles() const { return 12; }
     void getTriangles(ivec3 ts[12]) const {
         ts[0] = ivec3(0, 1, 5), ts[1] = ivec3(0, 5, 4);
@@ -700,6 +741,16 @@ public:
             ts[i].y = vi[ts[i].y];
             ts[i].z = vi[ts[i].z];
         }
+    }
+    int getNumEdges() const { return 12; }
+    void getEdges(ivec2 es[12]) const {
+        int e[24] = {
+            0, 1, 1, 2, 2, 3, 3, 0,
+            0, 4, 1, 5, 2, 6, 3, 7,
+            4, 5, 5, 6, 6, 7, 7, 4
+        };
+        for (int i = 0; i < 24; i++)
+            ((int*)&es[0])[i] = vi[e[i]];
     }
 
     // get volume

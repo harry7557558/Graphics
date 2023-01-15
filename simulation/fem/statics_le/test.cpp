@@ -1,10 +1,12 @@
-#pragma GCC optimize "Ofast"
+#pragma GCC optimize "O0"
 
 #include <cstdio>
 #include <random>
 
 #include "solver.h"
 #include "render.h"
+
+#include "meshgen_tet_implicit.h"
 
 // a single tetrahedron
 void test_1() {
@@ -171,14 +173,14 @@ DiscretizedStructure test_2(double density, double load) {
     for (int i = 0; i < si; i++) fixed.push_back(i);
     // solve
     double C[36]; calculateStressStrainMatrix(200e3, 0.33, C);
-    DiscretizedStructure structure = solveStructureTetrahedral(X, SE4, F4s, F4v, fixed, C, 2);
+    DiscretizedStructure structure = solveStructureTetrahedral(X, SE4, F4s, F4v, fixed, C, 1);
     // DiscretizedStructure structure = solveStructureBrick(X, SE8, F8s, F8v, fixed, C, 1);
+    structure.calcForceStress(C);
     if (true) {  // check
         for (int i = N * si; i < X.size(); i++) {
             vec3 u = structure.U[i];
             printf("%lg %lg %lg\n", u.x, u.y, u.z);
         }
-        structure.calcForceStress(C);
         double tensile = 0.0, compressive = 0.0, shear = 0.0;
         for (mat3 sigma : structure.Sigma) {
             tensile = max(tensile, sigma[0][0]);
@@ -191,13 +193,48 @@ DiscretizedStructure test_2(double density, double load) {
 }
 
 
+DiscretizedStructure test_3(double density) {
+    auto F = [](double x, double y, double z) {
+        vec3 p(x, y, z);
+        return dot(p, p) - 1.0;
+        // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
+        // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
+        // return x * x + y * y - (1. - z) * z * z;
+    };
+    std::vector<MeshgenTetImplicit::MeshVertex> verticesM;
+    std::vector<ivec4> tets;
+    MeshgenTetImplicit::generateInitialTetrahedraInBox(
+        F, vec3(0), vec3(2), 0.25, verticesM, tets);
+    std::vector<vec3> vs;
+    for (auto mv : verticesM) vs.push_back(mv.x);
+    // for (vec3 p : vs) printf("%lf %lf %lf\n", p.x, p.y, p.z);
+    // for (ivec4 t : tets) printf("%d %d %d %d\n", t.x, t.y, t.z, t.w);
+
+    std::vector<ElementForce4> Fv;
+    for (ivec4 t : tets) {
+        double dV = abs(determinant(mat3(
+            vs[t.y] - vs[t.x], vs[t.z] - vs[t.x], vs[t.w] - vs[t.x]))) / 6.0;
+        Fv.push_back(ElementForce4{ t, vec3(0, 0, -density * dV) });
+    }
+
+    double C[36]; calculateStressStrainMatrix(200e3, 0.33, C);
+    DiscretizedStructure structure = solveStructureTetrahedral(
+        vs, tets,
+        std::vector<ElementForce3>(), Fv,
+        std::vector<int>({ 0, 1, 2, 3 }), C, 1);
+    structure.calcForceStress(C);
+    return structure;
+}
+
+
 int main() {
     double t0 = getTimePast();
     // DiscretizedStructure structure = test_2(0.0, 200e3);
     // DiscretizedStructure structure = test_2(100e-6, 0.0);
-    DiscretizedStructure structure = test_2(100e-6, 36e3);
+    // DiscretizedStructure structure = test_2(100e-6, 36e3);
+    DiscretizedStructure structure = test_3(1.0);
     double t1 = getTimePast();
     printf("Total %.2lf secs.\n", t1 - t0);
-    mainRender(structure);
+    mainGUI(structure);
     return 0;
 }

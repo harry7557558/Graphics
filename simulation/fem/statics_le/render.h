@@ -1,6 +1,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#define GLM_SWIZZLE_XYZW
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -41,6 +42,7 @@ in vec4 interpolatedColor;
 out vec3 fragColor;  // negative rgb for value<0-1> colormap
 uniform float maxValue;  // colormap, positive for smooth and negative for steps
 uniform float colorRemapK;  // negative for slider, positive for object
+uniform float brightness;  // multiply color by this number
 float log10(float x) { return log(x)/log(10.); }
 float remap(float t, float k) { return pow(t,k) / (pow(t,k) + pow(1.-t,k)); }
 void main() {
@@ -67,8 +69,9 @@ void main() {
         tm = clamp(0.5+0.5*v/maxv, 0., 1.);
         t = remap(tm, abs(colorRemapK));
         col = vec3(132.23,.39,-142.83)+vec3(-245.97,-1.4,270.69)*t+vec3(755.63,1.32,891.31)*cos(vec3(.3275,2.39,.3053)*t+vec3(-1.7461,-1.84,1.4092));
+        if (isnan(dot(col,col))) col = vec3(0,1,0);
     }
-    fragColor = (0.2*amb+0.7*dif+0.1*spc)*col;
+    fragColor = brightness*(0.2*amb+0.7*dif+0.1*spc)*col;
 })""";
 
 const char VERTEX_SHADER_SOURCE_FONT[] = R"""(#version 330
@@ -356,7 +359,7 @@ public:
         std::vector<glm::vec3> normals,
         std::vector<glm::ivec3> indices,
         std::vector<glm::vec4> colors,
-        float maxValue = 1.0f, float colorRemapK = 1.0f
+        float maxValue = 1.0f, float colorRemapK = 1.0f, float brightness = 1.0f
     ) {
         assert(sizeof(glm::vec3) == 12);
         assert(sizeof(glm::ivec3) == 12);
@@ -417,12 +420,68 @@ public:
         glUniform1f(location, maxValue);
         location = glGetUniformLocation(shaderProgram, "colorRemapK");
         glUniform1f(location, colorRemapK);
+        location = glGetUniformLocation(shaderProgram, "brightness");
+        glUniform1f(location, brightness);
 
         // draw
         glDrawElements(GL_TRIANGLES,
             3 * (int)indices.size(),
             GL_UNSIGNED_INT,
             (void*)0);
+
+        // clean-up
+        glDisableVertexAttribArray(vertexPositionLocation);
+        glDisableVertexAttribArray(vertexNormalLocation);
+        glDisableVertexAttribArray(vertexColorLocation);
+    }
+
+    void drawLinesVBO(
+        std::vector<glm::vec3> vertices,
+        std::vector<glm::vec3> normals,
+        std::vector<glm::ivec2> indices,
+        std::vector<glm::vec4> colors,
+        float maxValue = 1.0f, float colorRemapK = 1.0f, float brightness = 1.0f
+    ) {
+        glUseProgram(this->shaderProgram);
+
+        // vertices
+        GLuint vertexPositionLocation = glGetAttribLocation(shaderProgram, "vertexPosition");
+        glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * vertices.size(), &vertices[0], GL_STATIC_DRAW);
+        glEnableVertexAttribArray(vertexPositionLocation);
+        glVertexAttribPointer(vertexPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+        // normals
+        GLuint vertexNormalLocation = glGetAttribLocation(shaderProgram, "vertexNormal");
+        glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * normals.size(), &normals[0], GL_STATIC_DRAW);
+        glEnableVertexAttribArray(vertexNormalLocation);
+        glVertexAttribPointer(vertexNormalLocation, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+        // values/colors
+        GLuint vertexColorLocation = glGetAttribLocation(shaderProgram, "vertexColor");
+        glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0], GL_STATIC_DRAW);
+        glEnableVertexAttribArray(vertexColorLocation);
+        glVertexAttribPointer(vertexColorLocation, 4, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+        // indices
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indicebuffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(glm::ivec2) * indices.size(), &indices[0], GL_STATIC_DRAW);
+
+        // set uniform(s)
+        GLuint location = glGetUniformLocation(shaderProgram, "transformMatrix");
+        glm::mat4 m = transformMatrix; m[3][2] -= 4e-5f;
+        glUniformMatrix4fv(location, 1, GL_FALSE, &m[0][0]);
+        location = glGetUniformLocation(shaderProgram, "maxValue");
+        glUniform1f(location, maxValue);
+        location = glGetUniformLocation(shaderProgram, "colorRemapK");
+        glUniform1f(location, colorRemapK);
+        location = glGetUniformLocation(shaderProgram, "brightness");
+        glUniform1f(location, brightness);
+
+        // draw
+        glDrawElements(GL_LINES, 2 * (int)indices.size(), GL_UNSIGNED_INT, nullptr);
 
         // clean-up
         glDisableVertexAttribArray(vertexPositionLocation);
@@ -526,7 +585,7 @@ struct PrecomputedValues {
     float getHash() {
         using glm::vec2, glm::fract;
         int n = (int)values.size();
-        int increment = n / 32;
+        int increment = max(n / 32, 1);
         float h = 0.0f;
         for (int i = increment / 3; i < n; i += increment) {
             h += fract(sin(dot(
@@ -910,18 +969,13 @@ bool initWindow() {
 }
 
 
-void mainRender(DiscretizedStructure structure) {
+void mainGUI(DiscretizedStructure structure) {
     using glm::vec2, glm::vec3, glm::vec4;
 
     // structure
     std::vector<vec3> vertices(structure.N, vec3(0));
     std::vector<vec3> normals(structure.N, vec3(0));
-    std::vector<glm::ivec3> indices;
-    // faces/normals
-    auto ivec3Cmp = [](glm::ivec3 a, glm::ivec3 b) {
-        return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
-    };
-    std::set<glm::ivec3, decltype(ivec3Cmp)> unique_indices(ivec3Cmp);
+    PrecomputedValues precomputed;
     vec3 minv(1e10f), maxv(-1e10f);
     for (int i = 0; i < structure.N; i++) {
         auto v = structure.X[i] + structure.U[i];
@@ -929,22 +983,49 @@ void mainRender(DiscretizedStructure structure) {
         minv = glm::min(minv, vertices[i]);
         maxv = glm::max(maxv, vertices[i]);
     }
+
+    // faces/normals
+    auto ivec3Cmp = [](glm::ivec3 a, glm::ivec3 b) {
+        return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
+    };
+    std::set<glm::ivec3, decltype(ivec3Cmp)> uniqueIndicesF(ivec3Cmp);
     ivec3 ts[MAX_SOLID_ELEMENT_TN];
     for (int i = 0; i < structure.M; i++) {
-        int vn = structure.SE[i]->getNumTriangles();
+        int tn = structure.SE[i]->getNumTriangles();
         structure.SE[i]->getTriangles(ts);
-        for (ivec3 t0 : ts) {
-            glm::ivec3 t(t0.x, t0.y, t0.z);
-            indices.push_back(t);
-            unique_indices.insert(t);
+        for (int ti = 0; ti < tn; ti++) {
+            int* t0 = &ts[ti].x;
+            assert(t0[0] != t0[1] && t0[0] != t0[2]);
+            int i = t0[0] < t0[1] && t0[0] < t0[2] ? 0 :
+                t0[1] < t0[2] && t0[1] < t0[0] ? 1 : 2;
+            glm::ivec3 t(t0[i], t0[(i + 1) % 3], t0[(i + 2) % 3]);
+            uniqueIndicesF.insert(t);
             vec3 n = glm::cross(
                 vertices[t.y] - vertices[t.x],
                 vertices[t.z] - vertices[t.x]);
             normals[t.x] += n, normals[t.y] += n, normals[t.z] += n;
         }
     }
-    indices = std::vector<glm::ivec3>(unique_indices.begin(), unique_indices.end());
-    PrecomputedValues precomputed;
+    std::vector<glm::ivec3> indicesF =
+        std::vector<glm::ivec3>(uniqueIndicesF.begin(), uniqueIndicesF.end());
+
+    // edges
+    auto ivec2Cmp = [](glm::ivec2 a, glm::ivec2 b) {
+        return a.x != b.x ? a.x < b.x : a.y < b.y;
+    };
+    std::set<glm::ivec2, decltype(ivec2Cmp)> uniqueIndicesE(ivec2Cmp);
+    ivec2 es[MAX_SOLID_ELEMENT_EN];
+    for (int i = 0; i < structure.M; i++) {
+        int en = structure.SE[i]->getNumEdges();
+        structure.SE[i]->getEdges(es);
+        for (int ei = 0; ei < en; ei++) {
+            glm::ivec2 e(es[ei].x, es[ei].y);
+            if (e.x > e.y) std::swap(e.x, e.y);
+            uniqueIndicesE.insert(e);
+        }
+    }
+    std::vector<glm::ivec2> indicesE =
+        std::vector<glm::ivec2>(uniqueIndicesE.begin(), uniqueIndicesE.end());
 
     // create window
     if (!initWindow()) return;
@@ -989,10 +1070,15 @@ void mainRender(DiscretizedStructure structure) {
 
         // draw
         viewport->initDraw3D();
-        viewport->drawVBO(vertices, normals, indices,
+        // viewport->drawVBO(vertices, normals, indicesF,
+        //     precomputed.colors,
+        //     (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
+        //     slider.getK(), 1.0f
+        // );
+        viewport->drawLinesVBO(vertices, normals, indicesE,
             precomputed.colors,
             (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
-            slider.getK()
+            slider.getK(), 0.9f
         );
         viewport->initDraw2D();
         viewport->drawWindowInputs();
