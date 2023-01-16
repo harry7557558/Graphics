@@ -201,14 +201,19 @@ DiscretizedStructure test_3(double density) {
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
         // return x * x + y * y - (1. - z) * z * z;
     };
-    std::vector<MeshgenTetImplicit::MeshVertex> verticesM;
-    std::vector<ivec4> tets;
+    std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
+    std::vector<ivec4> tetsM;
     MeshgenTetImplicit::generateInitialTetrahedraInBox(
-        F, vec3(0), vec3(2), 0.25, verticesM, tets);
+        F, vec3(0), vec3(2), 0.3, vertsM, tetsM);
     std::vector<vec3> vs;
-    for (auto mv : verticesM) vs.push_back(mv.x);
-    // for (vec3 p : vs) printf("%lf %lf %lf\n", p.x, p.y, p.z);
-    // for (ivec4 t : tets) printf("%d %d %d %d\n", t.x, t.y, t.z, t.w);
+    std::vector<ivec4> tets;
+    if (1) {
+        MeshgenTetImplicit::cutIsosurface(vertsM, tetsM, vs, tets);
+    }
+    else {
+        for (auto mv : vertsM) vs.push_back(mv.x);
+        tets = tetsM;
+    }
 
     std::vector<ElementForce4> Fv;
     for (ivec4 t : tets) {
@@ -222,7 +227,7 @@ DiscretizedStructure test_3(double density) {
         vs, tets,
         std::vector<ElementForce3>(), Fv,
         std::vector<int>({ 0, 1, 2, 3 }), C, 1);
-    structure.calcForceStress(C);
+    // structure.calcForceStress(C);
     return structure;
 }
 

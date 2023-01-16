@@ -52,6 +52,8 @@ struct ivec4 {
     ivec4(int a = 0):x(a), y(a), z(a), w(a) {}
     ivec4(int a, int b, int c, int d):x(a), y(b), z(c), w(d) {}
     ivec4(const int* p):x(p[0]), y(p[1]), z(p[2]), w(p[3]) {}
+    int& operator[](int i) { return (&x)[i]; }
+    const int& operator[](int i) const { return (&x)[i]; }
 };
 
 struct ivec8 {

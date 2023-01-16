@@ -24,6 +24,38 @@ const int FACES[4][3] = {  // ccw, missing the index
     {1, 2, 3}, {0, 3, 2}, {0, 1, 3}, {0, 2, 1}
 };
 
+// Lookup table for surface reconstruction
+// 16: vertice signs, little endian, bit 1 = negative
+// 6: max 6 possible tetrahedrations to choose from
+// 12: max 3 groups of 4 vertices of tetrahedra
+const int LUT_MARCH_T[16][6][12] = {
+{ {-1} },
+{ {0,4,5,6,-1}, {-1} },
+{ {1,4,8,7,-1}, {-1} },
+{ {0,1,7,8,0,6,8,7,0,5,6,7}, {0,1,7,8,0,5,6,8,0,5,8,7}, {0,1,5,6,1,5,6,7,1,6,8,7}, {0,1,5,6,1,5,8,7,1,5,6,8}, {0,5,6,8,0,1,5,8,1,5,8,7}, {0,5,6,7,0,1,7,6,1,6,8,7} },
+{ {2,5,7,9,-1}, {-1} },
+{ {0,6,7,9,0,4,7,6,0,2,9,7}, {0,4,9,6,0,2,9,4,2,4,7,9}, {0,2,6,4,2,4,7,9,2,4,9,6}, {0,4,9,6,0,4,7,9,0,2,9,7}, {2,6,7,9,0,4,7,6,0,2,6,7}, {0,2,6,4,2,6,7,9,2,4,7,6} },
+{ {1,2,4,8,2,4,9,5,2,4,8,9}, {1,2,4,9,1,4,8,9,2,4,9,5}, {1,4,9,5,1,4,8,9,1,2,5,9}, {2,5,8,9,1,4,8,5,1,2,5,8}, {1,4,8,5,1,5,8,9,1,2,5,9}, {2,5,8,9,2,4,8,5,1,2,4,8} },
+{ {0,1,9,6,1,6,8,9,0,1,2,9}, {0,1,2,8,2,6,8,9,0,2,6,8}, {1,2,6,8,2,6,8,9,0,1,2,6}, {0,1,2,9,0,1,9,8,0,6,8,9}, {1,2,6,9,1,6,8,9,0,1,2,6}, {0,2,9,8,0,1,2,8,0,6,8,9} },
+{ {3,6,9,8,-1}, {-1} },
+{ {3,5,9,8,3,4,5,8,0,3,4,5}, {0,3,8,9,0,5,9,8,0,4,5,8}, {3,4,5,9,3,4,9,8,0,3,4,5}, {0,4,5,8,3,5,9,8,0,3,8,5}, {0,3,8,9,0,4,5,9,0,4,9,8}, {0,4,5,9,0,3,4,9,3,4,9,8} },
+{ {3,6,9,7,1,3,7,4,3,4,6,7}, {3,4,6,9,1,4,9,7,1,3,9,4}, {1,4,9,7,1,3,9,6,1,4,6,9}, {1,4,6,7,1,3,9,6,1,6,9,7}, {3,6,9,7,1,4,6,7,1,3,7,6}, {3,4,6,9,1,3,7,4,3,4,9,7} },
+{ {3,5,9,7,0,1,7,3,0,3,7,5}, {0,5,9,7,0,1,7,9,0,1,9,3}, {0,1,5,9,1,5,9,7,0,1,9,3}, {0,5,9,7,0,1,7,3,0,3,7,9}, {1,3,9,5,0,1,5,3,1,5,9,7}, {3,5,9,7,0,1,5,3,1,3,7,5} },
+{ {2,5,7,8,3,5,8,6,2,3,5,8}, {2,5,7,6,3,6,7,8,2,3,6,7}, {3,5,7,6,3,6,7,8,2,3,5,7}, {2,5,7,6,2,6,7,8,2,3,6,8}, {2,5,7,8,2,5,8,6,2,3,6,8}, {3,5,7,8,3,5,8,6,2,3,5,7} },
+{ {3,4,7,8,0,3,4,7,0,2,3,7}, {0,2,3,4,2,4,7,8,2,3,4,8}, {0,2,8,4,2,4,7,8,0,2,3,8}, {0,2,3,4,2,3,4,7,3,4,7,8}, {0,4,7,8,0,2,8,7,0,2,3,8}, {0,4,7,8,0,2,3,7,0,3,8,7} },
+{ {1,4,6,5,1,2,5,3,1,3,5,6}, {1,4,6,5,1,2,6,3,1,2,5,6}, {1,2,6,3,2,4,6,5,1,2,4,6}, {3,4,6,5,1,3,5,4,1,2,5,3}, {2,3,5,4,1,2,4,3,3,4,6,5}, {2,4,6,5,2,3,6,4,1,2,4,3} },
+{ {0,1,2,3,-1}, {-1} },
+};
+
+// Look up table for surface reconstruction
+// Whether there is a point on an edge
+const bool LUT_MARCH_E[16][6] = {
+{0,0,0,0,0,0}, {1,1,1,0,0,0}, {1,0,0,1,1,0}, {0,1,1,1,1,0}, 
+{0,1,0,1,0,1}, {1,0,1,1,0,1}, {1,1,0,0,1,1}, {0,0,1,0,1,1}, 
+{0,0,1,0,1,1}, {1,1,0,0,1,1}, {1,0,1,1,0,1}, {0,1,0,1,0,1}, 
+{0,1,1,1,1,0}, {1,0,0,1,1,0}, {1,1,1,0,0,0}, {0,0,0,0,0,0}
+};
+
 
 typedef std::function<double(double, double, double)> ScalarFieldF;
 
@@ -73,6 +105,7 @@ void generateInitialTetrahedra(
             *((uint64_t*)&a.z) < *((uint64_t*)&b.z);
     };
     std::set<ivec4, decltype(ivec4Cmp)> tAdded(ivec4Cmp);
+    tAdded.insert(tets[0]);
 
     // BFS advancing
     // https://en.wikipedia.org/wiki/Tetrahedral-octahedral_honeycomb
@@ -140,7 +173,7 @@ void generateInitialTetrahedra(
 }
 
 
-
+// Quasi-random
 double vanDerCorput(int n, int b) {
     double x = 0.0, e = 1.0 / b;
     while (n) {
@@ -151,6 +184,9 @@ double vanDerCorput(int n, int b) {
 }
 
 
+// Generate a tetrahedral mesh from a scalar field
+// The domain is constrained to a box
+// The object should be connected
 void generateInitialTetrahedraInBox(
     ScalarFieldF F0, vec3 bc, vec3 br, double tetSize,
     std::vector<MeshVertex>& vertices, std::vector<ivec4>& tets
@@ -164,11 +200,15 @@ void generateInitialTetrahedraInBox(
             abs(z - bc.z) - br.z });
         return max(f, b);
     };
-    vec3 c = bc;
-    for (int i = 1; i < 65536 && !(F0(c.x, c.y, c.z) < 0.); i++) {
+    // find a point inside the object
+    // introduce some randomness to prevent degenerate cases
+    vec3 c;
+    for (int i = 0x1000000; i < 0x1010000; i++) {
         vec3 s(vanDerCorput(i, 2), vanDerCorput(i, 3), vanDerCorput(i, 5));
         c = bc + br * (2.0 * s - 1.0);
+        if (F0(c.x, c.y, c.z) < 0.) break;
     }
+    // generate a tetrahedron
     vertices.assign({
         MeshVertex{ c },
         MeshVertex{ c + tetSize * vec3(1, 1, 0) },
@@ -177,6 +217,67 @@ void generateInitialTetrahedraInBox(
         });
     tets.push_back(ivec4(0, 1, 2, 3));
     generateInitialTetrahedra(F, vertices, tets);
+}
+
+
+void cutIsosurface(
+    const std::vector<MeshVertex>& verts, const std::vector<ivec4>& tets,
+    std::vector<vec3> &resVerts, std::vector<ivec4> &resTets
+) {
+    // map index in `verts` to index in `resVerts`
+    std::vector<int> vMap(verts.size(), -1);
+
+    // map edge vertex to index in `resVerts`
+    auto ivec2Cmp = [](ivec2 a, ivec2 b) {
+        assert(a.x < a.y && b.x < b.y);
+        return a.x == b.x ? a.y < b.y : a.x < b.x;
+    };
+    std::map<ivec2, int, decltype(ivec2Cmp)> eMap(ivec2Cmp);
+
+    // 
+    for (ivec4 tet : tets) {
+        // add vertices to list
+        for (int _ = 0; _ < 4; _++) {
+            int i = tet[_];
+            if (vMap[i] == -1 && verts[i].fv < 0.) {
+                vMap[i] = (int)resVerts.size();
+                resVerts.push_back(verts[i].x);
+            }
+        }
+        // calculate vertex index
+        int idx = 0;
+        for (int _ = 0; _ < 4; _++)
+            idx |= int(verts[tet[_]].fv < 0.) << _;
+        // add edges to list
+        int es[10] = {
+            vMap[tet.x], vMap[tet.y], vMap[tet.z], vMap[tet.w],
+            -1, -1, -1, -1, -1, -1
+        };
+        auto LutE = LUT_MARCH_E[idx];
+        for (int _ = 0; _ < 6; _++) {
+            if (LutE[_]) {
+                int i = tet[EDGES[_][0]], j = tet[EDGES[_][1]];
+                if (i > j) std::swap(i, j);
+                if (eMap.find(ivec2(i, j)) == eMap.end()) {
+                    eMap[ivec2(i, j)] = (int)resVerts.size();
+                    assert(verts[i].fv * verts[j].fv <= 0.0);
+                    vec3 pe = mix(verts[i].x, verts[j].x,
+                        -verts[i].fv / (verts[j].fv - verts[i].fv));
+                    resVerts.push_back(pe);
+                }
+                es[_ + 4] = eMap[ivec2(i, j)];
+            }
+        }
+        // add tets to list
+        auto LutT = LUT_MARCH_T[idx][0];
+        for (int i = 0; i < 12; i += 4) {
+            if (LutT[i] == -1) break;
+            ivec4 tet1;
+            for (int _ = 0; _ < 4; _++)
+                tet1[_] = es[LutT[i + _]];
+            resTets.push_back(tet1);
+        }
+    }
 }
 
 

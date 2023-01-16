@@ -46,7 +46,7 @@ uniform float brightness;  // multiply color by this number
 float log10(float x) { return log(x)/log(10.); }
 float remap(float t, float k) { return pow(t,k) / (pow(t,k) + pow(1.-t,k)); }
 void main() {
-    vec3 n = normalize(fragNormal);
+    vec3 n = fragNormal==vec3(0) ? vec3(0): normalize(fragNormal);
     float amb = 1.0+0.3*max(-n.z,0.);
     float dif = max(n.z,0.);
     float spc = pow(max(n.z,0.), 40.0);
@@ -979,16 +979,19 @@ void mainGUI(DiscretizedStructure structure) {
     vec3 minv(1e10f), maxv(-1e10f);
     for (int i = 0; i < structure.N; i++) {
         auto v = structure.X[i] + structure.U[i];
+        v = structure.X[i];
         vertices[i] = vec3(v.x, v.y, v.z);
         minv = glm::min(minv, vertices[i]);
         maxv = glm::max(maxv, vertices[i]);
     }
 
-    // faces/normals
+    // faces
     auto ivec3Cmp = [](glm::ivec3 a, glm::ivec3 b) {
+        std::sort(&a.x, &a.x + 3);
+        std::sort(&b.x, &b.x + 3);
         return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
     };
-    std::set<glm::ivec3, decltype(ivec3Cmp)> uniqueIndicesF(ivec3Cmp);
+    std::map<glm::ivec3, int, decltype(ivec3Cmp)> uniqueIndicesF(ivec3Cmp);  // count
     ivec3 ts[MAX_SOLID_ELEMENT_TN];
     for (int i = 0; i < structure.M; i++) {
         int tn = structure.SE[i]->getNumTriangles();
@@ -999,15 +1002,25 @@ void mainGUI(DiscretizedStructure structure) {
             int i = t0[0] < t0[1] && t0[0] < t0[2] ? 0 :
                 t0[1] < t0[2] && t0[1] < t0[0] ? 1 : 2;
             glm::ivec3 t(t0[i], t0[(i + 1) % 3], t0[(i + 2) % 3]);
-            uniqueIndicesF.insert(t);
-            vec3 n = glm::cross(
-                vertices[t.y] - vertices[t.x],
-                vertices[t.z] - vertices[t.x]);
-            normals[t.x] += n, normals[t.y] += n, normals[t.z] += n;
+            uniqueIndicesF[t] += 1;
         }
     }
-    std::vector<glm::ivec3> indicesF =
-        std::vector<glm::ivec3>(uniqueIndicesF.begin(), uniqueIndicesF.end());
+    std::vector<glm::ivec3> indicesF;
+    for (auto p : uniqueIndicesF) if (p.second == 1)
+        indicesF.push_back(p.first);
+    // for (glm::ivec3 f : indicesF) printf("(%d, %d, %d), ", f.x, f.y, f.z);
+
+    // normals
+    for (auto fc : uniqueIndicesF) {
+        if (fc.second == 2) continue;
+        assert(fc.second == 1);
+        glm::ivec3 f = fc.first;
+        vec3 n = glm::cross(
+            vertices[f.y] - vertices[f.x],
+            vertices[f.z] - vertices[f.x]);
+        // printf("%.1lf ", dot(normalize(n), vertices[f.x]));
+        normals[f.x] += n, normals[f.y] += n, normals[f.z] += n;
+    }
 
     // edges
     auto ivec2Cmp = [](glm::ivec2 a, glm::ivec2 b) {
@@ -1070,11 +1083,11 @@ void mainGUI(DiscretizedStructure structure) {
 
         // draw
         viewport->initDraw3D();
-        // viewport->drawVBO(vertices, normals, indicesF,
-        //     precomputed.colors,
-        //     (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
-        //     slider.getK(), 1.0f
-        // );
+        viewport->drawVBO(vertices, normals, indicesF,
+            precomputed.colors,
+            (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
+            slider.getK(), 1.0f
+        );
         viewport->drawLinesVBO(vertices, normals, indicesE,
             precomputed.colors,
             (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
