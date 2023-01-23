@@ -194,7 +194,7 @@ DiscretizedStructure test_2(double density, double load) {
 
 
 DiscretizedStructure test_3(double density) {
-    auto F = [](double x, double y, double z) {
+    MeshgenTetImplicit::ScalarFieldF F = [](double x, double y, double z) {
         vec3 p(x, y, z);
         return dot(p, p) - 1.0;
         // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
@@ -203,17 +203,24 @@ DiscretizedStructure test_3(double density) {
     };
     std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
     std::vector<ivec4> tetsM;
-    MeshgenTetImplicit::generateInitialTetrahedraInBox(
-        F, vec3(0), vec3(2), 0.3, vertsM, tetsM);
+    vec3 bc = vec3(0), br = vec3(2);
+    F = MeshgenTetImplicit::generateInitialTetrahedraInBox(
+        F, bc, br, 0.3, vertsM, tetsM);
     std::vector<vec3> vs;
     std::vector<ivec4> tets;
     if (1) {
-        MeshgenTetImplicit::cutIsosurface(vertsM, tetsM, vs, tets);
+        MeshgenTetImplicit::cutIsosurface(F, vertsM, tetsM, vs, tets);
     }
     else {
         for (auto mv : vertsM) vs.push_back(mv.x);
         tets = tetsM;
     }
+    
+    auto vec3Cmp = [](vec3 a, vec3 b) {
+        return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
+    };
+    printf("%d %d\n", vs.size(), std::set<vec3, decltype(vec3Cmp)>(vs.begin(), vs.end(), vec3Cmp).size());
+
 
     std::vector<ElementForce4> Fv;
     for (ivec4 t : tets) {

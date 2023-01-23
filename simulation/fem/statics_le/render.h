@@ -1008,7 +1008,6 @@ void mainGUI(DiscretizedStructure structure) {
     std::vector<glm::ivec3> indicesF;
     for (auto p : uniqueIndicesF) if (p.second == 1)
         indicesF.push_back(p.first);
-    // for (glm::ivec3 f : indicesF) printf("(%d, %d, %d), ", f.x, f.y, f.z);
 
     // normals
     for (auto fc : uniqueIndicesF) {
@@ -1018,7 +1017,7 @@ void mainGUI(DiscretizedStructure structure) {
         vec3 n = glm::cross(
             vertices[f.y] - vertices[f.x],
             vertices[f.z] - vertices[f.x]);
-        // printf("%.1lf ", dot(normalize(n), vertices[f.x]));
+        n = glm::dot(n, n) == 0. ? n : normalize(n);
         normals[f.x] += n, normals[f.y] += n, normals[f.z] += n;
     }
 

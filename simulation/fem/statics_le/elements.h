@@ -27,6 +27,8 @@ struct ivec3 {
     int x, y, z;
     ivec3(int a = 0):x(a), y(a), z(a) {}
     ivec3(int a, int b, int c):x(a), y(b), z(c) {}
+    int& operator[](int i) { return (&x)[i]; }
+    const int& operator[](int i) const { return (&x)[i]; }
     ivec3 operator - () const { return ivec3(-x, -y, -z); }
     ivec3 operator + (const ivec3& v) const { return ivec3(x + v.x, y + v.y, z + v.z); }
     ivec3 operator - (const ivec3& v) const { return ivec3(x - v.x, y - v.y, z - v.z); }

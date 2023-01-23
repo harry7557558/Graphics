@@ -19,10 +19,10 @@ Faces = [
     (1, 2, 3), (0, 3, 2), (0, 1, 3), (0, 2, 1)
 ]
 Planes = [
-    set((0, 1, 2, 4, 5, 7)),
-    set((0, 2, 3, 5, 6, 9)),
-    set((0, 1, 3, 4, 6, 8)),
-    set((1, 2, 3, 7, 8, 9))
+    (1, 2, 3, 7, 9, 8),
+    (0, 3, 2, 6, 9, 5),
+    (0, 1, 3, 4, 8, 6),
+    (0, 2, 1, 5, 7, 4),
 ]
 
 
@@ -31,32 +31,6 @@ def tetrahedron_volume(vs):
     return round(np.linalg.det([
         vs[1]-vs[0], vs[2]-vs[0], vs[3]-vs[0]
     ]))
-
-
-def assert_no_coplanar():
-    """Make sure the vertice has no coplanar tets
-        Not necessary? Might just skip that case."""
-    for vs in combinations(range(10), 4):
-        # faces must not overlap
-        in_planes = False
-        for plane in Planes:
-            if len(set(vs).difference(plane)) == 0:
-                in_planes = True
-        if in_planes:
-            continue
-        # edges must not overlap
-        good = True
-        for v1, v2 in combinations(vs, 2):
-            if v1 < 4 and v2 < 4:
-                key = frozenset((v1, v2))
-                if EdgesI[key] in vs:
-                    good = False
-                    break
-        if not good:
-            continue
-        # assert
-        if tetrahedron_volume(vs) == 0:
-            print(vs)
 
 
 def is_tets_overlap(t1, t2):
@@ -157,7 +131,7 @@ def find_tetrahedra_combinations(es):
                 continue
             good = True
             for plane in Planes:
-                if len(set(c).difference(plane)) == 0:
+                if len(set(c).difference(set(plane))) == 0:
                     good = False
                     break
             if not good:
@@ -265,21 +239,48 @@ def find_tetrahedra_combinations_ss(ss):
     return tets
 
 
+def list_faces(tets):
+    faces = set()
+    for tet in tets:
+        for f in Faces:
+            f = [tet[fi] for fi in f]
+            found = False
+            for plane in Planes:
+                if len(set(f).difference(set(plane))) == 0:
+                    found = True
+                    break
+            if not found:
+                continue
+            f = [list(plane).index(vi) for vi in f]
+            i = np.argmin(f)
+            f = (f[i], f[(i+1)%3], f[(i+2)%3])
+            faces.add(f)
+    return faces
+
+
 def generate_march_lut():
     """Print LUT for marching tetrahedra"""
+    lut = []
     for idx in range(2**4):
         ss = [i for i in range(4) if (idx>>i)&1]
-        combs = []
+        combs, combss = [], []
         for tets in find_tetrahedra_combinations_ss(ss):
+            combs.append(tets)
             tets = sum(map(list, tets), [])
             if len(tets) < 12:
                 tets.append(-1)
             tets = '{' + ','.join(map(str, tets)) + '}'
-            combs.append(tets)
-        if len(combs) < 6:
-            combs.append('{-1}')
-        combs = '{ ' + ', '.join(combs) + ' },'
-        print(combs)
+            combss.append(tets)
+        lut.append(combs)
+        if len(combss) < 6:
+            combss.append('{-1}')
+        combss = '{ ' + ', '.join(combss) + ' },'
+        print(combss)
+    all_tets = set(sum([sum(c, []) for c in lut], []))
+    print(all_tets)
+    faces = list_faces(all_tets)
+    print(faces)
+    print(len(faces))
 
 
 def generate_march_lut_edge():
@@ -300,9 +301,8 @@ def generate_march_lut_edge():
 
 if __name__ == "__main__":
 
-    #assert_no_coplanar()
     #find_tetrahedra_combinations([4, 5, 6, 7, 8, 9])
 
-    #generate_march_lut()
-    generate_march_lut_edge()
+    #generate_march_lut_edge()
+    generate_march_lut()
 
