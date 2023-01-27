@@ -1090,7 +1090,7 @@ void mainGUI(DiscretizedStructure structure) {
         viewport->drawLinesVBO(vertices, normals, indicesE,
             precomputed.colors,
             (slider.tt > 0.5f ? 1 : -1) * precomputed.maxValue,
-            slider.getK(), 0.9f
+            slider.getK(), 0.8f
         );
         viewport->initDraw2D();
         viewport->drawWindowInputs();

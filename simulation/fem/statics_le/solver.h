@@ -20,7 +20,9 @@ double getTimePast() {
 
 
 // PRNG
+#ifndef PI
 #define PI 3.1415926535897932384626
+#endif
 unsigned int _IDUM = 1;
 unsigned randu() { return _IDUM = _IDUM * 1664525u + 1013904223u; }
 double randf() { return randu() * (1. / 4294967296.); }
@@ -206,7 +208,7 @@ void DiscretizedStructure::solveDeflection(const double* C) {
     for (int i = 0; i < Ns; i++)
         tol += dot(f[i], f[i]);
     tol = 1e-10 * sqrt(tol);
-#define PRECOND 3  // 1: diag; 2: cholesky; 3: ssor
+#define PRECOND 1  // 1: diag; 2: cholesky; 3: ssor
 #if !PRECOND
     double time2 = time1;
     int niters = conjugateGradient(

@@ -200,6 +200,7 @@ DiscretizedStructure test_3(double density) {
         // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
         // return x * x + y * y - (1. - z) * z * z;
+        // return max(p.x * p.x + p.y * p.y - 1.0, abs(p.z) - 0.5);
     };
     std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
     std::vector<ivec4> tetsM;
@@ -209,13 +210,18 @@ DiscretizedStructure test_3(double density) {
     std::vector<vec3> vs;
     std::vector<ivec4> tets;
     if (1) {
-        MeshgenTetImplicit::cutIsosurface(F, vertsM, tetsM, vs, tets);
+        std::vector<vec3> vertsN;
+        std::vector<ivec4> tetsN;
+        MeshgenTetImplicit::cutIsosurface(F, vertsM, tetsM, vertsN, tetsN);
+        if (1) MeshgenTetImplicit::mergeCloseSurfaceVertices(vertsN, tetsN, vs, tets);
+        else vs = vertsN, tets = tetsN;
     }
     else {
         for (auto mv : vertsM) vs.push_back(mv.x);
         tets = tetsM;
     }
-    
+    MeshgenTetImplicit::assertVolumeEqual(vs, tets);
+
     auto vec3Cmp = [](vec3 a, vec3 b) {
         return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
     };

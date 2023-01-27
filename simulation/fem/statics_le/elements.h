@@ -2,10 +2,13 @@
 
 #pragma once
 
-
 #include <cmath>
 #include <initializer_list>
 #include <cassert>
+
+#ifndef PI
+#define PI 3.1415926535897932384626
+#endif
 
 #undef max
 #undef min
