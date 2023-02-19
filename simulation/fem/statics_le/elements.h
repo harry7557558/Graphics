@@ -6,6 +6,11 @@
 #include <initializer_list>
 #include <cassert>
 
+#if SUPPRESS_ASSERT
+#undef assert
+#define assert(x) 0
+#endif
+
 #ifndef PI
 #define PI 3.1415926535897932384626
 #endif

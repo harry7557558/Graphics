@@ -1,4 +1,7 @@
+// ccache g++ test.cpp -lopengl32 -lglew32 -lglfw3 -o test ; if ($?) { .\test }
 #pragma GCC optimize "O0"
+
+#define SUPPRESS_ASSERT 1
 
 #include <cstdio>
 #include <random>
@@ -196,8 +199,8 @@ DiscretizedStructure test_2(double density, double load) {
 DiscretizedStructure test_3(double density) {
     MeshgenTetImplicit::ScalarFieldF F = [](double x, double y, double z) {
         vec3 p(x, y, z);
-        return dot(p, p) - 1.0;
-        // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
+        // return dot(p, p) - 1.0;
+        return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
         // return x * x + y * y - (1. - z) * z * z;
         // return max(p.x * p.x + p.y * p.y - 1.0, abs(p.z) - 0.5);
@@ -213,13 +216,15 @@ DiscretizedStructure test_3(double density) {
         std::vector<vec3> vertsN;
         std::vector<ivec4> tetsN;
         MeshgenTetImplicit::cutIsosurface(F, vertsM, tetsM, vertsN, tetsN);
-        if (1) MeshgenTetImplicit::mergeCloseSurfaceVertices(vertsN, tetsN, vs, tets);
+        if (0) MeshgenTetImplicit::mergeCloseSurfaceVertices(vertsN, tetsN, vs, tets);
         else vs = vertsN, tets = tetsN;
     }
     else {
         for (auto mv : vertsM) vs.push_back(mv.x);
         tets = tetsM;
     }
+    MeshgenTetImplicit::assertVolumeEqual(vs, tets);
+    MeshgenTetImplicit::smoothMesh(vs, tets, std::vector<double>(20, 0.1));
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 
     auto vec3Cmp = [](vec3 a, vec3 b) {

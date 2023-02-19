@@ -6,6 +6,11 @@
 #include <stdio.h>
 #include "meshgen_misc.h"
 
+#if SUPPRESS_ASSERT
+#undef assert
+#define assert(x) 0
+#endif
+
 #define MESHGEN_TET_IMPLICIT_NS_START namespace MeshgenTetImplicit {
 #define MESHGEN_TET_IMPLICIT_NS_END }
 
@@ -13,6 +18,9 @@ MESHGEN_TET_IMPLICIT_NS_START
 
 using namespace MeshgenMisc;
 
+namespace MeshgenTetLoss {
+#include "meshgen_tet_loss.h"
+}
 
 const int EDGES[6][2] = {
     {0, 1}, {0, 2}, {0, 3},
@@ -612,5 +620,141 @@ void assertVolumeEqual(
     assert(abs(Vs / Vt - 1.0) < 1e-6);
 }
 
+
+// Refine the mesh, experimental
+void smoothMesh(
+    std::vector<vec3>& verts,
+    const std::vector<ivec4>& tets,
+    std::vector<double> steps
+) {
+    int vn = (int)verts.size();
+
+    // surface
+    std::set<ivec3, decltype(ivec3Cmp)> faces(ivec3Cmp);
+    for (ivec4 tet : tets) {
+        for (int fi = 0; fi < 4; fi++) {
+            ivec3 f;
+            for (int _ = 0; _ < 3; _++)
+                f[_] = tet[FACES[fi][_]];
+            f = rotateIvec3(f);
+            assert(faces.find(f) == faces.end());
+            ivec3 fo = ivec3(f.x, f.z, f.y);
+            if (faces.find(fo) != faces.end())
+                faces.erase(fo);
+            else faces.insert(f);
+        }
+    }
+
+    // normals
+    std::vector<vec3> normals(vn, vec3(0));
+    for (ivec3 f : faces) {
+        vec3 n = cross(
+            verts[f[1]] - verts[f[0]],
+            verts[f[2]] - verts[f[0]]);
+        for (int _ = 0; _ < 3; _++)
+            normals[f[_]] += n;
+    }
+    for (int i = 0; i < vn; i++)
+        if (normals[i] != vec3(0))
+            normals[i] = normalize(normals[i]);
+
+    // smoothing
+    std::vector<vec3> grads(vn);
+    std::vector<double> maxFactor(vn), maxMovement(vn);
+    for (double step : steps) {
+        // accumulate gradient
+        for (int i = 0; i < vn; i++)
+            grads[i] = vec3(0.0);
+        for (ivec4 tet : tets) {
+            vec3 v[4], g[4];
+            for (int _ = 0; _ < 4; _++)
+                v[_] = verts[tet[_]];
+            const double* vd = (const double*)&v[0];
+            double val, size2;
+            double* res[3] = { &val, (double*)g, &size2 };
+            MeshgenTetLoss::meshgen_tet_loss(&vd, res, nullptr, nullptr, 0);
+            for (int _ = 0; _ < 4; _++)
+                grads[tet[_]] -= g[_] * size2 * step;
+        }
+        // calculate maximum allowed vertex movement factor
+        for (int i = 0; i < vn; i++)
+            maxFactor[i] = 1.0, maxMovement[i] = 0.0;
+        for (ivec4 tet : tets) {
+            // prevent going negative by passing through a face
+            const static int fvp[4][4] = {
+                {0,1,2,3}, {0,3,1,2}, {0,2,3,1}, {1,3,2,0}
+            };
+            vec3 v[4], g[4];
+            for (int i = 0; i < 4; i++) {
+                for (int _ = 0; _ < 4; _++) {
+                    int j = tet[fvp[i][_]];
+                    v[_] = verts[j], g[_] = grads[j];
+                }
+                // plane normal and distance to the vertex
+                vec3 n = normalize(cross(v[1] - v[0], v[2] - v[0]));
+                double d = dot(n, v[3] - v[0]);
+                assert(d > 0.0);
+                // how far you need to move to make it negative
+                double k[4] = { 1, 1, 1, 1 };
+                double d3 = max(-dot(n, g[3]), 0.0);
+                for (int _ = 0; _ < 3; _++) {
+                    double d_ = max(dot(n, g[_]), 0.0);
+                    double ds = d_ + d3;
+                    if (ds == 0.0) continue;
+                    k[_] = min(k[_], d / ds);
+                }
+                k[3] = min(min(k[0], k[1]), k[2]);
+                for (int _ = 0; _ < 4; _++) {
+                    int j = tet[fvp[i][_]];
+                    maxFactor[j] = min(maxFactor[j], k[_]);
+                }
+            }
+            // prevent going negative by edge crossing
+            for (int i = 0; i < 3; i++) {
+                for (int _ = 0; _ < 4; _++) {
+                    int j = tet[fvp[i][_]];
+                    v[_] = verts[j], g[_] = grads[j];
+                }
+                // normal and distance
+                vec3 n = normalize(cross(v[3] - v[2], v[1] - v[0]));
+                double d = dot(n, v[3]) - dot(n, v[1]);
+                assert(d > 0.0);
+                // how far you need to move to make it negative
+                double k[4] = { 1, 1, 1, 1 };
+                for (int a = 0; a < 2; a++) {
+                    for (int b = 2; b < 4; b++) {
+                        double da = max(dot(n, g[a]), 0.0);
+                        double db = max(-dot(n, g[b]), 0.0);
+                        double ds = da + db;
+                        if (ds == 0.0) continue;
+                        k[a] = min(k[a], d / ds);
+                        k[b] = min(k[b], d / ds);
+                    }
+                }
+                for (int _ = 0; _ < 4; _++) {
+                    int j = tet[fvp[i][_]];
+                    maxFactor[j] = min(maxFactor[j], k[_]);
+                }
+            }
+            // prevent going crazy
+            double sl = cbrt(abs(det(v[1] - v[0], v[2] - v[0], v[3] - v[0])));
+            for (int _ = 0; _ < 4; _++)
+                maxMovement[tet[_]] = max(maxMovement[tet[_]], sl);
+        }
+        // gradient descent
+        for (int i = 0; i < vn; i++) {
+            vec3 g = 0.9 * maxFactor[i] * grads[i];
+            double gl = length(g);
+            if (gl != 0.0) {
+                double a = maxMovement[i];
+                // g *= a * tanh(gl / a) / gl;
+            }
+            vec3 n = normals[i];
+            g -= dot(g, n) * n;
+            verts[i] += g;
+        }
+        // printf("One smoothing step finished.\n");
+    }
+}
 
 MESHGEN_TET_IMPLICIT_NS_END
