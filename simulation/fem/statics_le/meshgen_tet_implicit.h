@@ -625,7 +625,7 @@ void assertVolumeEqual(
 void smoothMesh(
     std::vector<vec3>& verts,
     const std::vector<ivec4>& tets,
-    std::vector<double> steps
+    int nsteps
 ) {
     int vn = (int)verts.size();
 
@@ -661,7 +661,8 @@ void smoothMesh(
     // smoothing
     std::vector<vec3> grads(vn);
     std::vector<double> maxFactor(vn), maxMovement(vn);
-    for (double step : steps) {
+    for (int stepi = 0; stepi < nsteps; stepi++) {
+
         // accumulate gradient
         for (int i = 0; i < vn; i++)
             grads[i] = vec3(0.0);
@@ -674,8 +675,13 @@ void smoothMesh(
             double* res[3] = { &val, (double*)g, &size2 };
             MeshgenTetLoss::meshgen_tet_loss(&vd, res, nullptr, nullptr, 0);
             for (int _ = 0; _ < 4; _++)
-                grads[tet[_]] -= g[_] * size2 * step;
+                grads[tet[_]] -= 1.0 * g[_] * size2;
         }
+        for (int i = 0; i < vn; i++) {
+            vec3 n = normals[i];
+            grads[i] -= dot(grads[i], n) * n;
+        }
+
         // calculate maximum allowed vertex movement factor
         for (int i = 0; i < vn; i++)
             maxFactor[i] = 1.0, maxMovement[i] = 0.0;
@@ -684,7 +690,9 @@ void smoothMesh(
             const static int fvp[4][4] = {
                 {0,1,2,3}, {0,3,1,2}, {0,2,3,1}, {1,3,2,0}
             };
+            // check faces
             vec3 v[4], g[4];
+            double mf[4] = { 1.0, 1.0, 1.0, 1.0 };
             for (int i = 0; i < 4; i++) {
                 for (int _ = 0; _ < 4; _++) {
                     int j = tet[fvp[i][_]];
@@ -694,9 +702,9 @@ void smoothMesh(
                 vec3 n = normalize(cross(v[1] - v[0], v[2] - v[0]));
                 double d = dot(n, v[3] - v[0]);
                 assert(d > 0.0);
-                // how far you need to move to make it negative
-                double k[4] = { 1, 1, 1, 1 };
+                // how far you need to go to make it negative
                 double d3 = max(-dot(n, g[3]), 0.0);
+                double k[4] = { 1, 1, 1, 1 };
                 for (int _ = 0; _ < 3; _++) {
                     double d_ = max(dot(n, g[_]), 0.0);
                     double ds = d_ + d3;
@@ -704,56 +712,53 @@ void smoothMesh(
                     k[_] = min(k[_], d / ds);
                 }
                 k[3] = min(min(k[0], k[1]), k[2]);
-                for (int _ = 0; _ < 4; _++) {
-                    int j = tet[fvp[i][_]];
-                    maxFactor[j] = min(maxFactor[j], k[_]);
-                }
+                for (int _ = 0; _ < 4; _++)
+                    mf[fvp[i][_]] = min(mf[fvp[i][_]], k[_]);
             }
-            // prevent going negative by edge crossing
-            for (int i = 0; i < 3; i++) {
-                for (int _ = 0; _ < 4; _++) {
-                    int j = tet[fvp[i][_]];
-                    v[_] = verts[j], g[_] = grads[j];
-                }
-                // normal and distance
-                vec3 n = normalize(cross(v[3] - v[2], v[1] - v[0]));
-                double d = dot(n, v[3]) - dot(n, v[1]);
-                assert(d > 0.0);
-                // how far you need to move to make it negative
-                double k[4] = { 1, 1, 1, 1 };
-                for (int a = 0; a < 2; a++) {
-                    for (int b = 2; b < 4; b++) {
-                        double da = max(dot(n, g[a]), 0.0);
-                        double db = max(-dot(n, g[b]), 0.0);
-                        double ds = da + db;
-                        if (ds == 0.0) continue;
-                        k[a] = min(k[a], d / ds);
-                        k[b] = min(k[b], d / ds);
-                    }
-                }
-                for (int _ = 0; _ < 4; _++) {
-                    int j = tet[fvp[i][_]];
-                    maxFactor[j] = min(maxFactor[j], k[_]);
-                }
-            }
+            for (int _ = 0; _ < 4; _++)
+                maxFactor[tet[_]] = min(maxFactor[tet[_]],
+                    mf[_] > 0.0 ? mf[_] : 1.0);
             // prevent going crazy
-            double sl = cbrt(abs(det(v[1] - v[0], v[2] - v[0], v[3] - v[0])));
+            double sl = cbrt(abs(det(v[1] - v[0], v[2] - v[0], v[3] - v[0]) / 6.0));
             for (int _ = 0; _ < 4; _++)
                 maxMovement[tet[_]] = max(maxMovement[tet[_]], sl);
         }
-        // gradient descent
+
+        // displacements
         for (int i = 0; i < vn; i++) {
             vec3 g = 0.9 * maxFactor[i] * grads[i];
             double gl = length(g);
             if (gl != 0.0) {
                 double a = maxMovement[i];
-                // g *= a * tanh(gl / a) / gl;
+                g *= a * tanh(gl / a) / gl;
             }
-            vec3 n = normals[i];
-            g -= dot(g, n) * n;
-            verts[i] += g;
+            grads[i] = g;
         }
-        // printf("One smoothing step finished.\n");
+
+        // reduce displacement if negative volume occurs
+        std::vector<bool> reduce(vn, true);
+        for (int iter = 0; iter < 4; iter++) {
+            // update vertex position
+            const double r = 0.8;
+            double k = (iter == 0 ? 1.0 : (r - 1.0) * pow(r, iter - 1.0));
+            for (int i = 0; i < vn; i++) if (reduce[i])
+                verts[i] += k * grads[i];
+            // check if negative volume occurs
+            reduce = std::vector<bool>(vn, false);
+            bool found = false;
+            for (ivec4 tet : tets) {
+                vec3 v[4] = {
+                    verts[tet[0]], verts[tet[1]], verts[tet[2]], verts[tet[3]]
+                };
+                if (det(v[1] - v[0], v[2] - v[0], v[3] - v[0]) < 0.0) {
+                    reduce[tet[0]] = reduce[tet[1]] =
+                        reduce[tet[2]] = reduce[tet[3]] = true;
+                    found = true;
+                    // printf("%d\n", iter);
+                }
+            }
+            if (!found) break;
+        }
     }
 }
 

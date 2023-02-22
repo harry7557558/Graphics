@@ -1,7 +1,7 @@
 // ccache g++ test.cpp -lopengl32 -lglew32 -lglfw3 -o test ; if ($?) { .\test }
 #pragma GCC optimize "O0"
 
-#define SUPPRESS_ASSERT 1
+#define SUPPRESS_ASSERT 0
 
 #include <cstdio>
 #include <random>
@@ -202,8 +202,9 @@ DiscretizedStructure test_3(double density) {
         // return dot(p, p) - 1.0;
         return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
-        // return x * x + y * y - (1. - z) * z * z;
+        // return x * x + y * y - (1. - z) * z * z - 0.1;
         // return max(p.x * p.x + p.y * p.y - 1.0, abs(p.z) - 0.5);
+        // return pow(p.x * p.x + 2. * p.y * p.y + p.z * p.z - 1., 3.) - (p.x * p.x + .1 * p.y * p.y) * pow(p.z, 3.);
     };
     std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
     std::vector<ivec4> tetsM;
@@ -224,7 +225,7 @@ DiscretizedStructure test_3(double density) {
         tets = tetsM;
     }
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
-    MeshgenTetImplicit::smoothMesh(vs, tets, std::vector<double>(20, 0.1));
+    MeshgenTetImplicit::smoothMesh(vs, tets, 20);
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 
     auto vec3Cmp = [](vec3 a, vec3 b) {
