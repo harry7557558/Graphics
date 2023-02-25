@@ -625,7 +625,8 @@ void assertVolumeEqual(
 void smoothMesh(
     std::vector<vec3>& verts,
     const std::vector<ivec4>& tets,
-    int nsteps
+    int nsteps,
+    ScalarFieldFBatch F = nullptr
 ) {
     int vn = (int)verts.size();
 
@@ -658,6 +659,52 @@ void smoothMesh(
         if (normals[i] != vec3(0))
             normals[i] = normalize(normals[i]);
 
+    // vertices near surface
+    std::vector<int> compressedIndex(vn, -1);  // global -> near surface
+    std::vector<int> fullIndex;  // near surface -> global
+    std::vector<int> surfaceVerts;  // strictly surface
+    std::vector<ivec4> surfaceTets;  // near surface, global indice
+    std::vector<vec3> surfaceVertPs;  // positions
+    std::vector<double> surfaceVertVals;  // function values
+    std::vector<vec3> surfaceVertGrads, surfaceTetGrads;  // gradients
+    std::vector<double> surfaceVertGradWeights;  // used to project tet gradients to verts
+    if (F) {
+        // on face
+        for (ivec3 f : faces) {
+            for (int _ = 0; _ < 3; _++) {
+                if (compressedIndex[f[_]] == -1) {
+                    compressedIndex[f[_]] = (int)fullIndex.size();
+                    fullIndex.push_back(f[_]);
+                    surfaceVerts.push_back(f[_]);
+                }
+            }
+        }
+        // one layer
+        int i0 = 0, i1 = (int)fullIndex.size();
+        for (ivec4 tet : tets) {
+            int isOnFace = 0;
+            for (int _ = 0; _ < 4; _++)
+                if (compressedIndex[tet[_]] >= i0 &&
+                    compressedIndex[tet[_]] < i1)
+                    isOnFace += 1;
+            if (isOnFace == 0)
+                continue;
+            surfaceTets.push_back(tet);
+            for (int _ = 0; _ < 4; _++)
+                if (compressedIndex[tet[_]] == -1) {
+                    compressedIndex[tet[_]] = (int)fullIndex.size();
+                    fullIndex.push_back(tet[_]);
+                }
+        }
+    }
+    int svn = (int)fullIndex.size();
+    int stn = (int)surfaceTets.size();
+    surfaceVertPs.resize(svn);
+    surfaceVertVals.resize(svn);
+    surfaceVertGrads.resize(svn);
+    surfaceVertGradWeights.resize(svn);
+    surfaceTetGrads.resize(stn);
+
     // smoothing
     std::vector<vec3> grads(vn);
     std::vector<double> maxFactor(vn), maxMovement(vn);
@@ -675,11 +722,57 @@ void smoothMesh(
             double* res[3] = { &val, (double*)g, &size2 };
             MeshgenTetLoss::meshgen_tet_loss(&vd, res, nullptr, nullptr, 0);
             for (int _ = 0; _ < 4; _++)
-                grads[tet[_]] -= 1.0 * g[_] * size2;
+                grads[tet[_]] -= 0.01 * g[_] * size2;
         }
-        for (int i = 0; i < vn; i++) {
+        if (!F) for (int i = 0; i < vn; i++) {
             vec3 n = normals[i];
             grads[i] -= dot(grads[i], n) * n;
+        }
+
+        // force the mesh on the surface
+        if (F) {
+            // evaluate
+            for (int i = 0; i < svn; i++) {
+                int j = fullIndex[i];
+                surfaceVertPs[i] = verts[j] + grads[j];
+            }
+            F(svn, &surfaceVertPs[0], &surfaceVertVals[0]);
+            // gradient on tets
+            for (int i = 0; i < stn; i++) {
+                vec3 x[4]; double v[4];
+                for (int _ = 0; _ < 4; _++) {
+                    int j = compressedIndex[surfaceTets[i][_]];
+                    assert(j >= 0 && j < svn);
+                    x[_] = surfaceVertPs[j];
+                    v[_] = surfaceVertVals[j];
+                }
+                mat3 m(x[1]-x[0], x[2]-x[0], x[3]-x[0]);
+                vec3 b(v[1]-v[0], v[2]-v[0], v[3]-v[0]);
+                surfaceTetGrads[i] = inverse(transpose(m)) * b;
+            }
+            // gradient on verts
+            for (int i = 0; i < svn; i++) {
+                surfaceVertGradWeights[i] = 0.0;
+                surfaceVertGrads[i] = vec3(0.0);
+            }
+            for (int i = 0; i < stn; i++) {
+                for (int _ = 0; _ < 4; _++) {
+                    int j = compressedIndex[surfaceTets[i][_]];
+                    surfaceVertGrads[j] += surfaceTetGrads[i];
+                    surfaceVertGradWeights[j] += 1.0;
+                }
+            }
+            for (int i = 0; i < svn; i++) {
+                if (surfaceVertGradWeights[i] <= 0.0) printf("%d %lf\n", i, surfaceVertGradWeights[i]);
+                assert(surfaceVertGradWeights[i] > 0.0);
+                surfaceVertGrads[i] /= surfaceVertGradWeights[i];
+            }
+            // move the vertex to the surface
+            for (int i = 0; i < (int)surfaceVerts.size(); i++) {
+                double v = surfaceVertVals[i];
+                vec3 g = surfaceVertGrads[i];
+                grads[fullIndex[i]] -= v * g / dot(g, g);
+            }
         }
 
         // calculate maximum allowed vertex movement factor
@@ -725,6 +818,7 @@ void smoothMesh(
         }
 
         // displacements
+        double meanDisp = 0.0;
         for (int i = 0; i < vn; i++) {
             vec3 g = 0.9 * maxFactor[i] * grads[i];
             double gl = length(g);
@@ -733,7 +827,11 @@ void smoothMesh(
                 g *= a * tanh(gl / a) / gl;
             }
             grads[i] = g;
+            meanDisp += length(g) / vn;
         }
+        // expect this to drop to 0.1x after 20 iterations
+        // if not, adjust step size
+        printf("%lf\n", meanDisp);
 
         // reduce displacement if negative volume occurs
         std::vector<bool> reduce(vn, true);

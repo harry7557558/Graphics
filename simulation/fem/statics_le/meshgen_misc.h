@@ -6,6 +6,8 @@
 #include <map>
 #include <set>
 #include <cstdint>
+#include <algorithm>
+#include <initializer_list>
 #include "elements.h"
 
 
@@ -16,6 +18,7 @@ MESHGEN_MISC_NS_START
 
 
 typedef std::function<double(double, double, double)> ScalarFieldF;
+typedef std::function<void(int, const vec3*, double*)> ScalarFieldFBatch;
 
 struct MeshVertex {
     vec3 x;

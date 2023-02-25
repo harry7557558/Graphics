@@ -15,6 +15,7 @@
 #include <vector>
 #include <set>
 #include <functional>
+#include <algorithm>
 #include <thread>
 
 #include "elements.h"

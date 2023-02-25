@@ -17,10 +17,12 @@
 
 #undef max
 #undef min
-template<typename T> inline T max(T x, T y) { return (x > y ? x : y); }
-template<typename T> inline T min(T x, T y) { return (x < y ? x : y); }
-template<typename T, typename t> inline T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
-template<typename T, typename f> inline T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
+#undef abs
+template<typename T> T max(T x, T y) { return (x > y ? x : y); }
+template<typename T> T min(T x, T y) { return (x < y ? x : y); }
+template<typename T, typename t> T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
+template<typename T, typename f> T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
+template<typename T> T abs(T x) { return x > 0 ? x : -x; }
 
 
 /* Indices */
@@ -230,18 +232,24 @@ vec3 eigvalsh(mat3 A) {
 // triangular surface: ccw outward normal
 struct ElementForce3: ivec3 {
     vec3 F;
+    ElementForce3(ivec3 v, vec3 f) :
+        ivec3(v), F(f) {}
 };
 
 // tetrahedral volume: any order
 // quad surface: ccw outward normal
 struct ElementForce4: ivec4 {
     vec3 F;
+    ElementForce4(ivec4 v, vec3 f) :
+        ivec4(v), F(f) {}
 };
 
 // brick volume:
 // 000, 100, 110, 010, 001, 101, 111, 011
 struct ElementForce8: ivec8 {
     vec3 F;
+    ElementForce8(ivec8 v, vec3 f) :
+        ivec8(v), F(f) {}
 };
 
 

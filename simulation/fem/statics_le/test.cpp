@@ -1,5 +1,11 @@
+// Windows:
 // ccache g++ test.cpp -lopengl32 -lglew32 -lglfw3 -o test ; if ($?) { .\test }
-#pragma GCC optimize "O0"
+
+// ECF (school computers kinda sus):
+// g++ -std=c++17 -I$HOME/.local/include -L$HOME/.local/lib test.cpp -lOpenGL -lGLEW -lglfw3 -ldl -lX11 -lpthread -o ~/temp
+// LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH ~/temp
+
+#pragma GCC optimize "O3"
 
 #define SUPPRESS_ASSERT 0
 
@@ -206,11 +212,16 @@ DiscretizedStructure test_3(double density) {
         // return max(p.x * p.x + p.y * p.y - 1.0, abs(p.z) - 0.5);
         // return pow(p.x * p.x + 2. * p.y * p.y + p.z * p.z - 1., 3.) - (p.x * p.x + .1 * p.y * p.y) * pow(p.z, 3.);
     };
+    MeshgenTetImplicit::ScalarFieldFBatch Fs = [&](int n, const vec3 *p, double *v) {
+        for (int i = 0; i < n; i++)
+            v[i] = F(p[i].x, p[i].y, p[i].z);
+    };
+
     std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
     std::vector<ivec4> tetsM;
     vec3 bc = vec3(0), br = vec3(2);
     F = MeshgenTetImplicit::generateInitialTetrahedraInBox(
-        F, bc, br, 0.3, vertsM, tetsM);
+        F, bc, br, 0.1, vertsM, tetsM);
     std::vector<vec3> vs;
     std::vector<ivec4> tets;
     if (1) {
@@ -225,14 +236,12 @@ DiscretizedStructure test_3(double density) {
         tets = tetsM;
     }
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
-    MeshgenTetImplicit::smoothMesh(vs, tets, 20);
+    MeshgenTetImplicit::smoothMesh(vs, tets, 50, Fs);
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 
     auto vec3Cmp = [](vec3 a, vec3 b) {
         return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
     };
-    printf("%d %d\n", vs.size(), std::set<vec3, decltype(vec3Cmp)>(vs.begin(), vs.end(), vec3Cmp).size());
-
 
     std::vector<ElementForce4> Fv;
     for (ivec4 t : tets) {
