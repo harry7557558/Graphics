@@ -22,6 +22,10 @@ namespace MeshgenTetLoss {
 #include "meshgen_tet_loss.h"
 }
 
+
+
+/* Mesh Generator 1 */
+
 const int EDGES[6][2] = {
     {0, 1}, {0, 2}, {0, 3},
     {1, 2}, {1, 3}, {2, 3}
@@ -570,6 +574,149 @@ void mergeCloseSurfaceVertices(
 }
 
 
+
+
+/* Mesh Generator 2 */
+
+
+// March through a BCC crystalline lattice
+void generateTetrahedraBCC(
+    ScalarFieldF F, vec3 b0, vec3 b1, ivec3 bn,
+    std::vector<vec3> &vertices, std::vector<ivec4> &tets,
+    std::vector<int> &constraintI, std::vector<vec3> &constraintN
+) {
+    assert(bn.x >= 1 && bn.y >= 1 && bn.z >= 1);
+    assert(bn.x <= 1000 && bn.y <= 1000 && bn.z <= 1000); // prevent overflow
+
+    // verts
+    auto vci = [=](int i, int j, int k) {  // cube vertex index
+        return (k * (bn[1] + 1) + j) * (bn[0] + 1) + i;
+    };
+    const int vcn = (bn[0] + 1) * (bn[1] + 1) * (bn[2] + 1);
+    auto vbi = [=](int i, int j, int k) {  // cube body index
+        return vcn + (k * bn[1] + j) * bn[0] + i;
+    };
+    const int vn = vcn + bn[0] * bn[1] * bn[2];
+    vertices.resize(vn);
+    constraintI.clear(), constraintN.clear();
+    for (int k = 0; k <= bn[2]; k++)
+        for (int j = 0; j <= bn[1]; j++)
+            for (int i = 0; i <= bn[0]; i++)
+                vertices[vci(i, j, k)] = mix(b0, b1, vec3(i, j, k) / vec3(bn));
+    for (int k = 0; k < bn[2]; k++)
+        for (int j = 0; j < bn[1]; j++)
+            for (int i = 0; i < bn[0]; i++)
+                vertices[vbi(i, j, k)] = mix(b0, b1, (vec3(i, j, k) + vec3(0.5)) / vec3(bn));
+    std::vector<double> vals(vn);
+    for (int i = 0; i < vn; i++) {
+        vec3 p = vertices[i];
+        vals[i] = F(p.x, p.y, p.z);
+    }
+    for (int k = 0; k <= bn[2]; k++)
+        for (int j = 0; j <= bn[1]; j++)
+            for (int i = 0; i <= bn[0]; i++) {
+                int _ = vci(i, j, k);
+                // if (vals[_] > 0.0) continue;
+                if (k == 0 || k == bn[2])
+                    constraintI.push_back(_), constraintN.push_back(vec3(0, 0, 1));
+                if (j == 0 || j == bn[1])
+                    constraintI.push_back(_), constraintN.push_back(vec3(0, 1, 0));
+                if (i == 0 || i == bn[0])
+                    constraintI.push_back(_), constraintN.push_back(vec3(1, 0, 0));
+            }
+    auto calcIndex = [&](ivec4 tet) -> int {
+        int idx = 0;
+        for (int _ = 0; _ < 4; _++)
+            idx |= int(vals[tet[_]] < 0.) << _;
+        return idx;
+    };
+
+    // tets
+    tets.clear();
+    auto addTet = [&](int t1, int t2, int t3, int t4) {
+        ivec4 t(t1, t2, t3, t4);
+        if (!calcIndex(t)) return;
+        tets.push_back(t);
+    };
+    for (int k = 0; k < bn[2]; k++)
+        for (int j = 0; j < bn[1]; j++)
+            for (int i = 0; i < bn[0]; i++) {
+                if (i+1 < bn[0]) {
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k+1), vci(i+1, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k+1), vci(i+1, j, k));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k), vci(i+1, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k), vci(i+1, j+1, k+1));
+                }
+                if (j+1 < bn[1]) {
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k+1), vci(i+1, j+1, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k+1), vci(i+1, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k), vci(i, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k), vci(i, j+1, k+1));
+                }
+                if (k+1 < bn[2]) {
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j+1, k+1), vci(i, j+1, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j+1, k+1), vci(i, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j, k+1), vci(i+1, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j, k+1), vci(i+1, j+1, k+1));
+                }
+            }
+    for (int j = 0; j < bn[1]; j++)
+        for (int i = 0; i < bn[0]; i++) {
+            if ((i+j+bn[2])&1) {
+                addTet(vbi(i, j, 0), vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j, 0));
+                addTet(vbi(i, j, 0), vci(i, j, 0), vci(i, j+1, 0), vci(i+1, j+1, 0));
+                addTet(vbi(i, j, bn[2]-1), vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i+1, j, bn[2]));
+                addTet(vbi(i, j, bn[2]-1), vci(i, j, bn[2]), vci(i+1, j, bn[2]), vci(i, j+1, bn[2]));
+            }
+            else {
+                addTet(vbi(i, j, 0), vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j+1, 0));
+                addTet(vbi(i, j, 0), vci(i, j, 0), vci(i, j+1, 0), vci(i+1, j, 0));
+                addTet(vbi(i, j, bn[2]-1), vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i, j, bn[2]));
+                addTet(vbi(i, j, bn[2]-1), vci(i, j, bn[2]), vci(i+1, j, bn[2]), vci(i+1, j+1, bn[2]));
+            }
+        }
+    for (int k = 0; k < bn[2]; k++)
+        for (int i = 0; i < bn[0]; i++) {
+            if ((i+bn[1]+k)&1) {
+                addTet(vbi(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k), vci(i+1, 0, k));
+                addTet(vbi(i, 0, k), vci(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1));
+                addTet(vbi(i, bn[1]-1, k), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k), vci(i, bn[1], k+1));
+                addTet(vbi(i, bn[1]-1, k), vci(i, bn[1], k), vci(i, bn[1], k+1), vci(i+1, bn[1], k));
+            }
+            else {
+                addTet(vbi(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1), vci(i+1, 0, k));
+                addTet(vbi(i, 0, k), vci(i, 0, k), vci(i+1, 0, k), vci(i, 0, k+1));
+                addTet(vbi(i, bn[1]-1, k), vci(i+1, bn[1], k+1), vci(i, bn[1], k), vci(i, bn[1], k+1));
+                addTet(vbi(i, bn[1]-1, k), vci(i, bn[1], k), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k));
+            }
+        }
+    for (int k = 0; k < bn[2]; k++)
+        for (int j = 0; j < bn[1]; j++) {
+            if ((bn[0]+j+k)&1) {
+                addTet(vbi(0, j, k), vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k));
+                addTet(vbi(0, j, k), vci(0, j, k), vci(0, j, k+1), vci(0, j+1, k+1));
+                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1), vci(bn[0], j+1, k));
+                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j, k+1));
+            }
+            else {
+                addTet(vbi(0, j, k), vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k+1));
+                addTet(vbi(0, j, k), vci(0, j, k), vci(0, j, k+1), vci(0, j+1, k));
+                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1), vci(bn[0], j, k));
+                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j+1, k+1));
+            }
+        }
+
+}
+
+
+
+
+
+/* Mesh Optimizer */
+
+
+
+
 // Check if the sum of volumes of tetrahedra is the same as the volume
 // calculated by applying divergence theorem on the surface.
 // If they are not equal, the mesh must be invalid.
@@ -621,13 +768,16 @@ void assertVolumeEqual(
 }
 
 
-// Refine the mesh, experimental
+// Refine the mesh, requires positive volumes for all tets
 void smoothMesh(
     std::vector<vec3>& verts,
     const std::vector<ivec4>& tets,
     int nsteps,
-    ScalarFieldFBatch F = nullptr
+    ScalarFieldFBatch F = nullptr,
+    std::vector<int> constraintI = std::vector<int>(),
+    std::vector<vec3> constraintN = std::vector<vec3>()
 ) {
+    printf("%d %d\n", constraintI.size(), constraintN.size());
     int vn = (int)verts.size();
 
     // surface
@@ -668,15 +818,24 @@ void smoothMesh(
     std::vector<double> surfaceVertVals;  // function values
     std::vector<vec3> surfaceVertGrads, surfaceTetGrads;  // gradients
     std::vector<double> surfaceVertGradWeights;  // used to project tet gradients to verts
+    std::vector<bool> isConstrained(vn, false);
+    std::vector<bool> applySurfaceConstraints(vn, false);
+    for (int i : constraintI)
+        isConstrained[i] = true;
     if (F) {
         // on face
         for (ivec3 f : faces) {
+            bool isC = isConstrained[f[0]]
+                && isConstrained[f[1]]
+                && isConstrained[f[2]];
             for (int _ = 0; _ < 3; _++) {
                 if (compressedIndex[f[_]] == -1) {
                     compressedIndex[f[_]] = (int)fullIndex.size();
                     fullIndex.push_back(f[_]);
                     surfaceVerts.push_back(f[_]);
                 }
+                if (!isC)
+                    applySurfaceConstraints[f[_]] = true;
             }
         }
         // one layer
@@ -769,10 +928,19 @@ void smoothMesh(
             }
             // move the vertex to the surface
             for (int i = 0; i < (int)surfaceVerts.size(); i++) {
+                if (!applySurfaceConstraints[fullIndex[i]])
+                    continue;
                 double v = surfaceVertVals[i];
                 vec3 g = surfaceVertGrads[i];
                 grads[fullIndex[i]] -= v * g / dot(g, g);
             }
+        }
+
+        // apply constraints
+        for (int ci = 0; ci < (int)constraintI.size(); ci++) {
+            int i = constraintI[ci];
+            vec3 n = constraintN[ci];  // assume unit vector
+            grads[i] -= dot(grads[i], n) * n;
         }
 
         // calculate maximum allowed vertex movement factor
@@ -818,7 +986,6 @@ void smoothMesh(
         }
 
         // displacements
-        double meanDisp = 0.0;
         for (int i = 0; i < vn; i++) {
             vec3 g = 0.9 * maxFactor[i] * grads[i];
             double gl = length(g);
@@ -827,10 +994,13 @@ void smoothMesh(
                 g *= a * tanh(gl / a) / gl;
             }
             grads[i] = g;
-            meanDisp += length(g) / vn;
         }
+
         // expect this to drop to 0.1x after 20 iterations
         // if not, adjust step size
+        double meanDisp = 0.0;
+        for (int i = 0; i < vn; i++)
+            meanDisp += length(grads[i]) / vn;
         printf("%lf\n", meanDisp);
 
         // reduce displacement if negative volume occurs
@@ -859,5 +1029,6 @@ void smoothMesh(
         }
     }
 }
+
 
 MESHGEN_TET_IMPLICIT_NS_END
