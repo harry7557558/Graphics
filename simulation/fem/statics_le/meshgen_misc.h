@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <initializer_list>
+#include <bitset>
 #include "elements.h"
 
 

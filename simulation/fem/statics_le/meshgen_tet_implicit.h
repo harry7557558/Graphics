@@ -612,18 +612,6 @@ void generateTetrahedraBCC(
         vec3 p = vertices[i];
         vals[i] = F(p.x, p.y, p.z);
     }
-    for (int k = 0; k <= bn[2]; k++)
-        for (int j = 0; j <= bn[1]; j++)
-            for (int i = 0; i <= bn[0]; i++) {
-                int _ = vci(i, j, k);
-                // if (vals[_] > 0.0) continue;
-                if (k == 0 || k == bn[2])
-                    constraintI.push_back(_), constraintN.push_back(vec3(0, 0, 1));
-                if (j == 0 || j == bn[1])
-                    constraintI.push_back(_), constraintN.push_back(vec3(0, 1, 0));
-                if (i == 0 || i == bn[0])
-                    constraintI.push_back(_), constraintN.push_back(vec3(1, 0, 0));
-            }
     auto calcIndex = [&](ivec4 tet) -> int {
         int idx = 0;
         for (int _ = 0; _ < 4; _++)
@@ -706,6 +694,85 @@ void generateTetrahedraBCC(
             }
         }
 
+    // constraint
+    std::vector<bool> isOnFaceX(vn, false),
+        isOnFaceY(vn, false), isOnFaceZ(vn, false),
+        isOnEdge(vn, false);
+    std::vector<bool> toConstraintX(vn, false),
+        toConstraintY(vn, false), toConstraintZ(vn, false),
+        toConstraintEdge(vn, false);
+    std::vector<bool> *isOnFace[3] = {
+        &isOnFaceX, &isOnFaceY, &isOnFaceZ
+    };
+    std::vector<bool> *toConstraint[3] = {
+        &toConstraintX, &toConstraintY, &toConstraintZ
+    };
+    for (int k = 0; k <= bn[2]; k++)
+        for (int j = 0; j <= bn[1]; j++)
+            for (int i = 0; i <= bn[0]; i++) {
+                int _ = vci(i, j, k);
+                if (i == 0 || i == bn[0])
+                    isOnFaceX[_] = true;
+                if (j == 0 || j == bn[1])
+                    isOnFaceY[_] = true;
+                if (k == 0 || k == bn[2])
+                    isOnFaceZ[_] = true;
+                isOnEdge[_] = int(isOnFaceX[_] + isOnFaceY[_] + isOnFaceZ[_]) >= 2;
+            }
+    for (int dim = 0; dim < 3; dim++)
+        for (int i = 0; i < vn; i++)
+            if (vals[i] < 0.0 && isOnFace[dim]->at(i))
+                toConstraint[dim]->at(i) = true;
+    // faces
+    for (ivec4 t : tets) {
+        for (int dim = 0; dim < 3; dim++) {
+            int niof = 0, nin = 0, vi[4];
+            for (int _ = 0; _ < 4; _++) {
+                if (isOnFace[dim]->at(t[_])) {
+                    vi[niof++] = t[_];
+                    nin += int(vals[t[_]] < 0.0);
+                }
+            }
+            if (niof != 3) continue;
+            if (nin > 0)
+                for (int _ = 0; _ < niof; _++)
+                    toConstraint[dim]->at(vi[_]) = true;
+        }
+    }
+    // edges
+    for (ivec4 t : tets) {
+        int nioe = 0, nin = 0, vi[4];
+        for (int _ = 0; _ < 4; _++) {
+            if (isOnEdge[t[_]]) {
+                vi[nioe++] = t[_];
+                nin += int(vals[t[_]] < 0.0);
+            }
+        }
+        if (nioe == 2 && nin > 0)
+            for (int _ = 0; _ < nioe; _++)
+                toConstraintEdge[vi[_]] = true;
+    }
+    for (int i = 0; i < vn; i++)
+        if (isOnEdge[i] && !toConstraintEdge[i])
+            for (int dim = 0; dim < 3; dim++)
+                toConstraint[dim]->at(i) = false;
+    // vertices
+    for (int i = 0; i < vn; i++)
+        if (isOnFaceX[i] && isOnFaceY[i] && isOnFaceZ[i] && vals[i] < 0.0)
+            for (int dim = 0; dim < 3; dim++)
+                toConstraint[dim]->at(i) = true;
+    // apply
+    for (int k = 0; k <= bn[2]; k++)
+        for (int j = 0; j <= bn[1]; j++)
+            for (int i = 0; i <= bn[0]; i++) {
+                int _ = vci(i, j, k);
+                if (toConstraintX[_])
+                    constraintI.push_back(_), constraintN.push_back(vec3(1, 0, 0));
+                if (toConstraintY[_])
+                    constraintI.push_back(_), constraintN.push_back(vec3(0, 1, 0));
+                if (toConstraintZ[_])
+                    constraintI.push_back(_), constraintN.push_back(vec3(0, 0, 1));
+            }
 }
 
 
@@ -774,6 +841,7 @@ void smoothMesh(
     const std::vector<ivec4>& tets,
     int nsteps,
     ScalarFieldFBatch F = nullptr,
+    std::function<vec3(vec3)> constraint = nullptr,  // add this to bring point back
     std::vector<int> constraintI = std::vector<int>(),
     std::vector<vec3> constraintN = std::vector<vec3>()
 ) {
@@ -818,8 +886,8 @@ void smoothMesh(
     std::vector<double> surfaceVertVals;  // function values
     std::vector<vec3> surfaceVertGrads, surfaceTetGrads;  // gradients
     std::vector<double> surfaceVertGradWeights;  // used to project tet gradients to verts
-    std::vector<bool> isConstrained(vn, false);
-    std::vector<bool> applySurfaceConstraints(vn, false);
+    std::vector<bool> isConstrained(vn, false);  // constrained on domain boundary?
+    std::vector<bool> applySurfaceConstraints(vn, false);  // constrained on isosurface?
     for (int i : constraintI)
         isConstrained[i] = true;
     if (F) {
@@ -942,6 +1010,10 @@ void smoothMesh(
             vec3 n = constraintN[ci];  // assume unit vector
             grads[i] -= dot(grads[i], n) * n;
         }
+        if (constraint) {
+            for (int i = 0; i < vn; i++)
+                grads[i] += constraint(verts[i] + grads[i]);
+        }
 
         // calculate maximum allowed vertex movement factor
         for (int i = 0; i < vn; i++)
@@ -1028,6 +1100,10 @@ void smoothMesh(
             if (!found) break;
         }
     }
+
+    // for (int i = 0; i < vn; i++)
+    //     if (isConstrained[i])
+    //         verts[i].z -= 1.0;
 }
 
 

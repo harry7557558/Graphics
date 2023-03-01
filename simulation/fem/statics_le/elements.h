@@ -23,6 +23,7 @@ template<typename T> T min(T x, T y) { return (x < y ? x : y); }
 template<typename T, typename t> T clamp(T x, t a, t b) { return (x<a ? a : x>b ? b : x); }
 template<typename T, typename f> T mix(T x, T y, f a) { return (x * (f(1) - a) + y * a); }  // lerp
 template<typename T> T abs(T x) { return x > 0 ? x : -x; }
+template<typename T> T sign(T x) { return (T)(x > 0 ? 1 : x < 0 ? -1 : 0); }
 
 
 /* Indices */

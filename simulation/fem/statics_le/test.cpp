@@ -218,6 +218,14 @@ DiscretizedStructure test_3(double density) {
             v[i] = F(p[i].x, p[i].y, p[i].z);
     };
     vec3 bc = vec3(0), br = vec3(2);
+    auto constraint = [=](vec3 p) {
+        p -= bc;
+        return -vec3(
+            sign(p.x) * max(abs(p.x) - br.x, 0.0),
+            sign(p.y) * max(abs(p.y) - br.y, 0.0),
+            sign(p.z) * max(abs(p.z) - br.z, 0.0)
+        );
+    };
 
 #if 0
     std::vector<MeshgenTetImplicit::MeshVertex> vertsM;
@@ -252,7 +260,8 @@ DiscretizedStructure test_3(double density) {
     );
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
     MeshgenTetImplicit::smoothMesh(
-        vs, tets, 50, Fs, constraintI, constraintN);
+        vs, tets, 50, Fs,
+        constraint, constraintI, constraintN);
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 #endif
 
@@ -285,6 +294,6 @@ int main() {
     DiscretizedStructure structure = test_3(1.0);
     double t1 = getTimePast();
     printf("Total %.2lf secs.\n", t1 - t0);
-    mainGUI(structure);
+    mainGUI(structure, true);
     return 0;
 }

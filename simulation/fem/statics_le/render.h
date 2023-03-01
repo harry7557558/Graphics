@@ -970,7 +970,10 @@ bool initWindow() {
 }
 
 
-void mainGUI(DiscretizedStructure structure) {
+void mainGUI(
+    DiscretizedStructure structure,
+    bool flatShading = false
+) {
     using glm::vec2, glm::vec3, glm::vec4;
 
     // structure
@@ -1052,6 +1055,27 @@ void mainGUI(DiscretizedStructure structure) {
     ColorRemapSlider slider(&precomputed);
     RenderParams::viewport->addWindowInput(&selector);
     RenderParams::viewport->addWindowInput(&slider);
+
+    // flat shading
+    if (flatShading) {
+        std::vector<glm::ivec3> indicesF1;
+        for (auto f : indicesF) {
+            vec3 n = cross(
+                vertices[f[1]] - vertices[f[0]],
+                vertices[f[2]] - vertices[f[0]]
+            );
+            int vn = (int)vertices.size();
+            for (int _ = 0; _ < 3; _++) {
+                vertices.push_back(vertices[f[_]]);
+                normals.push_back(n);
+            }
+            indicesF1.push_back(glm::ivec3(vn, vn + 1, vn + 2));
+        }
+        indicesF = indicesF1;
+        // for debugging mesh generation, not so good
+        precomputed.colors = std::vector<glm::vec4>(
+            vertices.size(), glm::vec4(0.9));
+    }
 
     // mouse action(s)
     glfwSetScrollCallback(RenderParams::window,
