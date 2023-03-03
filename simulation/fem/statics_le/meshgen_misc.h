@@ -95,4 +95,13 @@ public:
 
 };
 
+
+// memory saver
+template<typename T>
+void freeVector(std::vector<T> &v) {
+    v.clear();
+    v.shrink_to_fit();
+}
+
+
 MESHGEN_MISC_NS_END

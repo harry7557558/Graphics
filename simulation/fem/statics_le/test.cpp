@@ -206,6 +206,7 @@ DiscretizedStructure test_3(double density) {
     MeshgenTetImplicit::ScalarFieldF F = [](double x, double y, double z) {
         vec3 p(x, y, z);
         // return dot(p, p) - 1.0;
+        // return dot(p, p) - 6.0;
         // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
         return x * x + y * y - (1. - z) * z * z - 0.1;
@@ -254,7 +255,7 @@ DiscretizedStructure test_3(double density) {
     std::vector<int> constraintI;
     std::vector<vec3> constraintN;
     MeshgenTetImplicit::generateTetrahedraBCC(
-        F, bc-br, bc+br, ivec3(12, 12, 12),
+        F, bc-br, bc+br, ivec3(12),
         vs, tets,
         constraintI, constraintN
     );

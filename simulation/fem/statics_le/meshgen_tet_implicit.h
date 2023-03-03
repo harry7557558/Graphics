@@ -597,104 +597,23 @@ void generateTetrahedraBCC(
         return vcn + (k * bn[1] + j) * bn[0] + i;
     };
     const int vn = vcn + bn[0] * bn[1] * bn[2];
-    vertices.resize(vn);
+    std::vector<vec3> verts(vn);
     constraintI.clear(), constraintN.clear();
     for (int k = 0; k <= bn[2]; k++)
         for (int j = 0; j <= bn[1]; j++)
             for (int i = 0; i <= bn[0]; i++)
-                vertices[vci(i, j, k)] = mix(b0, b1, vec3(i, j, k) / vec3(bn));
+                verts[vci(i, j, k)] = mix(b0, b1, vec3(i, j, k) / vec3(bn));
     for (int k = 0; k < bn[2]; k++)
         for (int j = 0; j < bn[1]; j++)
             for (int i = 0; i < bn[0]; i++)
-                vertices[vbi(i, j, k)] = mix(b0, b1, (vec3(i, j, k) + vec3(0.5)) / vec3(bn));
+                verts[vbi(i, j, k)] = mix(b0, b1, (vec3(i, j, k) + vec3(0.5)) / vec3(bn));
     std::vector<double> vals(vn);
     for (int i = 0; i < vn; i++) {
-        vec3 p = vertices[i];
+        vec3 p = verts[i];
         vals[i] = F(p.x, p.y, p.z);
     }
-    auto calcIndex = [&](ivec4 tet) -> int {
-        int idx = 0;
-        for (int _ = 0; _ < 4; _++)
-            idx |= int(vals[tet[_]] < 0.) << _;
-        return idx;
-    };
-
-    // tets
-    tets.clear();
-    auto addTet = [&](int t1, int t2, int t3, int t4) {
-        ivec4 t(t1, t2, t3, t4);
-        if (!calcIndex(t)) return;
-        tets.push_back(t);
-    };
-    for (int k = 0; k < bn[2]; k++)
-        for (int j = 0; j < bn[1]; j++)
-            for (int i = 0; i < bn[0]; i++) {
-                if (i+1 < bn[0]) {
-                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k+1), vci(i+1, j, k+1));
-                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k+1), vci(i+1, j, k));
-                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k), vci(i+1, j+1, k));
-                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k), vci(i+1, j+1, k+1));
-                }
-                if (j+1 < bn[1]) {
-                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k+1), vci(i+1, j+1, k+1));
-                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k+1), vci(i+1, j+1, k));
-                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k), vci(i, j+1, k));
-                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k), vci(i, j+1, k+1));
-                }
-                if (k+1 < bn[2]) {
-                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j+1, k+1), vci(i, j+1, k+1));
-                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j+1, k+1), vci(i, j, k+1));
-                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j, k+1), vci(i+1, j, k+1));
-                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j, k+1), vci(i+1, j+1, k+1));
-                }
-            }
-    for (int j = 0; j < bn[1]; j++)
-        for (int i = 0; i < bn[0]; i++) {
-            if ((i+j+bn[2])&1) {
-                addTet(vbi(i, j, 0), vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j, 0));
-                addTet(vbi(i, j, 0), vci(i, j, 0), vci(i, j+1, 0), vci(i+1, j+1, 0));
-                addTet(vbi(i, j, bn[2]-1), vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i+1, j, bn[2]));
-                addTet(vbi(i, j, bn[2]-1), vci(i, j, bn[2]), vci(i+1, j, bn[2]), vci(i, j+1, bn[2]));
-            }
-            else {
-                addTet(vbi(i, j, 0), vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j+1, 0));
-                addTet(vbi(i, j, 0), vci(i, j, 0), vci(i, j+1, 0), vci(i+1, j, 0));
-                addTet(vbi(i, j, bn[2]-1), vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i, j, bn[2]));
-                addTet(vbi(i, j, bn[2]-1), vci(i, j, bn[2]), vci(i+1, j, bn[2]), vci(i+1, j+1, bn[2]));
-            }
-        }
-    for (int k = 0; k < bn[2]; k++)
-        for (int i = 0; i < bn[0]; i++) {
-            if ((i+bn[1]+k)&1) {
-                addTet(vbi(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k), vci(i+1, 0, k));
-                addTet(vbi(i, 0, k), vci(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1));
-                addTet(vbi(i, bn[1]-1, k), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k), vci(i, bn[1], k+1));
-                addTet(vbi(i, bn[1]-1, k), vci(i, bn[1], k), vci(i, bn[1], k+1), vci(i+1, bn[1], k));
-            }
-            else {
-                addTet(vbi(i, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1), vci(i+1, 0, k));
-                addTet(vbi(i, 0, k), vci(i, 0, k), vci(i+1, 0, k), vci(i, 0, k+1));
-                addTet(vbi(i, bn[1]-1, k), vci(i+1, bn[1], k+1), vci(i, bn[1], k), vci(i, bn[1], k+1));
-                addTet(vbi(i, bn[1]-1, k), vci(i, bn[1], k), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k));
-            }
-        }
-    for (int k = 0; k < bn[2]; k++)
-        for (int j = 0; j < bn[1]; j++) {
-            if ((bn[0]+j+k)&1) {
-                addTet(vbi(0, j, k), vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k));
-                addTet(vbi(0, j, k), vci(0, j, k), vci(0, j, k+1), vci(0, j+1, k+1));
-                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1), vci(bn[0], j+1, k));
-                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j, k+1));
-            }
-            else {
-                addTet(vbi(0, j, k), vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k+1));
-                addTet(vbi(0, j, k), vci(0, j, k), vci(0, j, k+1), vci(0, j+1, k));
-                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1), vci(bn[0], j, k));
-                addTet(vbi(bn[0]-1, j, k), vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j+1, k+1));
-            }
-        }
-
-    // constraint
+    
+    // constraints
     std::vector<bool> isOnFaceX(vn, false),
         isOnFaceY(vn, false), isOnFaceZ(vn, false),
         isOnEdge(vn, false);
@@ -723,7 +642,89 @@ void generateTetrahedraBCC(
         for (int i = 0; i < vn; i++)
             if (vals[i] < 0.0 && isOnFace[dim]->at(i))
                 toConstraint[dim]->at(i) = true;
-    // faces
+
+    // volumetric tets
+    tets.clear();
+    auto testTet = [&](int t1, int t2, int t3, int t4) {
+        ivec4 t(t1, t2, t3, t4);
+        int inCount = 0, cCount = 0;
+        for (int _ = 0; _ < 4; _++) {
+            inCount += int(vals[t[_]] < 0.0);
+            cCount += int(toConstraintX[t[_]] || toConstraintY[t[_]] || toConstraintZ[t[_]]);
+        }
+        return ivec2(inCount, cCount);
+    };
+    auto addTet = [&](int t1, int t2, int t3, int t4) {
+        ivec2 p = testTet(t1, t2, t3, t4);
+        if (p.x - p.y >= 1)
+            tets.push_back(ivec4(t1, t2, t3, t4));
+    };
+    for (int k = 0; k < bn[2]; k++)
+        for (int j = 0; j < bn[1]; j++)
+            for (int i = 0; i < bn[0]; i++) {
+                if (i+1 < bn[0]) {
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k+1), vci(i+1, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k+1), vci(i+1, j, k));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j, k), vci(i+1, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i+1, j, k), vci(i+1, j+1, k), vci(i+1, j+1, k+1));
+                }
+                if (j+1 < bn[1]) {
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k+1), vci(i+1, j+1, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k+1), vci(i+1, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i+1, j+1, k), vci(i, j+1, k));
+                    addTet(vbi(i, j, k), vbi(i, j+1, k), vci(i, j+1, k), vci(i, j+1, k+1));
+                }
+                if (k+1 < bn[2]) {
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j+1, k+1), vci(i, j+1, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j+1, k+1), vci(i, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i, j, k+1), vci(i+1, j, k+1));
+                    addTet(vbi(i, j, k), vbi(i, j, k+1), vci(i+1, j, k+1), vci(i+1, j+1, k+1));
+                }
+            }
+
+    // boundary "wedges"
+    auto addWedge = [&](int t0, int t1, int t2, int t3, int t4) {
+        ivec2 t11 = testTet(t0, t1, t2, t3);
+        ivec2 t12 = testTet(t0, t1, t3, t4);
+        ivec2 t21 = testTet(t0, t1, t2, t4);
+        ivec2 t22 = testTet(t0, t2, t3, t4);
+        ivec2 test1 = t11 + t12, test2 = t21 + t22;
+        vec3 c = ((verts[t0] - b0) / (b1 - b0) + vec3(0.5)) * vec3(vn);
+        if (test1.y < test2.y ||
+            // (test1.y == 3 && test2.y == 3 && abs(t11.x-t12.x) < abs(t21.x-t22.x)) ||
+            (test1.y == test2.y && ((int)c.x+(int)c.y+(int)c.z)&1)
+        ) {
+            addTet(t0, t1, t2, t3);
+            addTet(t0, t1, t3, t4);
+        }
+        else {
+            addTet(t0, t1, t2, t4);
+            addTet(t0, t2, t3, t4);
+        }
+    };
+    for (int j = 0; j < bn[1]; j++)
+        for (int i = 0; i < bn[0]; i++) {
+            addWedge(vbi(i, j, 0),
+                vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j, 0), vci(i, j+1, 0));
+            addWedge(vbi(i, j, bn[2]-1),
+                vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i, j, bn[2]), vci(i+1, j, bn[2]));
+        }
+    for (int k = 0; k < bn[2]; k++)
+        for (int i = 0; i < bn[0]; i++) {
+            addWedge(vbi(i, 0, k),
+                vci(i, 0, k), vci(i+1, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1));
+            addWedge(vbi(i, bn[1]-1, k),
+                vci(i, bn[1], k), vci(i, bn[1], k+1), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k));
+        }
+    for (int k = 0; k < bn[2]; k++)
+        for (int j = 0; j < bn[1]; j++) {
+            addWedge(vbi(0, j, k),
+                vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k), vci(0, j, k+1));
+            addWedge(vbi(bn[0]-1, j, k),
+                vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1));
+        }
+
+    // face constraints
     for (ivec4 t : tets) {
         for (int dim = 0; dim < 3; dim++) {
             int niof = 0, nin = 0, vi[4];
@@ -739,7 +740,7 @@ void generateTetrahedraBCC(
                     toConstraint[dim]->at(vi[_]) = true;
         }
     }
-    // edges
+    // edge constraints
     for (ivec4 t : tets) {
         int nioe = 0, nin = 0, vi[4];
         for (int _ = 0; _ < 4; _++) {
@@ -756,7 +757,7 @@ void generateTetrahedraBCC(
         if (isOnEdge[i] && !toConstraintEdge[i])
             for (int dim = 0; dim < 3; dim++)
                 toConstraint[dim]->at(i) = false;
-    // vertices
+    // vertex constraints
     for (int i = 0; i < vn; i++)
         if (isOnFaceX[i] && isOnFaceY[i] && isOnFaceZ[i] && vals[i] < 0.0)
             for (int dim = 0; dim < 3; dim++)
@@ -773,6 +774,28 @@ void generateTetrahedraBCC(
                 if (toConstraintZ[_])
                     constraintI.push_back(_), constraintN.push_back(vec3(0, 0, 1));
             }
+
+    // remove unused vertices
+    std::vector<int> vmap(vn, 0);
+    for (ivec4 t : tets)
+        for (int _ = 0; _ < 4; _++)
+            vmap[t[_]] = 1;
+    vertices.clear();
+    for (int i = 0; i < vn; i++) {
+        if (vmap[i]) {
+            vmap[i] = (int)vertices.size();
+            vertices.push_back(verts[i]);
+        }
+        else vmap[i] = -1;
+    }
+    for (int i = 0; i < (int)tets.size(); i++) {
+        for (int _ = 0; _ < 4; _++) {
+            tets[i][_] = vmap[tets[i][_]];
+            assert(tets[i][_] >= 0);
+        }
+    }
+    for (int i = 0; i < (int)constraintI.size(); i++)
+        constraintI[i] = vmap[constraintI[i]];
 }
 
 
@@ -994,6 +1017,13 @@ void smoothMesh(
                 assert(surfaceVertGradWeights[i] > 0.0);
                 surfaceVertGrads[i] /= surfaceVertGradWeights[i];
             }
+            // boundary constraints
+            for (int ci = 0; ci < (int)constraintI.size(); ci++) {
+                int i = compressedIndex[constraintI[ci]];
+                if (i == -1) continue;
+                vec3 n = constraintN[ci];
+                surfaceVertGrads[i] -= dot(surfaceVertGrads[i], n) * n;
+            }
             // move the vertex to the surface
             for (int i = 0; i < (int)surfaceVerts.size(); i++) {
                 if (!applySurfaceConstraints[fullIndex[i]])
@@ -1004,7 +1034,7 @@ void smoothMesh(
             }
         }
 
-        // apply constraints
+        // apply boundary constraints
         for (int ci = 0; ci < (int)constraintI.size(); ci++) {
             int i = constraintI[ci];
             vec3 n = constraintN[ci];  // assume unit vector
@@ -1102,7 +1132,7 @@ void smoothMesh(
     }
 
     // for (int i = 0; i < vn; i++)
-    //     if (isConstrained[i])
+    //     if (!applySurfaceConstraints[i])
     //         verts[i].z -= 1.0;
 }
 

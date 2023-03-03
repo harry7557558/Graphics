@@ -32,6 +32,7 @@ struct ivec2 {
     int x, y;
     ivec2(int a = 0):x(a), y(a) {}
     ivec2(int a, int b):x(a), y(b) {}
+    ivec2 operator + (const ivec2& v) const { return ivec2(x + v.x, y + v.y); }
 };
 
 struct ivec3 {
