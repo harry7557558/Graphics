@@ -596,7 +596,7 @@ void generateTetrahedraBCC(
     auto vbi = [=](int i, int j, int k) {  // cube body index
         return vcn + (k * bn[1] + j) * bn[0] + i;
     };
-    const int vn = vcn + bn[0] * bn[1] * bn[2];
+    int vn = vcn + bn[0] * bn[1] * bn[2];
     std::vector<vec3> verts(vn);
     constraintI.clear(), constraintN.clear();
     for (int k = 0; k <= bn[2]; k++)
@@ -645,7 +645,7 @@ void generateTetrahedraBCC(
 
     // volumetric tets
     tets.clear();
-    auto testTet = [&](int t1, int t2, int t3, int t4) {
+    auto calcTet = [&](int t1, int t2, int t3, int t4) {
         ivec4 t(t1, t2, t3, t4);
         int inCount = 0, cCount = 0;
         for (int _ = 0; _ < 4; _++) {
@@ -654,9 +654,12 @@ void generateTetrahedraBCC(
         }
         return ivec2(inCount, cCount);
     };
+    auto testTet = [&](ivec2 p) {
+        return p.x - p.y >= 1;
+    };
     auto addTet = [&](int t1, int t2, int t3, int t4) {
-        ivec2 p = testTet(t1, t2, t3, t4);
-        if (p.x - p.y >= 1)
+        ivec2 p = calcTet(t1, t2, t3, t4);
+        if (testTet(p))
             tets.push_back(ivec4(t1, t2, t3, t4));
     };
     for (int k = 0; k < bn[2]; k++)
@@ -683,46 +686,129 @@ void generateTetrahedraBCC(
             }
 
     // boundary "wedges"
-    auto addWedge = [&](int t0, int t1, int t2, int t3, int t4) {
-        ivec2 t11 = testTet(t0, t1, t2, t3);
-        ivec2 t12 = testTet(t0, t1, t3, t4);
-        ivec2 t21 = testTet(t0, t1, t2, t4);
-        ivec2 t22 = testTet(t0, t2, t3, t4);
+    struct wedge {
+        int t0, t1, t2, t3, t4;
+        union {
+            int _;
+            struct {
+                uint8_t preferred;
+                uint8_t test1;  // preferred == 1
+                uint8_t test2;  // preferred == 0
+            };
+        };
+    };
+    // add wedge to the buffer before applying them
+    std::vector<wedge> wedgeBuffer;
+    auto pushWedge = [&](int t0, int t1, int t2, int t3, int t4) {
+        ivec2 t11 = calcTet(t0, t1, t2, t3);
+        ivec2 t12 = calcTet(t0, t1, t3, t4);
+        ivec2 t21 = calcTet(t0, t1, t2, t4);
+        ivec2 t22 = calcTet(t0, t2, t3, t4);
         ivec2 test1 = t11 + t12, test2 = t21 + t22;
         vec3 c = ((verts[t0] - b0) / (b1 - b0) + vec3(0.5)) * vec3(vn);
-        if (test1.y < test2.y ||
-            // (test1.y == 3 && test2.y == 3 && abs(t11.x-t12.x) < abs(t21.x-t22.x)) ||
+        int preferred = (int)(test1.y < test2.y ||
             (test1.y == test2.y && ((int)c.x+(int)c.y+(int)c.z)&1)
-        ) {
-            addTet(t0, t1, t2, t3);
-            addTet(t0, t1, t3, t4);
-        }
-        else {
-            addTet(t0, t1, t2, t4);
-            addTet(t0, t2, t3, t4);
-        }
+        );
+        wedge w{ t0, t1, t2, t3, t4 };
+        w.preferred = (uint8_t)preferred;
+        w.test1 = (uint8_t)testTet(t11) + (uint8_t)testTet(t12);
+        w.test2 = (uint8_t)testTet(t21) + (uint8_t)testTet(t22);
+        if (w.test1 > 0 || w.test2 > 0)
+            wedgeBuffer.push_back(w);
     };
     for (int j = 0; j < bn[1]; j++)
         for (int i = 0; i < bn[0]; i++) {
-            addWedge(vbi(i, j, 0),
+            pushWedge(vbi(i, j, 0),
                 vci(i+1, j+1, 0), vci(i+1, j, 0), vci(i, j, 0), vci(i, j+1, 0));
-            addWedge(vbi(i, j, bn[2]-1),
+            pushWedge(vbi(i, j, bn[2]-1),
                 vci(i+1, j+1, bn[2]), vci(i, j+1, bn[2]), vci(i, j, bn[2]), vci(i+1, j, bn[2]));
         }
     for (int k = 0; k < bn[2]; k++)
         for (int i = 0; i < bn[0]; i++) {
-            addWedge(vbi(i, 0, k),
+            pushWedge(vbi(i, 0, k),
                 vci(i, 0, k), vci(i+1, 0, k), vci(i+1, 0, k+1), vci(i, 0, k+1));
-            addWedge(vbi(i, bn[1]-1, k),
+            pushWedge(vbi(i, bn[1]-1, k),
                 vci(i, bn[1], k), vci(i, bn[1], k+1), vci(i+1, bn[1], k+1), vci(i+1, bn[1], k));
         }
     for (int k = 0; k < bn[2]; k++)
         for (int j = 0; j < bn[1]; j++) {
-            addWedge(vbi(0, j, k),
+            pushWedge(vbi(0, j, k),
                 vci(0, j+1, k+1), vci(0, j+1, k), vci(0, j, k), vci(0, j, k+1));
-            addWedge(vbi(bn[0]-1, j, k),
+            pushWedge(vbi(bn[0]-1, j, k),
                 vci(bn[0], j, k), vci(bn[0], j+1, k), vci(bn[0], j+1, k+1), vci(bn[0], j, k+1));
         }
+
+    // handle wedges
+    auto ivec2Cmp = [](ivec2 a, ivec2 b) {
+        return a.x == b.x ? a.y < b.y : a.x < b.x;
+    };
+    std::set<ivec2, decltype(ivec2Cmp)> surfEdges(ivec2Cmp);
+    auto addSurfEdge = [&](int a, int b) {
+        if (a > b) std::swap(a, b);
+        if (surfEdges.find(ivec2(a, b)) != surfEdges.end())
+            surfEdges.erase(ivec2(a, b));
+        else surfEdges.insert(ivec2(a, b));
+    };
+    for (wedge w : wedgeBuffer) {
+        addSurfEdge(w.t1, w.t2);
+        addSurfEdge(w.t2, w.t3);
+        addSurfEdge(w.t3, w.t4);
+        addSurfEdge(w.t4, w.t1);
+    }
+    std::vector<bool> isOnSurface(vn, false);
+    for (ivec2 p : surfEdges)
+        isOnSurface[p.x] = isOnSurface[p.y] = true;
+    for (wedge w : wedgeBuffer) {
+        int t0 = w.t0, t1 = w.t1, t2 = w.t2, t3 = w.t3, t4 = w.t4;
+        ivec4 tets[2][2] = {
+            { ivec4(t0, t1, t2, t4), ivec4(t0, t2, t3, t4) },
+            { ivec4(t0, t1, t2, t3), ivec4(t0, t1, t3, t4) }
+        };
+        auto isFeasible = [&](ivec4* t2) {
+            bool feasible = true;
+            for (int i = 0; i < 2; i++) {
+                if (isOnSurface[t2[i][1]] &&
+                    isOnSurface[t2[i][2]] &&
+                    isOnSurface[t2[i][3]]) feasible = false;
+            }
+            return feasible;
+        };
+        auto addTets = [&](ivec4* t2) {
+            for (int i = 0; i < 2; i++)
+                addTet(t2[i][0], t2[i][1], t2[i][2], t2[i][3]);
+        };
+        // preferred way
+        ivec4 *preferred = tets[w.preferred];
+        if (isFeasible(preferred)) {
+            addTets(preferred);
+            continue;
+        }
+        // try the other way
+        preferred = tets[1 - w.preferred];
+        if (isFeasible(preferred)) {
+            addTets(preferred);
+            continue;
+        }
+        // if there is only one constrained edge, free the other vertices
+        bool noEdge[4] = { true, true, true, true };
+        int t[4] = { t1, t2, t3, t4 };
+        for (int i = 0; i < 4; i++) {
+            int a = t[i], b = t[(i+1)%4];
+            if (a > b) std::swap(a, b);
+            if (surfEdges.find(ivec2(a, b)) == surfEdges.end())
+                noEdge[i] = noEdge[(i+1)%4] = false;
+        }
+        int noEdgeCount = 0;
+        for (int i = 0; i < 4; i++)
+            noEdgeCount += (int)noEdge[i];
+        if (noEdgeCount % 2 == 0) {
+            for (int i = 0; i < 4; i++) if (noEdge[i]) {
+                for (int dim = 0; dim < 3; dim++)
+                    isOnFace[dim]->at(t[i]) = false;
+            }
+            addTets(tets[w.preferred]);
+        }
+    }
 
     // face constraints
     for (ivec4 t : tets) {
@@ -794,8 +880,13 @@ void generateTetrahedraBCC(
             assert(tets[i][_] >= 0);
         }
     }
-    for (int i = 0; i < (int)constraintI.size(); i++)
-        constraintI[i] = vmap[constraintI[i]];
+    int j = 0;
+    for (int i = 0; i < (int)constraintI.size(); i++) {
+        constraintI[j] = vmap[constraintI[i]];
+        if (constraintI[j] != -1) j++;
+    }
+    constraintI.resize(j);
+    constraintN.resize(j);
 }
 
 
@@ -870,6 +961,8 @@ void smoothMesh(
 ) {
     printf("%d %d\n", constraintI.size(), constraintN.size());
     int vn = (int)verts.size();
+    for (int i : constraintI)
+        assert(i >= 0 && i < vn);
 
     // surface
     std::set<ivec3, decltype(ivec3Cmp)> faces(ivec3Cmp);

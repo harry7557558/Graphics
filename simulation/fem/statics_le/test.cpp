@@ -209,10 +209,12 @@ DiscretizedStructure test_3(double density) {
         // return dot(p, p) - 6.0;
         // return hypot(x, sqrt(y * y + z * z + 1.99 * sin(y * z)) - 1.) - 0.5;
         // return 2. * dot(p * p, p * p) - 3. * dot(p, p) + 2.;
-        return x * x + y * y - (1. - z) * z * z - 0.1;
+        // return x * x + y * y - (1. - z) * z * z - 0.1;
         // return max(p.x * p.x + p.y * p.y - 1.0, abs(p.z) - 0.5);
         // return pow(p.x * p.x + 2. * p.y * p.y + p.z * p.z - 1., 3.) - (p.x * p.x + .1 * p.y * p.y) * pow(p.z, 3.);
         // return sin(2.0*p.x) + sin(2.0*p.y) + sin(2.0*p.z);
+        return cos(10.0 * (sin(x) * sin(y) + sin(z)));
+        // return  sin(12345.67 * sin(12.34 * sin(x) + 56.78 * sin(y) + 90.12 * sin(z) + 34.56) + 89.0);
     };
     MeshgenTetImplicit::ScalarFieldFBatch Fs = [&](int n, const vec3 *p, double *v) {
         for (int i = 0; i < n; i++)
@@ -255,13 +257,13 @@ DiscretizedStructure test_3(double density) {
     std::vector<int> constraintI;
     std::vector<vec3> constraintN;
     MeshgenTetImplicit::generateTetrahedraBCC(
-        F, bc-br, bc+br, ivec3(12),
+        F, bc-br, bc+br, ivec3(24),
         vs, tets,
         constraintI, constraintN
     );
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
     MeshgenTetImplicit::smoothMesh(
-        vs, tets, 50, Fs,
+        vs, tets, 10, Fs,
         constraint, constraintI, constraintN);
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 #endif
