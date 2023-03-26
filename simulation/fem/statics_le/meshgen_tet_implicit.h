@@ -760,7 +760,7 @@ void generateTetrahedraBCC(
         isOnSurface[p.x] = isOnSurface[p.y] = true;
     for (wedge w : wedgeBuffer) {
         int t0 = w.t0, t1 = w.t1, t2 = w.t2, t3 = w.t3, t4 = w.t4;
-        ivec4 tets[2][2] = {
+        ivec4 ttets[2][2] = {
             { ivec4(t0, t1, t2, t4), ivec4(t0, t2, t3, t4) },
             { ivec4(t0, t1, t2, t3), ivec4(t0, t1, t3, t4) }
         };
@@ -774,21 +774,23 @@ void generateTetrahedraBCC(
             return feasible;
         };
         auto addTets = [&](ivec4* t2) {
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < 2; i++) {
                 addTet(t2[i][0], t2[i][1], t2[i][2], t2[i][3]);
+            }
         };
         // preferred way
-        ivec4 *preferred = tets[w.preferred];
+        ivec4 *preferred = ttets[w.preferred];
         if (isFeasible(preferred)) {
             addTets(preferred);
             continue;
         }
         // try the other way
-        preferred = tets[1 - w.preferred];
+        preferred = ttets[1 - w.preferred];
         if (isFeasible(preferred)) {
             addTets(preferred);
             continue;
         }
+        addTets(ttets[w.preferred]); continue;
         // if there is only one constrained edge, free the other vertices
         bool noEdge[4] = { true, true, true, true };
         int t[4] = { t1, t2, t3, t4 };
@@ -806,7 +808,7 @@ void generateTetrahedraBCC(
                 for (int dim = 0; dim < 3; dim++)
                     isOnFace[dim]->at(t[i]) = false;
             }
-            addTets(tets[w.preferred]);
+            addTets(ttets[w.preferred]);
         }
     }
 
@@ -952,7 +954,7 @@ void assertVolumeEqual(
 // Refine the mesh, requires positive volumes for all tets
 void smoothMesh(
     std::vector<vec3>& verts,
-    const std::vector<ivec4>& tets,
+    std::vector<ivec4>& tets,
     int nsteps,
     ScalarFieldFBatch F = nullptr,
     std::function<vec3(vec3)> constraint = nullptr,  // add this to bring point back
@@ -960,7 +962,8 @@ void smoothMesh(
     std::vector<vec3> constraintN = std::vector<vec3>()
 ) {
     printf("%d %d\n", constraintI.size(), constraintN.size());
-    int vn = (int)verts.size();
+    int vn = (int)verts.size(), svn = 0;  // # of vertices; # on surface
+    int tn = (int)tets.size(), stn = 0;  // # of tets; # on surface
     for (int i : constraintI)
         assert(i >= 0 && i < vn);
 
@@ -980,51 +983,94 @@ void smoothMesh(
         }
     }
 
-    // normals
-    std::vector<vec3> normals(vn, vec3(0));
-    for (ivec3 f : faces) {
-        vec3 n = cross(
-            verts[f[1]] - verts[f[0]],
-            verts[f[2]] - verts[f[0]]);
-        for (int _ = 0; _ < 3; _++)
-            normals[f[_]] += n;
-    }
-    for (int i = 0; i < vn; i++)
-        if (normals[i] != vec3(0))
-            normals[i] = normalize(normals[i]);
+    // geometric topology
+    std::vector<int> compressedIndex(vn, -1);  // [vn] global -> near surface
+    std::vector<int> fullIndex;  // [svn] near surface -> global
+    std::vector<int> surfaceTets;  // [stn] indices of tets near surface
+    std::vector<bool> isConstrained[4];  // [vn] constrained on domain boundary? (any, x, y, z)
+    std::vector<bool> applySurfaceConstraints(vn, false);  // [vn] constrained on isosurface?
+    // geometry and values
+    std::vector<vec3> surfaceVertPs;  // [svn] positions
+    std::vector<double> surfaceVertVals;  // [svn] function values
+    std::vector<vec3> surfaceVertGrads, surfaceTetGrads;  // [svn, stn] gradients
+    std::vector<double> surfaceVertGradWeights;  // [svn] used to project tet gradients to verts
+    // smoothing
+    std::vector<vec3> grads(vn);
+    std::vector<double> maxFactor(vn), maxMovement(vn);
+    // topology change
+    std::vector<uint8_t> largeAngleKeep(tn, 0);
+    // add mew
+    auto addVert = [&](vec3 p, bool isOnFace,
+        bool isConstrainedX, bool isConstrainedY, bool isConstrainedZ,
+        bool isConstrainedF) {
+        verts.push_back(p);
+        compressedIndex.push_back(-1);
+        if (isOnFace) {
+            compressedIndex.back() = svn++;
+            fullIndex.push_back(vn);
+            surfaceVertVals.push_back(0.0);
+            surfaceVertGrads.push_back(vec3(0));
+            surfaceVertGradWeights.push_back(0.0);
+        }
+        isConstrained[0].push_back(
+            isConstrainedX || isConstrainedY || isConstrainedZ);
+        isConstrained[1].push_back(isConstrainedX);
+        isConstrained[2].push_back(isConstrainedY);
+        isConstrained[3].push_back(isConstrainedZ);
+        applySurfaceConstraints.push_back(isConstrainedF);
+        grads.push_back(vec3(0));
+        maxFactor.push_back(0), maxMovement.push_back(0);
+        return vn++;
+    };
+    auto addTet = [&](ivec4 t) {
+        tets.push_back(t);
+        bool isSurfaceTet = false;
+        for (int _ = 0; _ < 4; _++)
+            if (compressedIndex[t[_]] != -1)
+                isSurfaceTet = true;
+        if (isSurfaceTet) {
+            surfaceTets.push_back(tn);
+            surfaceTetGrads.push_back(vec3(0));
+            stn++;
+        }
+        return tn++;
+    };
 
     // vertices near surface
-    std::vector<int> compressedIndex(vn, -1);  // global -> near surface
-    std::vector<int> fullIndex;  // near surface -> global
-    std::vector<int> surfaceVerts;  // strictly surface
-    std::vector<ivec4> surfaceTets;  // near surface, global indice
-    std::vector<vec3> surfaceVertPs;  // positions
-    std::vector<double> surfaceVertVals;  // function values
-    std::vector<vec3> surfaceVertGrads, surfaceTetGrads;  // gradients
-    std::vector<double> surfaceVertGradWeights;  // used to project tet gradients to verts
-    std::vector<bool> isConstrained(vn, false);  // constrained on domain boundary?
-    std::vector<bool> applySurfaceConstraints(vn, false);  // constrained on isosurface?
-    for (int i : constraintI)
-        isConstrained[i] = true;
+    for (int _ = 0; _ < 4; _++)
+        isConstrained[_] = std::vector<bool>(vn, false);
+    for (int ci = 0; ci < (int)constraintI.size(); ci++) {
+        int i = constraintI[ci];
+        isConstrained[0][i] = true;
+        vec3 t = constraintN[ci];
+        if (t == vec3(1, 0, 0))
+            isConstrained[1][i] = true;
+        else if (t == vec3(0, 1, 0))
+            isConstrained[2][i] = true;
+        else if (t == vec3(0, 0, 1))
+            isConstrained[3][i] = true;
+        else assert(false);
+    }
     if (F) {
         // on face
         for (ivec3 f : faces) {
-            bool isC = isConstrained[f[0]]
-                && isConstrained[f[1]]
-                && isConstrained[f[2]];
+            bool isC = isConstrained[0][f[0]]
+                && isConstrained[0][f[1]]
+                && isConstrained[0][f[2]];
             for (int _ = 0; _ < 3; _++) {
                 if (compressedIndex[f[_]] == -1) {
-                    compressedIndex[f[_]] = (int)fullIndex.size();
+                    compressedIndex[f[_]] = svn;
                     fullIndex.push_back(f[_]);
-                    surfaceVerts.push_back(f[_]);
+                    svn++;
                 }
                 if (!isC)
                     applySurfaceConstraints[f[_]] = true;
             }
         }
         // one layer
-        int i0 = 0, i1 = (int)fullIndex.size();
-        for (ivec4 tet : tets) {
+        int i0 = 0, i1 = svn;
+        for (int ti = 0; ti < tn; ti++) {
+            ivec4 tet = tets[ti];
             int isOnFace = 0;
             for (int _ = 0; _ < 4; _++)
                 if (compressedIndex[tet[_]] >= i0 &&
@@ -1032,16 +1078,16 @@ void smoothMesh(
                     isOnFace += 1;
             if (isOnFace == 0)
                 continue;
-            surfaceTets.push_back(tet);
+            surfaceTets.push_back(ti);
             for (int _ = 0; _ < 4; _++)
                 if (compressedIndex[tet[_]] == -1) {
-                    compressedIndex[tet[_]] = (int)fullIndex.size();
+                    compressedIndex[tet[_]] = svn;
                     fullIndex.push_back(tet[_]);
+                    svn++;
                 }
+            stn++;
         }
     }
-    int svn = (int)fullIndex.size();
-    int stn = (int)surfaceTets.size();
     surfaceVertPs.resize(svn);
     surfaceVertVals.resize(svn);
     surfaceVertGrads.resize(svn);
@@ -1049,8 +1095,6 @@ void smoothMesh(
     surfaceTetGrads.resize(stn);
 
     // smoothing
-    std::vector<vec3> grads(vn);
-    std::vector<double> maxFactor(vn), maxMovement(vn);
     for (int stepi = 0; stepi < nsteps; stepi++) {
 
         // accumulate gradient
@@ -1067,24 +1111,21 @@ void smoothMesh(
             for (int _ = 0; _ < 4; _++)
                 grads[tet[_]] -= 0.01 * g[_] * size2;
         }
-        if (!F) for (int i = 0; i < vn; i++) {
-            vec3 n = normals[i];
-            grads[i] -= dot(grads[i], n) * n;
-        }
 
         // force the mesh on the surface
         if (F) {
             // evaluate
             for (int i = 0; i < svn; i++) {
                 int j = fullIndex[i];
-                surfaceVertPs[i] = verts[j] + grads[j];
+                if (j != -1)
+                    surfaceVertPs[i] = verts[j] + grads[j];
             }
             F(svn, &surfaceVertPs[0], &surfaceVertVals[0]);
             // gradient on tets
             for (int i = 0; i < stn; i++) {
                 vec3 x[4]; double v[4];
                 for (int _ = 0; _ < 4; _++) {
-                    int j = compressedIndex[surfaceTets[i][_]];
+                    int j = compressedIndex[tets[surfaceTets[i]][_]];
                     assert(j >= 0 && j < svn);
                     x[_] = surfaceVertPs[j];
                     v[_] = surfaceVertVals[j];
@@ -1100,7 +1141,7 @@ void smoothMesh(
             }
             for (int i = 0; i < stn; i++) {
                 for (int _ = 0; _ < 4; _++) {
-                    int j = compressedIndex[surfaceTets[i][_]];
+                    int j = compressedIndex[tets[surfaceTets[i]][_]];
                     surfaceVertGrads[j] += surfaceTetGrads[i];
                     surfaceVertGradWeights[j] += 1.0;
                 }
@@ -1118,7 +1159,9 @@ void smoothMesh(
                 surfaceVertGrads[i] -= dot(surfaceVertGrads[i], n) * n;
             }
             // move the vertex to the surface
-            for (int i = 0; i < (int)surfaceVerts.size(); i++) {
+            for (int i = 0; i < svn; i++) {
+                if (fullIndex[i] == -1)
+                    continue;
                 if (!applySurfaceConstraints[fullIndex[i]])
                     continue;
                 double v = surfaceVertVals[i];
@@ -1222,6 +1265,38 @@ void smoothMesh(
             }
             if (!found) break;
         }
+
+        if (stepi + 1 == nsteps)
+            continue;
+
+        // topology change: persistant large solid angle
+        for (int i = 0; i < tn; i++) {
+            if (compressedIndex[i] == -1) continue;
+            double maxang = 0.0;
+            vec3 p[4];
+            for (int _ = 0; _ < 4; _++)
+                p[_] = verts[tets[i][_]];
+            for (int _ = 0; _ < 4; _++) {
+                double ang = solidAngle(
+                    p[(_+1)%4] - p[_],
+                    p[(_+2)%4] - p[_],
+                    p[(_+3)%4] - p[_]
+                ) * (_ & 1 ? -1.0 : 1.0);
+                assert(ang > 0.0);
+                maxang = max(maxang, ang);
+            }
+            if (maxang > 0.8 * PI) largeAngleKeep[i] += 1;
+            else largeAngleKeep[i] = 0;
+        }
+        std::vector<bool> edgeSplit(tn, false);
+        for (int i = 0; i < tn; i++) {
+            if (largeAngleKeep[i] < 3)
+                continue;
+            vec3 p[4];
+            for (int _ = 0; _ < 4; _++)
+                p[_] = verts[tets[i][_]];
+        }
+        // TO-DO
     }
 
     // for (int i = 0; i < vn; i++)

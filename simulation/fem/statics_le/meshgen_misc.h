@@ -104,4 +104,16 @@ void freeVector(std::vector<T> &v) {
 }
 
 
+// math
+double solidAngle(vec3 a, vec3 b, vec3 c) {
+    // https://en.wikipedia.org/wiki/Solid_angle#Tetrahedron
+    double la = length(a), lb = length(b), lc = length(c);
+    double n = dot(a, cross(b, c));
+    double m = la * lb * lc + dot(a, b) * lc + dot(a, c) * lb + dot(b, c) * la;
+    double ans = 2.0 * atan(n / m);
+    if (n * ans < 0.0) ans += (n < 0.0 ? -2.0 * PI : 2.0 * PI);
+    return ans;
+}
+
+
 MESHGEN_MISC_NS_END
