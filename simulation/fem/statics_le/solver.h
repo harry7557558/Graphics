@@ -140,6 +140,7 @@ struct DiscretizedStructure {
 void DiscretizedStructure::solveDeflection(const double* C) {
     double time0 = getTimePast();
     startSolver();
+    return;
 
     // map vertex indices to indices in the linear system
     // (don't consider fixed vertices)

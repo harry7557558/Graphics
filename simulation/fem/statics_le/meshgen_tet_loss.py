@@ -4,6 +4,7 @@ import numpy as np
 import scipy.optimize
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 import casadi as cs
 from casadi import SX
@@ -35,6 +36,8 @@ dudx = xu @ cs.inv(x0)
 eps = dudx.T @ dudx - SX.eye(3)
 val = cs.dot(eps, eps)
 val = -cs.log(cs.det(dudx))
+print(float(cs.log(cs.det(x0))))  # -ln(3sqrt(3)/2)
+val = -cs.log(cs.det(xu))  # independent of x0 wtf
 
 #print(cs.jacobian(val, vs))
 #print(cs.diag(cs.hessian(val, vs)[0]))
@@ -101,7 +104,7 @@ def cost(x):
     x = x.reshape((4, 3))
     return fun(x[0], x[1], x[2], x[3])
 
-ax = plt.axes(projection='3d')
+ax = plt.gca(projection='3d')
 
 def plot_tet(vs):
     vs = vs[[0, 1, 2, 0, 3, 1, 2, 3]]

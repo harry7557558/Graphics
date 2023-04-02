@@ -21,6 +21,11 @@
 #include "elements.h"
 #include "solver.h"
 
+#if SUPPRESS_ASSERT
+#undef assert
+#define assert(x) 0
+#endif
+
 
 const char VERTEX_SHADER_SOURCE[] = R"""(#version 330
 in vec3 vertexPosition;

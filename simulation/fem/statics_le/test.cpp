@@ -263,7 +263,7 @@ DiscretizedStructure test_3(double density) {
     );
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
     MeshgenTetImplicit::smoothMesh(
-        vs, tets, 5, Fs,
+        vs, tets, 8, Fs,
         constraint, constraintI, constraintN);
     MeshgenTetImplicit::assertVolumeEqual(vs, tets);
 #endif

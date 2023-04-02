@@ -299,10 +299,110 @@ def generate_march_lut_edge():
     print(', '.join(edges).strip())
 
 
+def tetrahedron_goodness_0(vs):
+    """always negative, higher is better"""
+    vc = sum(vs)/4
+    d = [v-vc for v in vs]
+    m = 1.0 / np.linalg.norm(d)
+    vs = [m*v for v in vs]
+    v1, v2, v3 = vs[1]-vs[0], vs[2]-vs[0], vs[3]-vs[0]
+    det = np.linalg.det([v1, v2, v3])
+    if det <= 0.0:
+        return -float('inf')
+    return np.log(det)
+
+
+def tetrahedron_goodness(vs):
+    vs = [np.array(Vertices[i]) for i in vs]
+    return tetrahedron_goodness_0(vs)
+
+
+def tetrahedron_goodness_slow(vs):
+    global tgs_cache
+    if 'tgs_cache' not in globals():
+        tgs_cache = {}
+    if frozenset(vs) in tgs_cache:
+        return tgs_cache[frozenset(vs)]
+
+    def points(v):
+        v = sorted(Edges[v])
+        if len(v) == 1:
+            return [np.array(Vertices[v[0]])]
+        a = np.array(Vertices[v[0]])
+        b = np.array(Vertices[v[1]])
+        n = 8  # n-1 points
+        ts = np.arange(1, n) / n
+        return [(1.0-t)*a+t*b for t in ts]
+
+    worst, mean, count = 0.0, 0.0, 0
+    for v0 in points(vs[0]):
+        for v1 in points(vs[1]):
+            for v2 in points(vs[2]):
+                for v3 in points(vs[3]):
+                    g = tetrahedron_goodness_0([v0, v1, v2, v3])
+                    worst = min(worst, g)
+                    if 0.0*g == 0.0:
+                        mean += g
+                        count += 1
+    if 0.0*worst == 0.0:
+        worst = round(worst, 6)
+        mean = round(mean/count, 3)
+        worst += 1e-6*np.tanh(0.1*mean)
+        worst = round(worst, 9)
+    tgs_cache[frozenset(vs)] = worst
+    return worst
+
+
+def tetrahedra_goodness(tets):
+    tg = tetrahedron_goodness
+    tg = tetrahedron_goodness_slow
+    return min([tg(t) for t in tets])
+
+
+def generate_split_lut_edge():
+    """Print LUT for tetrahedra after edge split"""
+    res = []
+    resf = []
+    for idx in range(2**6):
+        edges = [4+i for i in range(6) if (idx>>i)&1]
+        cs0 = find_tetrahedra_combinations(edges[:])
+        gs = [tetrahedra_goodness(ts) for ts in cs0]
+        best = max(gs)
+        cs = [ts for ts in cs0 if tetrahedra_goodness(ts)==best]
+        print(edges, len(cs0), len(cs), len(set(gs)), best)
+        # print(cs)
+        assert len(cs) <= 8
+        ts = []
+        fs = []
+        for c in cs:
+            assert len(c) <= 8
+            c = [list(ci) for ci in c]
+            # tets
+            ts.append('{' + ','.join(map(str, (sum(c, []) + [-1])[:8*4])) + '}')
+            # faces
+            for i in range(len(c)):
+                ci = c[i][:]
+                for _ in range(4):
+                    f = set([ci[f] for f in Faces[_]])
+                    for fi in [0, 1, 2, 3, -1]:
+                        if fi == -1:
+                            break
+                        if f.difference(set(Planes[fi])) == set():
+                            break
+                    c[i][_] = fi
+            fs.append('{' + ','.join(map(str, sum(c, []))) + '}')
+        ts = (ts + ['{-1}'])[:8]
+        res.append('{ ' + ', '.join(ts) + ' }')
+        resf.append('{ ' + ', '.join(fs) + ' }')
+    print(',\n'.join(res).strip())
+    print()
+    print(',\n'.join(resf).strip())
+
+
 if __name__ == "__main__":
 
-    #find_tetrahedra_combinations([4, 5, 6, 7, 8, 9])
+    # generate_march_lut_edge()
+    # generate_march_lut()
 
-    #generate_march_lut_edge()
-    generate_march_lut()
+    generate_split_lut_edge()
 
