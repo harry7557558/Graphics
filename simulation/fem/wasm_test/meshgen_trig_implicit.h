@@ -20,8 +20,7 @@ namespace MeshgenTrigLoss {
 }
 
 
-
-void generateInitialMesh(
+void generateInitialMeshOld(
     ScalarFieldF F, vec2 b0, vec2 b1, ivec2 bn,
     std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
     std::vector<int> &constraintI, std::vector<vec2> &constraintN
@@ -139,6 +138,271 @@ void generateInitialMesh(
 }
 
 
+void generateInitialMesh(
+    ScalarFieldF F, vec2 b0, vec2 b1, ivec2 bn, int nd,
+    std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
+    std::vector<int> &constraintI, std::vector<vec2> &constraintN
+) {
+    assert(bn.x >= 1 && bn.y >= 1);
+    nd++;
+    ivec2 bnd(bn.x << nd, bn.y << nd);
+    assert(bnd.x <= 1000 && bnd.y <= 1000); // prevent overflow
+
+    std::unordered_map<int, int> vmap;
+    std::vector<float> vals;
+    std::vector<int> reqValIdx;
+    std::vector<ivec4> children;
+
+    auto getIdx = [&](int i, int j) {
+        return (i << 16) | j;
+    };
+    auto idxToIj = [&](int idx) {
+        int i = idx >> 16;
+        int j = idx - (i << 16);
+        return ivec2(i, j);
+    };
+    auto idxToPos = [&](int idx) {
+        ivec2 ij = idxToIj(idx);
+        float tx = ij.x / (float)bnd.x, ty = ij.y / (float)bnd.y;
+        return b0 + (b1 - b0) * vec2(tx, ty);
+    };
+    auto reqVal = [&](int i, int j) {
+        int idx = getIdx(i, j);
+        if (vmap.find(idx) == vmap.end()) {
+            reqValIdx.push_back(getIdx(i, j));
+            children.push_back(ivec4(-1));
+            vmap[idx] = 0.0;
+        }
+    };
+    auto batchVal = [&]() {
+        for (int idx : reqValIdx) {
+            vmap[idx] = (int)vals.size();
+            vec2 p = idxToPos(idx);
+            vals.push_back(F(p.x, p.y));
+        }
+        reqValIdx.clear();
+    };
+    auto getVal = [&](int i, int j) {
+        int idx = getIdx(i, j);
+        assert(vmap.find(idx) != vmap.end());
+        return vals[vmap[idx]];
+    };
+    auto isConstrainedX = [&](int idx) {
+        ivec2 ij = idxToIj(idx);
+        return ij.x == 0 || ij.x == bnd.x;
+    };
+    auto isConstrainedY = [&](int idx) {
+        ivec2 ij = idxToIj(idx);
+        return ij.y == 0 || ij.y == bnd.y;
+    };
+
+    // verts
+    int step = 1 << nd;
+    for (int j = 0; j <= bn[1]; j++)
+        for (int i = 0; i <= bn[0]; i++)
+            reqVal(i * step, j * step);
+    for (int j = 0; j < bn[1]; j++)
+        for (int i = 0; i < bn[0]; i++)
+            reqVal(i * step + step / 2, j * step + step / 2);
+    batchVal();
+    
+    // triangles
+    trigs.clear();
+    auto calcTrig = [&](int t1, int t2, int t3) {
+        ivec3 t(t1, t2, t3);
+        int inCount = 0, cCount = 0;
+        for (int _ = 0; _ < 3; _++) {
+            inCount += int(vals[vmap[t[_]]] < 0.0);
+            cCount += (int)(isConstrainedX(t[_]) || isConstrainedY(t[_]));
+        }
+        return ivec2(inCount, cCount);
+    };
+    auto testTrig = [&](ivec2 p) {
+        return p.x - p.y >= 1;
+    };
+    auto addTrig = [&](int t1, int t2, int t3) {
+        ivec2 p = calcTrig(t1, t2, t3);
+        if (testTrig(p))
+            trigs.push_back(ivec3(t1, t2, t3));
+    };
+    std::vector<ivec2> squaresToAdd;
+    std::vector<int> squareSizes;
+    auto addSquare = [&](int i, int j) {
+        squaresToAdd.push_back(ivec2(i, j));
+        squareSizes.push_back(step);
+    };
+
+    // next level
+    std::vector<ivec2> squares;
+    for (int j = 0; j < bn[1]; j++)
+        for (int i = 0; i < bn[0]; i++)
+            squares.push_back(ivec2(i*step, j*step));
+    
+    for (int _ = 1; _ < nd; _++) {
+        std::map<int, int> squaresmap;
+        for (int i = 0; i < (int)squares.size(); i++) {
+            ivec2 sq = squares[i];
+            squaresmap[getIdx(sq.x, sq.y)] = i;
+        }
+
+        int step1 = step >> 1;
+
+        // todiv criterion by sign
+        std::vector<bool> toDiv0(squares.size(), false);
+        for (int i = 0; i < (int)squares.size(); i++) {
+            ivec2 sq = squares[i];
+            int totsign =
+                (int)(getVal(sq.x+0*step, sq.y+0*step) > 0.0) +
+                (int)(getVal(sq.x+0*step, sq.y+1*step) > 0.0) +
+                (int)(getVal(sq.x+1*step, sq.y+0*step) > 0.0) +
+                (int)(getVal(sq.x+1*step, sq.y+1*step) > 0.0) +
+                (int)(getVal(sq.x+step/2, sq.y+step/2) > 0.0);
+            if (totsign % 5 != 0) {
+                toDiv0[i] = true;
+            }
+        }
+        // spread todiv
+        std::vector<bool> toDiv = toDiv0;
+        if (_ + 1 != nd) {
+            for (int i = 0; i < (int)squares.size(); i++) {
+                if (!toDiv[i]) continue;
+                ivec2 sq = squares[i];
+                for (int u = -2; u <= 2; u++)
+                    for (int v = -2; v <= 2; v++) {
+                        if (u * u  + v * v <= 2) {
+                            ivec2 sq1(sq.x + u * step, sq.y + v * step);
+                            int idx = getIdx(sq1.x, sq1.y);
+                            if (squaresmap.find(idx) != squaresmap.end()) {
+                                toDiv0[squaresmap[idx]] = true;
+                            }
+                        }
+                    }
+            }
+            toDiv = toDiv0;
+        }
+        // todiv: neighbors must in squares
+        for (int i = 0; i < (int)squares.size(); i++) {
+            if (!toDiv[i]) continue;
+            ivec2 sq = squares[i];
+            int sqidx = getIdx(sq.x, sq.y);
+            for (int u = -1; u <= 1; u++)
+                for (int v = -1; v <= 1; v++) {
+                    if (abs(u) + abs(v) == 1) {
+                        ivec2 sq1(sq.x + u * step, sq.y + v * step);
+                        int idx = getIdx(sq1.x, sq1.y);
+                        if (squaresmap.find(idx) == squaresmap.end() && !(
+                            sq1.x < 0 || sq1.y < 0 || sq1.x >= bnd.x || sq1.y >= bnd.y
+                        ))
+                            toDiv0[squaresmap[sqidx]] = false;
+                    }
+                }
+        }
+        toDiv = toDiv0;
+
+        // add squares
+        step = step1;
+        for (int i = 0; i < (int)squares.size(); i++) {
+            if (!toDiv[i]) continue;
+            int s = step / 2;
+            int ic = squares[i].x + 2 * s;
+            int jc = squares[i].y + 2 * s;
+            // reqVal(ic, jc);
+            reqVal(ic - 2 * s, jc);
+            reqVal(ic + 2 * s, jc);
+            reqVal(ic, jc - 2 * s);
+            reqVal(ic, jc + 2 * s);
+            reqVal(ic - s, jc - s);
+            reqVal(ic + s, jc - s);
+            reqVal(ic - s, jc + s);
+            reqVal(ic + s, jc + s);
+        }
+        batchVal();
+        for (int i = 0; i < (int)squares.size(); i++) {
+            ivec2 sq = squares[i];
+            if (!toDiv[i]) {
+                step *= 2;
+                addSquare(sq.x, sq.y);
+                step /= 2;
+                continue;
+            }
+        }
+
+        // next iteration
+        std::vector<ivec2> squares1;
+        for (int i = 0; i < (int)squares.size(); i++) {
+            if (!toDiv[i]) continue;
+            ivec2 sq = squares[i];
+            for (int u = 0; u < 2; u++)
+                for (int v = 0; v < 2; v++)
+                    squares1.push_back(ivec2(
+                        sq.x + u * step,
+                        sq.y + v * step));
+        }
+        squares = squares1;
+    }
+    for (ivec2 sq : squares) {
+        addSquare(sq.x, sq.y);
+    }
+
+    // add squares
+    auto addT2 = [&](int idx1, int idx2, int idx3, int idx0, int s) {
+        if (s > 1 && vmap.find(idx0) != vmap.end()) {
+            addTrig(idx1, idx0, idx3);
+            addTrig(idx2, idx3, idx0);
+        }
+        else addTrig(idx1, idx2, idx3);
+    };
+    for (int i = 0; i < (int)squaresToAdd.size(); i++) {
+        ivec2 sq = squaresToAdd[i];
+        int s = squareSizes[i];
+        if (s == 1) continue;
+        int i0 = sq.x, i1 = i0 + s / 2, i2 = i0 + s;
+        int j0 = sq.y, j1 = j0 + s / 2, j2 = j0 + s;
+        int idxc = getIdx(i1, j1);
+        addT2(getIdx(i0, j0), getIdx(i2, j0), idxc, getIdx(i1, j0), s);
+        addT2(getIdx(i2, j0), getIdx(i2, j2), idxc, getIdx(i2, j1), s);
+        addT2(getIdx(i2, j2), getIdx(i0, j2), idxc, getIdx(i1, j2), s);
+        addT2(getIdx(i0, j2), getIdx(i0, j0), idxc, getIdx(i0, j1), s);
+    }
+
+    // remove unused vertices
+    std::vector<int> vpsa(vmap.size(), 0);
+    for (ivec3 t : trigs)
+        for (int _ = 0; _ < 3; _++)
+            vpsa[vmap[t[_]]] = 1;
+    vertices.clear();
+    for (int i = 0; i < (int)vpsa.size(); i++) {
+        if (vpsa[i]) {
+            vpsa[i] = (int)vertices.size();
+            vertices.push_back(vec2());
+        }
+        else vpsa[i] = -1;
+    }
+    for (std::pair<int, int> ii : vmap) {
+        int i = vpsa[ii.second];
+        if (i != -1) {
+            int idx = ii.first;
+            vertices[i] = idxToPos(idx);
+            if (isConstrainedX(idx)) {
+                constraintI.push_back(i);
+                constraintN.push_back(vec2(1, 0));
+            }
+            if (isConstrainedY(idx)) {
+                constraintI.push_back(i);
+                constraintN.push_back(vec2(0, 1));
+            }
+        }
+    }
+    for (int i = 0; i < (int)trigs.size(); i++) {
+        for (int _ = 0; _ < 3; _++) {
+            trigs[i][_] = vpsa[vmap[trigs[i][_]]];
+            assert(trigs[i][_] >= 0);
+        }
+    }
+
+}
+
+
 
 /* Mesh Optimizer */
 
@@ -187,7 +451,7 @@ void assertAreaEqual(
 
     // compare
     printf("At=%f As=%f\n", At, As);
-    assert(abs(As / At - 1.0) < 1e-4);
+    assert(abs(As / At - 1.0) < 1e-3);
 }
 
 

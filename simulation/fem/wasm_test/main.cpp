@@ -19,10 +19,15 @@ DiscretizedModel<float, float> test_3(float density) {
         // return x*x+y*y-1.0;
         // return x*x+y*y-abs(x)*y-1.0;
         // return abs(hypot(x,y)-1)-0.5;
-        // return sin(2.0*x)*cos(2.0*y)-0.2;
-        return 4*x*x+pow(2*y-cos(2*x),2)+cos(12*x)*exp(y-4*x*x)-2;
+        return sin(2.0*x)*cos(2.0*y)-0.2;
+        // return 4*x*x+pow(2*y-cos(2*x),2)+cos(12*x)*exp(y-4*x*x)-2;
         // return pow(x,4) + pow(y,4) - 4.0*x*x*y*y;
         // return sin(10.0*(y-sin(x)));
+        // return 1.1*(fabs(x)+fabs(y))-fmax(fabs(x),fabs(y))-0.1;
+        // return sin(10.0*(x*x+y*y-abs(x)*y));
+        // return abs(pow(x*x+y*y-1,3) - x*x*y*y*y)-0.1;
+        // return sin(6*atan2(y,x))-4*x*y;
+        // return sin(6*x)+sin(6*y)-(sin(12*x)+cos(6*y))*sin(12*y);
     };
     MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](int n, const vec2 *p, float *v) {
         for (int i = 0; i < n; i++)
@@ -42,8 +47,15 @@ DiscretizedModel<float, float> test_3(float density) {
     std::vector<ivec3> trigs;
     std::vector<int> constraintI;
     std::vector<vec2> constraintN;
+    // MeshgenTrigImplicit::generateInitialMeshOld(
+    //     F, bc-br, bc+br, ivec2(67, 63),
+    //     vs, trigs,
+    //     constraintI, constraintN
+    // );
     MeshgenTrigImplicit::generateInitialMesh(
-        F, bc-br, bc+br, ivec2(96),
+        F, bc-br, bc+br,
+        ivec2(19, 17), 3,
+        // ivec2(32, 32), 2,
         vs, trigs,
         constraintI, constraintN
     );
@@ -60,7 +72,7 @@ DiscretizedModel<float, float> test_3(float density) {
     DiscretizedModel<float, float> res = solveLaplacianLinearTrig(
         vs, std::vector<float>(vs.size(), 4.0f), trigs);
     for (int i = 0; i < res.N; i++)
-        res.U[i] = sqrt(fmax(res.U[i], 0.0f));
+        res.U[i] = 1.0f*sqrt(fmax(res.U[i], 0.0f));
     return res;
 }
 
