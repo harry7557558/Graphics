@@ -22,7 +22,8 @@ public:
     }
     int getN() const { return n; }
     void addValue(int row, int col, float val) {
-        mat[row][col] += val;
+        if (row != -1 && col != -1)
+            mat[row][col] += val;
     }
     void setValue(int row, int col, float val) {
         mat[row][col] = val;
@@ -104,44 +105,6 @@ public:
             for (std::pair<int, float> kw : mat[i]) {
                 int k = kw.first;
                 if (k > i) res.addValue(k, i, kw.second / diag);
-            }
-        }
-        return res;
-    }
-    // 3x3 block
-    LilMatrix incompleteCholesky3() const {
-        assert(n % 3 == 0);
-        LilMatrix res(n);
-        for (int i = 0; i < n; i += 3) {
-            // get the diagonal
-            mat3 diag;
-            for (int u = 0; u < 3; u++)
-                for (int v = 0; v < 3; v++)
-                    diag[u][v] = this->at(i + u, i + v);
-            for (int u = 0; u < 3; u++)
-                for (int v = 0; v <= u; v++) {
-                    float s = 0.0;
-                    for (int w = 0; w < v; w++)
-                        s += diag[u][w] * diag[v][w];
-                    diag[u][v] = (u == v) ? sqrt(diag[u][u] - s)
-                        : (diag[v][u] - s) / diag[v][v];
-                    res.addValue(i + u, i + v, diag[u][v]);
-                }
-            diag[0][1] = diag[0][2] = diag[1][2] = 0.0;
-            // this should work because all 3x3 blocks (including zeros)
-            // were added in stiffness matrix construction
-            mat3 invDiag = glm::inverse(glm::transpose(diag));
-            for (std::pair<int, float> kw : mat[i]) {
-                int k = kw.first;
-                if (k <= i || k % 3 != 0) continue;
-                mat3 vik;  // transposed
-                for (int u = 0; u < 3; u++)
-                    for (int v = 0; v < 3; v++)
-                        vik[v][u] = this->at(i + u, k + v);
-                mat3 m = vik * invDiag;
-                for (int u = 0; u < 3; u++)
-                    for (int v = 0; v < 3; v++)
-                        res.addValue(k + u, i + v, m[u][v]);
             }
         }
         return res;

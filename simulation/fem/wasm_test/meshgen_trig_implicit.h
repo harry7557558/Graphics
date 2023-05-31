@@ -21,12 +21,12 @@ namespace MeshgenTrigLoss {
 
 
 void generateInitialMeshOld(
-    ScalarFieldF F, vec2 b0, vec2 b1, ivec2 bn,
+    ScalarFieldFBatch Fs, vec2 b0, vec2 b1, ivec2 bn,
     std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
     std::vector<int> &constraintI, std::vector<vec2> &constraintN
 ) {
     assert(bn.x >= 1 && bn.y >= 1);
-    assert(bn.x <= 1000 && bn.y <= 1000); // prevent overflow
+    assert(bn.x <= 2000 && bn.y <= 2000); // prevent overflow
 
     // verts
     auto vci = [=](int i, int j) {  // vertex index
@@ -46,10 +46,7 @@ void generateInitialMeshOld(
         for (int i = 0; i < bn[0]; i++)
             verts[vbi(i, j)] = mix(b0, b1, (vec2(i, j) + vec2(0.5)) / vec2(bn.x, bn.y));
     std::vector<float> vals(vn);
-    for (int i = 0; i < vn; i++) {
-        vec2 p = verts[i];
-        vals[i] = F(p.x, p.y);
-    }
+    Fs(verts.size(), &verts[0], &vals[0]);
 
     // constraints
     std::vector<bool> isOnEdgeX(vn, false), isOnEdgeY(vn, false);
@@ -139,19 +136,18 @@ void generateInitialMeshOld(
 
 
 void generateInitialMesh(
-    ScalarFieldF F, vec2 b0, vec2 b1, ivec2 bn, int nd,
+    ScalarFieldFBatch Fs, vec2 b0, vec2 b1, ivec2 bn, int nd,
     std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
     std::vector<int> &constraintI, std::vector<vec2> &constraintN
 ) {
     assert(bn.x >= 1 && bn.y >= 1);
     nd++;
     ivec2 bnd(bn.x << nd, bn.y << nd);
-    assert(bnd.x <= 1000 && bnd.y <= 1000); // prevent overflow
+    assert(bn.x <= 2000 && bn.y <= 2000); // prevent overflow
 
     std::unordered_map<int, int> vmap;
     std::vector<float> vals;
     std::vector<int> reqValIdx;
-    std::vector<ivec4> children;
 
     auto getIdx = [&](int i, int j) {
         return (i << 16) | j;
@@ -170,16 +166,19 @@ void generateInitialMesh(
         int idx = getIdx(i, j);
         if (vmap.find(idx) == vmap.end()) {
             reqValIdx.push_back(getIdx(i, j));
-            children.push_back(ivec4(-1));
             vmap[idx] = 0.0;
         }
     };
     auto batchVal = [&]() {
-        for (int idx : reqValIdx) {
-            vmap[idx] = (int)vals.size();
-            vec2 p = idxToPos(idx);
-            vals.push_back(F(p.x, p.y));
+        std::vector<vec2> ps;
+        ps.reserve(reqValIdx.size());
+        for (int i = 0; i < (int)reqValIdx.size(); i++) {
+            int idx = reqValIdx[i];
+            vmap[idx] = (int)vals.size() + i;
+            ps.push_back(idxToPos(idx));
         }
+        vals.resize(vals.size() + ps.size());
+        Fs(ps.size(), &ps[0], &vals[vals.size() - ps.size()]);
         reqValIdx.clear();
     };
     auto getVal = [&](int i, int j) {
@@ -196,16 +195,6 @@ void generateInitialMesh(
         return ij.y == 0 || ij.y == bnd.y;
     };
 
-    // verts
-    int step = 1 << nd;
-    for (int j = 0; j <= bn[1]; j++)
-        for (int i = 0; i <= bn[0]; i++)
-            reqVal(i * step, j * step);
-    for (int j = 0; j < bn[1]; j++)
-        for (int i = 0; i < bn[0]; i++)
-            reqVal(i * step + step / 2, j * step + step / 2);
-    batchVal();
-    
     // triangles
     trigs.clear();
     auto calcTrig = [&](int t1, int t2, int t3) {
@@ -227,10 +216,20 @@ void generateInitialMesh(
     };
     std::vector<ivec2> squaresToAdd;
     std::vector<int> squareSizes;
-    auto addSquare = [&](int i, int j) {
+    auto addSquare = [&](int i, int j, int step) {
         squaresToAdd.push_back(ivec2(i, j));
         squareSizes.push_back(step);
     };
+
+    // verts
+    int step = 1 << nd;
+    for (int j = 0; j <= bn[1]; j++)
+        for (int i = 0; i <= bn[0]; i++)
+            reqVal(i * step, j * step);
+    for (int j = 0; j < bn[1]; j++)
+        for (int i = 0; i < bn[0]; i++)
+            reqVal(i * step + step / 2, j * step + step / 2);
+    batchVal();
 
     // next level
     std::vector<ivec2> squares;
@@ -239,7 +238,7 @@ void generateInitialMesh(
             squares.push_back(ivec2(i*step, j*step));
     
     for (int _ = 1; _ < nd; _++) {
-        std::map<int, int> squaresmap;
+        std::unordered_map<int, int> squaresmap;
         for (int i = 0; i < (int)squares.size(); i++) {
             ivec2 sq = squares[i];
             squaresmap[getIdx(sq.x, sq.y)] = i;
@@ -320,10 +319,7 @@ void generateInitialMesh(
         for (int i = 0; i < (int)squares.size(); i++) {
             ivec2 sq = squares[i];
             if (!toDiv[i]) {
-                step *= 2;
-                addSquare(sq.x, sq.y);
-                step /= 2;
-                continue;
+                addSquare(sq.x, sq.y, step * 2);
             }
         }
 
@@ -341,7 +337,7 @@ void generateInitialMesh(
         squares = squares1;
     }
     for (ivec2 sq : squares) {
-        addSquare(sq.x, sq.y);
+        addSquare(sq.x, sq.y, step);
     }
 
     // add squares

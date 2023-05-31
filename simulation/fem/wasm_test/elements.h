@@ -124,9 +124,6 @@ public:
     virtual int getNumEdges() const = 0;
     virtual void getEdges(ivec2 es[]) const = 0;
 
-    // get the area of the element
-    virtual float getArea() const = 0;
-
     // evaluate the stiffness matrix
     // X: a list of global vertex initial positions
     // K: the NxN stiffness matrix
@@ -141,13 +138,7 @@ private:
     // 3 vertices, positive area
     int vi[3];
 
-    // area of the element
-    float dA;
-
 public:
-
-    // get volume
-    float getArea() const { return dA; }
 
     // vi: the global indices of vertices
     // X: the initial global vertex positions

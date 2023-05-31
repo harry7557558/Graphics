@@ -29,7 +29,7 @@ DiscretizedModel<float, float> test_3(float density) {
         // return sin(6*atan2(y,x))-4*x*y;
         // return sin(6*x)+sin(6*y)-(sin(12*x)+cos(6*y))*sin(12*y);
     };
-    MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](int n, const vec2 *p, float *v) {
+    MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](size_t n, const vec2 *p, float *v) {
         for (int i = 0; i < n; i++)
             v[i] = F(p[i].x, p[i].y);
     };
@@ -48,14 +48,16 @@ DiscretizedModel<float, float> test_3(float density) {
     std::vector<int> constraintI;
     std::vector<vec2> constraintN;
     // MeshgenTrigImplicit::generateInitialMeshOld(
-    //     F, bc-br, bc+br, ivec2(67, 63),
+    //     Fs, bc-br, bc+br,
+    //     ivec2(67, 63),
+    //     // ivec2(19, 17),
     //     vs, trigs,
     //     constraintI, constraintN
     // );
     MeshgenTrigImplicit::generateInitialMesh(
-        F, bc-br, bc+br,
-        ivec2(19, 17), 3,
-        // ivec2(32, 32), 2,
+        Fs, bc-br, bc+br,
+        ivec2(19, 17), 4,
+        // ivec2(32, 32), 3,
         vs, trigs,
         constraintI, constraintN
     );
@@ -73,6 +75,9 @@ DiscretizedModel<float, float> test_3(float density) {
         vs, std::vector<float>(vs.size(), 4.0f), trigs);
     for (int i = 0; i < res.N; i++)
         res.U[i] = 1.0f*sqrt(fmax(res.U[i], 0.0f));
+        // res.U[i] = 1.0f*res.U[i];
+    float maxu = 0.0; for (int i = 0; i < res.N; i++) maxu = fmax(maxu, res.U[i]);
+    printf("height: %f\n", maxu);
     return res;
 }
 
