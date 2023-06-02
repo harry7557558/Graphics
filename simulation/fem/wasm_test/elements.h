@@ -101,9 +101,9 @@ struct ivec8 {
 /* FEM Elements */
 
 
-#define MAX_AREA_ELEMENT_N 4
-#define MAX_AREA_ELEMENT_TN 1
-#define MAX_AREA_ELEMENT_EN 3
+#define MAX_AREA_ELEMENT_N 6
+#define MAX_AREA_ELEMENT_TN 4
+#define MAX_AREA_ELEMENT_EN 6
 
 struct AreaElement {
 protected:
@@ -181,6 +181,118 @@ public:
             )));
         mat3x2 D = X * mat3x2(-1, -1, 1, 0, 0, 1);
         *((mat3*)K) = 0.5f * transpose(D) * D;
+    }
+
+};
+
+
+struct QuadraticTrigElement: AreaElement {
+private:
+    // 3 vertices + 3 edges, positive area
+    int vi[6];
+
+public:
+
+    // vi: the global indices of vertices
+    // X: the initial global vertex positions
+    QuadraticTrigElement(int vi[6], const vec2* X) {
+        for (int i = 0; i < 6; i++)
+            this->vi[i] = vi[i];
+    }
+    QuadraticTrigElement(std::initializer_list<int> vi, const vec2* X) {
+        for (int i = 0; i < 6; i++)
+            this->vi[i] = vi.begin()[i];
+    }
+    QuadraticTrigElement() { }
+
+    // get the number of vertices
+    int getN() const { return 6; }
+
+    // get vertice indices
+    const int* getVi() const { return &vi[0]; }
+
+    // get triangles and edges for rendering
+    int getNumTriangles() const { return 4; }
+    void getTriangles(ivec3 ts[1]) const {
+        if (getNumTriangles() == 1) {
+            ts[0] = ivec3(vi[0], vi[1], vi[2]);
+        }
+        else {
+            ts[0] = ivec3(vi[0], vi[3], vi[5]);
+            ts[1] = ivec3(vi[1], vi[4], vi[3]);
+            ts[2] = ivec3(vi[2], vi[5], vi[4]);
+            ts[3] = ivec3(vi[3], vi[4], vi[5]);
+        }
+    }
+    int getNumEdges() const { return 6; }
+    void getEdges(ivec2 es[]) const {
+        if (getNumEdges() == 3) {
+            es[0] = ivec2(vi[0], vi[1]);
+            es[1] = ivec2(vi[1], vi[2]);
+            es[2] = ivec2(vi[2], vi[0]);
+        }
+        else {
+            es[0] = ivec2(vi[0], vi[3]);
+            es[1] = ivec2(vi[3], vi[1]);
+            es[2] = ivec2(vi[1], vi[4]);
+            es[3] = ivec2(vi[4], vi[2]);
+            es[4] = ivec2(vi[2], vi[5]);
+            es[5] = ivec2(vi[5], vi[0]);
+        }
+    }
+
+    // evaluate the stiffness matrix (6x6)
+    void evalK(const vec2* Xs, float* K) const {
+        // f(u, v) = [1 u v u^2 v^2 uv] D v[0,1,2,3,4,5]
+        const float D[6][6] = {
+            { 1, 0, 0, 0, 0, 0 },
+            { -3, -1, 0, 4, 0, 0 },
+            { -3, 0, -1, 0, 0, 4 },
+            { 2, 2, 0, -4, 0, 0 },
+            { 2, 0, 2, 0, 0, -4 },
+            { 4, 0, 0, -4, 4, -4 }
+        };
+        vec2 p[6];
+        for (int i = 0; i < 6; i++) {
+            p[i] = vec2(0.0f);
+            for (int j = 0; j < 6; j++)
+                p[i] += D[i][j] * Xs[vi[j]];
+        }
+        // https://www2.karlin.mff.cuni.cz/~knobloch/FILES/MKP_20_21/g_quadr.pdf
+#if 0
+        const int NS = 3;
+        const float GI[NS][4] = {
+            { 1.0f/3.0f, 2.0f/3.0f, 1.0f/6.0f, 1.0f/6.0f },
+            { 1.0f/3.0f, 1.0f/6.0f, 2.0f/3.0f, 1.0f/6.0f },
+            { 1.0f/3.0f, 1.0f/6.0f, 1.0f/6.0f, 2.0f/3.0f },
+        };
+#else
+        const int NS = 4;
+        const float GI[NS][4] = {
+            { -0.5625f, 1.0f/3.0f, 1.0f/3.0f, 1.0f/3.0f },
+            { 25.f/48.f, 0.6f, 0.2f, 0.2f },
+            { 25.f/48.f, 0.2f, 0.6f, 0.2f },
+            { 25.f/48.f, 0.2f, 0.2f, 0.6f },
+        };
+#endif
+        for (int i = 0; i < 36; i++)
+            K[i] = 0.0f;
+        for (int gi = 0; gi < NS; gi++) {
+            float w = 2.0f * GI[gi][0];
+            float u = GI[gi][1], v = GI[gi][2];
+            vec2 dpdu = p[1] + 2.0f*u*p[3] + v*p[5];
+            vec2 dpdv = p[2] + 2.0f*v*p[4] + u*p[5];
+            mat2 invDpduv = inverse(transpose(mat2(dpdu, dpdv)));
+            vec2 dpdg[6];
+            for (int i = 0; i < 6; i++) {
+                dpdg[i].x = D[1][i] + 2.0f*u*D[3][i] + v*D[5][i];
+                dpdg[i].y = D[2][i] + 2.0f*v*D[4][i] + u*D[5][i];
+                dpdg[i] = invDpduv * dpdg[i];
+            }
+            for (int i = 0; i < 6; i++)
+                for (int j = 0; j < 6; j++)
+                    K[i * 6 + j] += w * dot(dpdg[i], dpdg[j]);
+        }
     }
 
 };

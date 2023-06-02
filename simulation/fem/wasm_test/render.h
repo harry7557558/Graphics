@@ -228,7 +228,7 @@ GLuint createShaderProgram(const char* vs_source, const char* fs_source) {
 class Viewport;
 
 namespace RenderParams {
-    const glm::ivec2 iResolution(600, 600);
+    const glm::ivec2 iResolution(600, 500);
     const double fps = 60.0;
     GLFWwindow* window;
     GLuint vertexArrayID = 0;
@@ -920,7 +920,7 @@ void mainGUI(
 
     // GUI
     RenderParams::viewport = new Viewport(
-        2.0f / fmax(fmax(maxv.x - minv.x, maxv.y - minv.y), maxv.z - minv.z),
+        2.5f / fmax(fmax(maxv.x - minv.x, maxv.y - minv.y), maxv.z - minv.z),
         0.5f * (minv + maxv), -0.33f * PIf, -0.17f * PIf);
     vec2 res = RenderParams::iResolution;
     ColorRemapSlider slider(&precomputed);
