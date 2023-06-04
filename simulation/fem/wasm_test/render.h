@@ -339,6 +339,10 @@ public:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.04f, 0.04f, 0.04f, 1.0);
 
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+
         glm::vec2 res = RenderParams::iResolution;
         transformMatrix = glm::perspective(0.25f * PIf, res.x / res.y, 0.1f / scale, 100.0f / scale);
         transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0, 0.0, -3.0 / scale));
@@ -861,8 +865,8 @@ void mainGUI(
 
     // faces
     auto ivec3Cmp = [](glm::ivec3 a, glm::ivec3 b) {
-        std::sort(&a.x, &a.x + 3);
-        std::sort(&b.x, &b.x + 3);
+        // std::sort(&a.x, &a.x + 3);
+        // std::sort(&b.x, &b.x + 3);
         return a.x != b.x ? a.x < b.x : a.y != b.y ? a.y < b.y : a.z < b.z;
     };
     std::map<glm::ivec3, int, decltype(ivec3Cmp)> uniqueIndicesF(ivec3Cmp);  // count
@@ -877,6 +881,8 @@ void mainGUI(
                 t0[1] < t0[2] && t0[1] < t0[0] ? 1 : 2;
             glm::ivec3 t(t0[i], t0[(i + 1) % 3], t0[(i + 2) % 3]);
             uniqueIndicesF[t] += 1;
+            t = glm::ivec3(t.x, t.z, t.y);
+            assert(uniqueIndicesF.find(t) == uniqueIndicesF.end());
         }
     }
     std::vector<glm::ivec3> indicesF;
@@ -885,7 +891,6 @@ void mainGUI(
 
     // normals
     for (auto fc : uniqueIndicesF) {
-        if (fc.second == 2) continue;
         assert(fc.second == 1);
         glm::ivec3 f = fc.first;
         vec3 n = glm::cross(

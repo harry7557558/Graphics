@@ -104,6 +104,8 @@ void generateInitialMeshOld(
             addTrig(vci(i+1, j), vci(i+1, j+1), c);
             addTrig(vci(i+1, j+1), vci(i, j+1), c);
             addTrig(vci(i, j+1), vci(i, j), c);
+            // addTrig(vci(i, j), vci(i+1, j), vci(i+1, j+1));
+            // addTrig(vci(i+1, j+1), vci(i, j+1), vci(i, j));
         }
 
     // remove unused vertices

@@ -190,7 +190,7 @@ void DiscretizedModel<float, float>::constructLaplacianMatrix(
         float s = 0.0f;
         for (float v : equv[k]) s += v * v;
         s = 1.0f / sqrt(s);
-        if (k < 2 * N) s *= 0.0001;
+        if (k < 2 * N) s *= 0.2f;
         for (size_t i = 0; i < equv[k].size(); i++)
             equv[k][i] *= s;
         ss[k] = s;
@@ -207,8 +207,10 @@ void DiscretizedModel<float, float>::constructLaplacianMatrix(
     for (int k = 0; k < 3 * N; k++) {
         size_t l = equj[k].size();
         for (int i = 0; i < l; i++)
-            for (int j = 0; j < l; j++)
-                lilw.addValue(equj[k][i], equj[k][j], equv[k][i] * equv[k][j]);
+            for (int j = 0; j < l; j++) {
+                float ks = (i == j) ? (k < 2 * N ? 1.3f : 1.1f) : 1.0f;
+                lilw.addValue(equj[k][i], equj[k][j], ks * equv[k][i] * equv[k][j]);
+            }
     }
     CsrMatrix csr(lilw);
     auto linopr = [&](const float* src, float* res) {
@@ -389,8 +391,8 @@ void DiscretizedModel<float, float>::solveLaplacian() {
     LilMatrix lil(Ns);
     // constructMatrix(lil, Imap);
     // constructCotangentMatrix(lil, Imap);
-    // constructLaplacianMatrix(lil, Imap);
-    constructLaplacianMatrixLarge(lil, Imap);
+    constructLaplacianMatrix(lil, Imap);
+    // constructLaplacianMatrixLarge(lil, Imap);
 
     // construct the vectors
     float* f = new float[Ns];
@@ -414,7 +416,7 @@ void DiscretizedModel<float, float>::solveLaplacian() {
     for (int i = 0; i < Ns; i++)
         tol += dot(f[i], f[i]);
     tol = 1e-10 * sqrt(tol);
-#define PRECOND 1  // 1: diag; 2: cholesky; 3: ssor
+#define PRECOND 2  // 1: diag; 2: cholesky; 3: ssor
 #if !PRECOND
     float time2 = time1;
     int niters = conjugateGradient(

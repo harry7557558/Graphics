@@ -28,6 +28,7 @@ DiscretizedModel<float, float> test_3(float density) {
         // return abs(pow(x*x+y*y-1,3) - x*x*y*y*y)-0.1;
         return sin(6*atan2(y,x))-4*x*y;
         // return sin(6*x)+sin(6*y)-(sin(12*x)+cos(6*y))*sin(12*y);
+        // return fmin(cos(10*x-cos(5*y)),cos(10*y+cos(5*x)))+0.5;
     };
     MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](size_t n, const vec2 *p, float *v) {
         for (int i = 0; i < n; i++)
@@ -52,12 +53,13 @@ DiscretizedModel<float, float> test_3(float density) {
     //     ivec2(67, 63),
     //     // ivec2(33, 31),
     //     // ivec2(19, 17),
+    //     // ivec2(67, 17),
     //     vs, trigs,
     //     constraintI, constraintN
     // );
     MeshgenTrigImplicit::generateInitialMesh(
         Fs, bc-br, bc+br,
-        // ivec2(2, 2), 2,
+        // ivec2(2, 2), 4,
         // ivec2(9, 7), 4,
         ivec2(19, 17), 4,
         // ivec2(33, 31), 3,
