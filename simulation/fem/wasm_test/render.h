@@ -339,9 +339,9 @@ public:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.04f, 0.04f, 0.04f, 1.0);
 
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+        // glDisable(GL_DEPTH_TEST);
+        // glEnable(GL_BLEND);
+        // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
 
         glm::vec2 res = RenderParams::iResolution;
         transformMatrix = glm::perspective(0.25f * PIf, res.x / res.y, 0.1f / scale, 100.0f / scale);

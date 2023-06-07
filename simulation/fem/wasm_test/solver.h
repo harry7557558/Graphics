@@ -34,6 +34,7 @@ struct DiscretizedModel {
     std::vector<bool> isBoundary;  // boundary vertex? N
     std::vector<Tf> F;  // inputs, N, valid for non boundary
     std::vector<Tu> U;  // solutions, N
+    std::vector<vec2> gradU;  // gradient of solutions, valid for float Tu
 
     void startSolver() {
         N = (int)X.size();
@@ -49,7 +50,7 @@ struct DiscretizedModel {
     }
 
     void constructMatrix(LilMatrix &lil, const int* Imap);
-    void constructCotangentMatrix(LilMatrix &lil, const int* Imap);
+    void constructCotangentMatrix(LilMatrix &lil, std::vector<float> &masses, const int* Imap);
 
     void constructLaplacianMatrix(LilMatrix &lil, const int *Imap);
     void constructLaplacianMatrixLarge(LilMatrix &lil, const int *Imap);
@@ -92,10 +93,10 @@ void DiscretizedModel<float, float>::constructMatrix(
 
 template<>
 void DiscretizedModel<float, float>::constructCotangentMatrix(
-    LilMatrix &lil, const int* Imap
+    LilMatrix &lil, std::vector<float> &masses, const int* Imap
 ) {
     int N = lil.getN();
-    std::vector<float> masses(N, 0.0);
+    masses = std::vector<float>(N, 0.0);
     for (const AreaElement *c : SE) {
         assert(c->getN() == 3);
         const int *v0 = c->getVi();
@@ -106,8 +107,6 @@ void DiscretizedModel<float, float>::constructCotangentMatrix(
             if (Imap[v0[i]] != -1)
                 masses[Imap[v0[i]]] += dA;
     }
-    for (int i = 0; i < N; i++)
-        masses[i] = 1.0 / sqrt(masses[i]);
     for (const AreaElement *c : SE) {
         const int *v0 = c->getVi();
         for (int i = 0; i < 3; i++) {
@@ -119,13 +118,10 @@ void DiscretizedModel<float, float>::constructCotangentMatrix(
             vec2 c = X[v[2]] - X[v[1]];
             float cos = dot(a, b) / sqrt(dot(a, a) * dot(b, b));
             float w = 0.5f * cos / sqrt(1.0f - cos * cos);
-            float w1 = Imap[v[1]] == -1 ? 0.0f : masses[Imap[v[1]]];
-            float w2 = Imap[v[2]] == -1 ? 0.0f : masses[Imap[v[2]]];
-            w1 = w2 = 1.0 / sqrt(dot(c, c));
-            lil.addValue(Imap[v[1]], Imap[v[1]], w * w1 * w1);
-            lil.addValue(Imap[v[1]], Imap[v[2]], -w * w1 * w2);
-            lil.addValue(Imap[v[2]], Imap[v[1]], -w * w2 * w1);
-            lil.addValue(Imap[v[2]], Imap[v[2]], w * w2 * w2);
+            lil.addValue(Imap[v[1]], Imap[v[1]], w);
+            lil.addValue(Imap[v[1]], Imap[v[2]], -w);
+            lil.addValue(Imap[v[2]], Imap[v[1]], -w);
+            lil.addValue(Imap[v[2]], Imap[v[2]], w);
         }
     }
 }
@@ -389,16 +385,17 @@ void DiscretizedModel<float, float>::solveLaplacian() {
 
     // construct the matrix
     LilMatrix lil(Ns);
+    std::vector<float> masses(Ns, 1.0f);
     // constructMatrix(lil, Imap);
-    // constructCotangentMatrix(lil, Imap);
-    constructLaplacianMatrix(lil, Imap);
+    constructCotangentMatrix(lil, masses, Imap);
+    // constructLaplacianMatrix(lil, Imap);
     // constructLaplacianMatrixLarge(lil, Imap);
 
     // construct the vectors
     float* f = new float[Ns];
     for (int i = 0; i < N; i++)
         if (Imap[i] != -1)
-            f[Imap[i]] = F[i];
+            f[Imap[i]] = masses[Imap[i]] * F[i];
     float* u = new float[Ns];
     for (int i = 0; i < Ns; i++)
         u[i] = 1e-4f * randn();
@@ -416,7 +413,7 @@ void DiscretizedModel<float, float>::solveLaplacian() {
     for (int i = 0; i < Ns; i++)
         tol += dot(f[i], f[i]);
     tol = 1e-10 * sqrt(tol);
-#define PRECOND 2  // 1: diag; 2: cholesky; 3: ssor
+#define PRECOND 1  // 1: diag; 2: cholesky; 3: ssor
 #if !PRECOND
     float time2 = time1;
     int niters = conjugateGradient(
