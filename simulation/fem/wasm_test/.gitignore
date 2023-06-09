@@ -1,3 +1,4 @@
 .vscode/
 glm/
 build/
+stb_image.h

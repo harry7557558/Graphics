@@ -700,7 +700,7 @@ void smoothMesh(
             if (gl != 0.0f) {
                 float a = maxMovement[i];
                 g *= a * tanh(gl / a) / gl;
-                if (isnan(g.x)) {
+                if (std::isnan(g.x)) {
                     printf("warning: nan displacement %d %f %f %f\n", i, a, gl, maxFactor[i]);
                     continue;
                 }
