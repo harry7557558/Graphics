@@ -10,39 +10,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-
-void writeSTL(const char* filename,
-    std::vector<vec3> verts, std::vector<ivec3> trigs
-) {
-    FILE* fp = fopen(&filename[0], "wb");
-    for (int i = 0; i < 80; i++) fputc(0, fp);
-    int n = (int)trigs.size();
-    fwrite(&n, 4, 1, fp);
-    for (int i = 0; i < n; i++) {
-        // printf("%d %d  %d %d %d\n", i, n, trigs[i][0], trigs[i][1], trigs[i][2]);
-        auto writevec3 = [&](vec3 v) {
-            v = vec3(v.x, -v.z, v.y);
-            for (int _ = 0; _ < 3; _++) {
-                float x = ((float*)&v)[_];
-                fwrite(&x, 4, 1, fp);
-            }
-        };
-        vec3 v0 = verts[trigs[i][0]];
-        vec3 v1 = verts[trigs[i][1]];
-        vec3 v2 = verts[trigs[i][2]];
-        vec3 n = normalize(cross(v1-v0, v2-v0));
-        writevec3(n);
-        writevec3(v0);
-        writevec3(v1);
-        writevec3(v2);
-        fputc(0, fp); fputc(0, fp);
-    }
-    fclose(fp);
-}
-
+#include "write_model.h"
 
 int main(int argc, char* argv[]) {
-    const char filename[] = "/home/harry7557558/inflate-frosh/frosh-back.png";
+    const char filename[] = "/home/harry7557558/inflate-frosh/frosh-front-cropped.png";
     const float threshold = 0.5;
     const float grid0 = 0.01;
     const int depth = 4;
@@ -64,7 +35,7 @@ int main(int argc, char* argv[]) {
         return pixels[4 * idx + 3] / 255.0f;
     };
 
-    MeshgenTrigImplicit::ScalarFieldF F = [&](float x, float y) {
+    MeshgenTrigImplicit::ScalarFieldF F = [&](float x, float y) -> float {
         x /= scale.x, y /= scale.y;
         x = fmax(x, 0.0f) * (X - 1);
         y = fmax(1.0f-y, 0.0f) * (Y - 1);
@@ -74,10 +45,10 @@ int main(int argc, char* argv[]) {
         float v10 = getPixel(xi + 1, yi + 0);
         float v01 = getPixel(xi + 0, yi + 1);
         float v11 = getPixel(xi + 1, yi + 1);
-        xf = xf*xf*(3.0f-2.0f*xf);
-        yf = yf*yf*(3.0f-2.0f*yf);
+        // xf = xf*xf*(3.0f-2.0f*xf);
+        // yf = yf*yf*(3.0f-2.0f*yf);
         float v = mix(mix(v00, v10, xf), mix(v01, v11, xf), yf);
-        return threshold - v;
+        return (1.0f-threshold) - v;
     };
     MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](size_t n, const vec2 *p, float *v) {
         for (int i = 0; i < n; i++)
@@ -143,9 +114,10 @@ int main(int argc, char* argv[]) {
         ivec3 t = trigs[i];
         for (int _ = 0; _ < 3; _++)
             t[_] = vmap[t[_]];
+        std::swap(t.y, t.z);
         trigs.push_back(t);
     }
-    writeSTL("model.stl", verts, trigs);
+    writeGLB("model.glb", verts, trigs);
 
     free(pixels);
     return 0;

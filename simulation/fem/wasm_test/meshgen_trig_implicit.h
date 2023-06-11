@@ -581,8 +581,11 @@ void smoothMesh(
             float val, size2;
             float* res[3] = { &val, (float*)g, &size2 };
             MeshgenTrigLoss::meshgen_trig_loss(&vd, res, nullptr, nullptr, 0);
-            for (int _ = 0; _ < 3; _++)
-                grads[trig[_]] -= 0.005f * g[_] * size2;
+            for (int _ = 0; _ < 3; _++) {
+                vec2 dg = 0.1f * g[_] * size2;
+                if (std::isfinite(dot(dg, dg)))
+                    grads[trig[_]] -= dg;
+            }
         }
 
         // force the mesh on the boundary
@@ -673,14 +676,14 @@ void smoothMesh(
                 if (!(d > 0.0)) printf("error: d = %f\n", d);
                 // how far you need to go to make it negative
                 float d3 = fmax(-dot(n, g[2]), 0.0f);
-                float k[4] = { 1, 1, 1 };
+                float k[3] = { 1, 1, 1 };
                 for (int _ = 0; _ < 2; _++) {
                     float d_ = fmax(dot(n, g[_]), 0.0f);
-                    float ds = fmax(d_ + d3, 1e-6);
+                    float ds = fmax(d_ + d3, 0.0f);
                     if (ds == 0.0) continue;
                     k[_] = fmin(k[_], d / ds);
                 }
-                k[3] = fmin(fmin(k[0], k[1]), k[2]);
+                k[2] = fmin(k[0], k[1]);
                 for (int _ = 0; _ < 3; _++)
                     mf[(i+_)%3] = fmin(mf[(i+_)%3], k[_]);
             }
