@@ -704,7 +704,7 @@ void smoothMesh(
                 float a = maxMovement[i];
                 g *= a * tanh(gl / a) / gl;
                 if (std::isnan(g.x)) {
-                    printf("warning: nan displacement %d %f %f %f\n", i, a, gl, maxFactor[i]);
+                    // printf("warning: nan displacement %d %f %f %f\n", i, a, gl, maxFactor[i]);
                     continue;
                 }
             }
@@ -714,9 +714,17 @@ void smoothMesh(
         // expect this to drop to 0.1x after 20 iterations
         // if not, adjust step size
         float meanDisp = 0.0;
-        for (int i = 0; i < vn; i++)
-            meanDisp += length(grads[i]) / vn;
-        printf("%f\n", meanDisp);
+        int nanCount = 0;
+        for (int i = 0; i < vn; i++) {
+            float disp = length(grads[i]) / vn;
+            if (std::isfinite(disp))
+                meanDisp += disp;
+            else nanCount++;
+        }
+        if (nanCount == 0)
+            printf("%.3g\n", meanDisp);
+        else
+            printf("%.3g (%d nan)\n", meanDisp, nanCount);
 
         // reduce displacement if negative area occurs
         std::vector<bool> reduce(vn, true);
@@ -724,8 +732,11 @@ void smoothMesh(
             // update vertex position
             const float r = 0.8;
             float k = (iter == 0 ? 1.0f : (r - 1.0f) * pow(r, iter - 1.0f));
-            for (int i = 0; i < vn; i++) if (reduce[i])
-                verts[i] += k * grads[i];
+            for (int i = 0; i < vn; i++) if (reduce[i]) {
+                vec2 dv = k * grads[i];
+                if (std::isfinite(dot(dv, dv)))
+                    verts[i] += dv;
+            }
             // check if negative area occurs
             reduce = std::vector<bool>(vn, false);
             bool found = false;

@@ -9,6 +9,9 @@ void writeSTL(const char* filename,
     std::vector<vec3> verts, std::vector<ivec3> trigs
 ) {
     FILE* fp = fopen(&filename[0], "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
     for (int i = 0; i < 80; i++) fputc(0, fp);
     int n = (int)trigs.size();
     fwrite(&n, 4, 1, fp);
@@ -36,6 +39,9 @@ void writePLY(const char* filename,
     std::vector<vec3> verts, std::vector<ivec3> trigs
 ) {
     FILE* fp = fopen(filename, "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
     fprintf(fp, "ply\nformat binary_little_endian 1.0\n");
     fprintf(fp, "element vertex %d\n", (int)verts.size());
     fprintf(fp, "property float x\n");
@@ -90,6 +96,9 @@ void writeGLB(const char* filename,
         jsons += " ";
 
     FILE* fp = fopen(filename, "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
     int temp;
     fprintf(fp, "glTF");
     temp = 2;

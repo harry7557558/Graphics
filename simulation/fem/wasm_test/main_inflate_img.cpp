@@ -13,13 +13,86 @@
 #include "write_model.h"
 
 int main(int argc, char* argv[]) {
-    const char filename[] = "/home/harry7557558/inflate-frosh/frosh-front-cropped.png";
-    const float threshold = 0.5;
-    const float grid0 = 0.01;
-    const int depth = 4;
+    std::string filename = "";
+    std::string fileout = "";
+    float threshold = 0.5;
+    float grid0 = 0.01;
+    int depth = 4;
+
+    enum ArgvNext {
+        vNone, vFilename, vOut, vThreshold, vGrid0, vDepth, vEnd
+    } argvNext = vFilename;
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            const char *p = &argv[i][0];
+            while (*p == '-') p++;
+            argvNext = vNone;
+            if (*p == 'i')
+                argvNext = vFilename;
+            if (*p == 'o')
+                argvNext = vOut;
+            if (*p == 't')
+                argvNext = vThreshold;
+            if (*p == 'g')
+                argvNext = vGrid0;
+            if (*p == 'd')
+                argvNext = vDepth;
+            if (argvNext == vNone) {
+                printf("Unknown parameter name %s\n", argv[i]);
+                return 1;
+            }
+            continue;
+        }
+        if (argvNext == vFilename) {
+            filename = argv[i];
+        }
+        else if (argvNext == vOut) {
+            fileout = argv[i];
+        }
+        else if (argvNext == vThreshold) {
+            try {
+                threshold = std::stof(argv[i]);
+            } catch (...) { threshold = -1.0; }
+            if (!(threshold > 0.0 && threshold < 1.0)) {
+                printf("Threshold (%s) must be *between* 0 and 1.\n", argv[i]);
+                return 1;
+            }
+        }
+        else if (argvNext == vGrid0) {
+            try {
+                grid0 = std::stof(argv[i]);
+            } catch (...) { grid0 = -1.0; }
+            if (!(grid0 > 0.0 && grid0 < 1.0)) {
+                printf("Initial grid (%s) must be *between* 0 and 1.\n", argv[i]);
+                return 1;
+            }
+        }
+        else if (argvNext == vDepth) {
+            try {
+                depth = std::stoi(argv[i]);
+            } catch (...) { depth = -1; }
+            if (!(depth >= 0)) {
+                printf("Depth (%s) must be a non-negative integer.\n", argv[i]);
+                return 1;
+            }
+        }
+        if (argvNext != vEnd)
+            argvNext = (ArgvNext)((int)argvNext + 1);
+        else argvNext = vNone;
+    }
+
+    enum FileType {
+        fUnknown, STL, PLY, GLB
+    } fileType = fUnknown;
+    int extstart = filename.rfind('.')+1;
+    std::string ext = fileout.substr(extstart, (int)filename.size()-extstart);
+    if (ext == "stl") fileType = STL;
+    else if (ext == "ply") fileType = PLY;
+    else if (ext == "glb") fileType = GLB;
+    else printf("Warning: Unknow file type %s\n", &ext[0]);
 
     int X, Y;
-    uint8_t *pixels = (uint8_t*)stbi_load(filename, &X, &Y, nullptr, 4);
+    uint8_t *pixels = (uint8_t*)stbi_load(&filename[0], &X, &Y, nullptr, 4);
 
     vec2 scale = vec2(X, Y) / (float)fmax(X, Y);
     int gx = (int)(scale.x / grid0 + 1.0f);
@@ -87,6 +160,8 @@ int main(int argc, char* argv[]) {
     float t2 = getTimePast();
     printf("Mesh optimized in %.2g secs.\n", t2-t1);
 
+    free(pixels);
+
     DiscretizedModel<float, float> res = solveLaplacianLinearTrig(
         vs, std::vector<float>(vs.size(), 4.0f), trigs);
     for (int i = 0; i < res.N; i++)
@@ -117,8 +192,14 @@ int main(int argc, char* argv[]) {
         std::swap(t.y, t.z);
         trigs.push_back(t);
     }
-    writeGLB("model.glb", verts, trigs);
 
-    free(pixels);
+    if (fileType == STL)
+        writeSTL(&fileout[0], verts, trigs);
+    else if (fileType == PLY)
+        writePLY(&fileout[0], verts, trigs);
+    else if (fileType == GLB)
+        writeGLB(&fileout[0], verts, trigs);
+    else writeSTL(&fileout[0], verts, trigs);
+
     return 0;
 }
