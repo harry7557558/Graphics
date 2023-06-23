@@ -57,6 +57,18 @@ public:
         for (int i = 0; i < N; i++)
             parent[i] = -1, rank[i] = 0;
     }
+    DisjointSet(const DisjointSet &that) {
+        this->N = that.N;
+        parent = new int[N];
+        rank = new uint8_t[N];
+        for (int i = 0; i < N; i++)
+            parent[i] = that.parent[i],
+            rank[i] = that.rank[i];
+    }
+    ~DisjointSet() {
+        delete parent;
+        delete rank;
+    }
 
     // find representatitve
     int findRep(int i) {

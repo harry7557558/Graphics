@@ -209,7 +209,7 @@ void generateInitialMesh(
         return ivec2(inCount, cCount);
     };
     auto testTrig = [&](ivec2 p) {
-        return p.x - p.y >= 1;
+        return p.x - 0 * p.y >= 1;
     };
     auto addTrig = [&](int t1, int t2, int t3) {
         ivec2 p = calcTrig(t1, t2, t3);
@@ -400,6 +400,101 @@ void generateInitialMesh(
 
 }
 
+
+
+void splitStickyVertices(
+    std::vector<vec2> &vertices, std::vector<ivec3> &trigs
+) {
+    int vn = (int)vertices.size();
+
+    // get neighbors
+    std::vector<std::vector<int>> neighbors(vn);
+    std::vector<std::vector<int>> neighborTs(vn);
+    for (int ti = 0; ti < (int)trigs.size(); ti++) {
+        ivec3 t = trigs[ti];
+        for (int i = 0; i < 3; i++) {
+            neighborTs[t[i]].push_back(ti);
+            for (int j = 0; j < 3; j++) if (j != i) {
+                bool has = false;
+                for (int v : neighbors[t[i]])
+                    if (v == t[j]) has = true;
+                if (!has)
+                    neighbors[t[i]].push_back(t[j]);
+            }
+        }
+    }
+
+    // for each vertex
+    std::vector<int> neighborMap(vn, -1);
+    std::vector<int> additionalMap(vn);
+    for (int i = 0; i < vn; i++)
+        additionalMap[i] = i;
+    for (int vi = 0; vi < vn; vi++) {
+        std::vector<int> nb = neighbors[vi];
+        int nn = (int)nb.size();
+        for (int i = 0; i < nn; i++)
+            neighborMap[nb[i]] = i;
+        // find disjoint components
+        DisjointSet dsj(nn);
+        for (int ii = 0; ii < nn; ii++) {
+            for (int ti : neighborTs[nb[ii]]) {
+                ivec3 t = trigs[ti];
+                int count = 0;
+                for (int i = 0; i < 3; i++) {
+                    int j = (i + 1) % 3;
+                    int a = neighborMap[additionalMap[t[i]]];
+                    int b = neighborMap[additionalMap[t[j]]];
+                    if (a != -1 && b != -1) {
+                        dsj.unionSet(a, b);
+                        count++;
+                    }
+                }
+                assert(count == 1);
+            }
+        }
+        // map disjoint components
+        int dsjCount = 0;
+        std::vector<int> newVi(nn, -1);
+        for (int i = 0; i < nn; i++) {
+            int rep = dsj.findRep(i);
+            if (rep == i) {
+                dsjCount++;
+                if (dsjCount > 1) {
+                    newVi[rep] = (int)vertices.size();
+                    vertices.push_back(vertices[vi]);
+                    additionalMap.push_back(vi);
+                }
+                else newVi[rep] = vi;
+            }
+        }
+        // update trigs
+        if (dsjCount > 1) {
+        printf("%d ", dsjCount);
+        // printf("%f %f\n", vertices[vi].x, vertices[vi].y);
+        // for (int i = 0; i < nn; i++) printf("%d ", newVi[i]); printf("\n");
+            int changedCount = 0;
+            for (int ti : neighborTs[vi]) {
+                ivec3 t = trigs[ti];
+                // printf("%d %d %d  ", t[0], t[1], t[2]);
+                for (int i = 0; i < 3; i++) {
+                    if (t[i] != vi) continue;
+                    for (int _ = 0; _ < 3; _++) if (i != _) {
+                        int ji = neighborMap[additionalMap[t[_]]];
+                        t[i] = newVi[dsj.findRep(ji)];
+                        changedCount += 1;
+                        break;
+                    }
+                }
+                // printf("%d %d %d\n", t[0], t[1], t[2]);
+                trigs[ti] = t;
+            }
+            assert(changedCount == (int)neighborTs[vi].size());
+        }
+        // restore neighbor map
+        for (int i = 0; i < nn; i++)
+            neighborMap[nb[i]] = -1;
+    }
+}
 
 
 /* Mesh Optimizer */
