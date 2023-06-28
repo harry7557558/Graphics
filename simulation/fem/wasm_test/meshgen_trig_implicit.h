@@ -252,15 +252,39 @@ void generateInitialMesh(
         std::vector<bool> toDiv0(squares.size(), false);
         for (int i = 0; i < (int)squares.size(); i++) {
             ivec2 sq = squares[i];
-            int totsign =
-                (int)(getVal(sq.x+0*step, sq.y+0*step) > 0.0) +
-                (int)(getVal(sq.x+0*step, sq.y+1*step) > 0.0) +
-                (int)(getVal(sq.x+1*step, sq.y+0*step) > 0.0) +
-                (int)(getVal(sq.x+1*step, sq.y+1*step) > 0.0) +
-                (int)(getVal(sq.x+step/2, sq.y+step/2) > 0.0);
-            if (totsign % 5 != 0) {
+            float v00 = getVal(sq.x+0*step, sq.y+0*step);
+            float v01 = getVal(sq.x+0*step, sq.y+1*step);
+            float v10 = getVal(sq.x+1*step, sq.y+0*step);
+            float v11 = getVal(sq.x+1*step, sq.y+1*step);
+            float vcc = getVal(sq.x+step/2, sq.y+step/2);
+            if (((int)(v00 > 0.0) + (int)(v01 > 0.0) +
+                 (int)(v10 > 0.0) + (int)(v11 > 0.0) +
+                 (int)(vcc > 0.0)) % 5 == 0)
+                continue;
+            // Basic idea:
+            // - least squares fit to a circle
+            //   - a (x^2+y^2) + b x + c y + d
+            //   - [cc 00 10 01 11]
+            // - compare the radius of the circle to grid size
+            // MATLAB:
+            // - syms x y
+            // - A = [0 0 0 1; x^2+y^2 -x -y 1; x^2+y^2 x -y 1; x^2+y^2 -x y 1; x^2+y^2 x y 1]
+            // - G = (A'*A)\A'
+            float hx = 0.5f * (b1.x - b0.x) / (float)bnd.x * step;
+            float hy = 0.5f * (b1.y - b0.y) / (float)bnd.y * step;
+            float a = (v00 + v10 + v01 + v11 - 4.0f * vcc) / (4.0f * (hx * hx + hy * hy));
+            if (a == 0.0f) continue;
+            float b = (v10 + v11 - v00 - v01) / (4.0f * hx * a);
+            float c = (v01 + v11 - v00 - v10) / (4.0f * hy * a);
+            float d = vcc / a;
+            float x0 = -0.5f * b;
+            float y0 = -0.5f * c;
+            float r = sqrt(fmax(x0 * x0 + y0 * y0 - d, 0.0f));
+            float e = sqrt((b1.x - b0.x) * (b1.y - b0.y) / (bnd.x * bnd.y));
+            float s = sqrt(hx * hy);
+            // if (r < 10.0f * s)  // curvature
+            if (s * s > 0.5f * e * r)  // error
                 toDiv0[i] = true;
-            }
         }
         // spread todiv
         std::vector<bool> toDiv = toDiv0;
