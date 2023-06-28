@@ -84,8 +84,8 @@ int main(int argc, char* argv[]) {
     enum FileType {
         fUnknown, STL, PLY, GLB
     } fileType = fUnknown;
-    int extstart = filename.rfind('.')+1;
-    std::string ext = fileout.substr(extstart, (int)filename.size()-extstart);
+    int extstart = fileout.rfind('.')+1;
+    std::string ext = fileout.substr(extstart, (int)fileout.size()-extstart);
     if (ext == "stl") fileType = STL;
     else if (ext == "ply") fileType = PLY;
     else if (ext == "glb") fileType = GLB;
