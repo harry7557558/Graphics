@@ -141,24 +141,26 @@ int main(int argc, char* argv[]) {
 
     std::vector<vec2> vs;
     std::vector<ivec3> trigs;
-    std::vector<int> constraintI;
-    std::vector<vec2> constraintN;
+    std::vector<bool> isConstrained[2];
     MeshgenTrigImplicit::generateInitialMesh(
         Fs, bc-br, bc+br,
         ivec2(gx, gy), depth,
-        vs, trigs,
-        constraintI, constraintN
+        vs, trigs, isConstrained
     );
     MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
     float t1 = getTimePast();
     printf("Mesh generated in %.2g secs.\n", t1-t0);
+    MeshgenTrigImplicit::splitStickyVertices(vs, trigs, isConstrained);
+    MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
+    float t2 = getTimePast();
+    printf("Mesh cleaned in %.2g secs.\n", t2-t1);
 
     MeshgenTrigImplicit::smoothMesh(
         vs, trigs, 5, Fs,
-        constraint, constraintI, constraintN);
+        constraint, isConstrained);
     MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
-    float t2 = getTimePast();
-    printf("Mesh optimized in %.2g secs.\n", t2-t1);
+    float t3 = getTimePast();
+    printf("Mesh optimized in %.2g secs.\n", t3-t2);
 
     free(pixels);
 
@@ -169,8 +171,8 @@ int main(int argc, char* argv[]) {
     float maxu = 0.0; for (int i = 0; i < res.N; i++) maxu = fmax(maxu, res.U[i]);
     printf("height: %f\n", maxu);
 
-    float t3 = getTimePast();
-    printf("Total: %.2g secs.\n", t3-t0);
+    float t4 = getTimePast();
+    printf("Total: %.2g secs.\n", t4-t0);
 
     std::vector<vec3> verts;
     int vn = (int)vs.size();

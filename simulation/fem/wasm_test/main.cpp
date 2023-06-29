@@ -20,7 +20,7 @@ DiscretizedModel<float, float> test_3(float density) {
         // return x*x+y*y-1.0;
         // return x*x+y*y-abs(x)*y-1.0;
         // return abs(hypot(x,y)-1)-0.5;
-        // return sin(2.0*x)*cos(2.0*y)-0.2;
+        return sin(2.0*x)*cos(2.0*y)-0.2;
         // return 4*x*x+pow(2*y-cos(2*x),2)+cos(12*x)*exp(y-4*x*x)-2;
         // return pow(x,4) + pow(y,4) - 4.0*x*x*y*y;
         // return sin(10.0*(y-sin(x)));
@@ -31,7 +31,7 @@ DiscretizedModel<float, float> test_3(float density) {
         // return sin(6*atan2(y,x))-4*x*y;
         // return sin(6*x)+sin(6*y)-(sin(12*x)+cos(6*y))*sin(12*y);
         // return fmin(cos(10*x-cos(5*y)),cos(10*y+cos(5*x)))+0.5;
-        return -funMandelbrotSet(x, y);
+        // return -funMandelbrotSet(x, y);
     };
     MeshgenTrigImplicit::ScalarFieldFBatch Fs = [&](size_t n, const vec2 *p, float *v) {
         for (int i = 0; i < n; i++)
@@ -49,8 +49,7 @@ DiscretizedModel<float, float> test_3(float density) {
     float t0 = getTimePast();
     std::vector<vec2> vs;
     std::vector<ivec3> trigs;
-    std::vector<int> constraintI;
-    std::vector<vec2> constraintN;
+    std::vector<bool> isConstrained[2];
     // MeshgenTrigImplicit::generateInitialMeshOld(
     //     Fs, bc-br, bc+br,
     //     ivec2(67, 63),
@@ -63,25 +62,26 @@ DiscretizedModel<float, float> test_3(float density) {
     MeshgenTrigImplicit::generateInitialMesh(
         Fs, bc-br, bc+br,
         // ivec2(2, 2), 2,
-        // ivec2(9, 7), 6,
+        // ivec2(9, 7), 2,
         ivec2(19, 17), 5,
         // ivec2(33, 31), 4,
         // ivec2(65, 63), 3,
-        vs, trigs,
-        constraintI, constraintN
+        vs, trigs, isConstrained
     );
-    MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
-    int vn0 = (int)vs.size();
-    MeshgenTrigImplicit::splitStickyVertices(vs, trigs);
     MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
     float t1 = getTimePast();
     printf("Mesh generated in %.2g secs.\n", t1-t0);
-    MeshgenTrigImplicit::smoothMesh(
-        vs, trigs, 5, Fs,
-        constraint, constraintI, constraintN);
+    int vn0 = (int)vs.size();
+    MeshgenTrigImplicit::splitStickyVertices(vs, trigs, isConstrained);
     MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
     float t2 = getTimePast();
-    printf("Mesh optimized in %.2g secs.\n", t2-t1);
+    printf("Mesh cleaned in %.2g secs.\n", t2-t1);
+    MeshgenTrigImplicit::smoothMesh(
+        vs, trigs, 5, Fs,
+        constraint, isConstrained);
+    MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
+    float t3 = getTimePast();
+    printf("Mesh optimized in %.2g secs.\n", t3-t2);
 
     DiscretizedModel<float, float> res = solveLaplacianLinearTrig(
         vs, std::vector<float>(vs.size(), 4.0f), trigs);

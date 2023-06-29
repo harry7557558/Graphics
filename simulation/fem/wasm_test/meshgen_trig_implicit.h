@@ -140,7 +140,7 @@ void generateInitialMeshOld(
 void generateInitialMesh(
     ScalarFieldFBatch Fs, vec2 b0, vec2 b1, ivec2 bn, int nd,
     std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
-    std::vector<int> &constraintI, std::vector<vec2> &constraintN
+    std::vector<bool> isConstrained[2]
 ) {
     assert(bn.x >= 1 && bn.y >= 1);
     nd++;
@@ -400,18 +400,19 @@ void generateInitialMesh(
         }
         else vpsa[i] = -1;
     }
+    isConstrained[0] = isConstrained[1] =
+        std::vector<bool>(vertices.size(), false);
     for (std::pair<int, int> ii : vmap) {
         int i = vpsa[ii.second];
         if (i != -1) {
             int idx = ii.first;
+            ivec2 ij = idxToIj(idx);
             vertices[i] = idxToPos(idx);
-            if (isConstrainedX(idx)) {
-                constraintI.push_back(i);
-                constraintN.push_back(vec2(1, 0));
-            }
-            if (isConstrainedY(idx)) {
-                constraintI.push_back(i);
-                constraintN.push_back(vec2(0, 1));
+            if (getVal(ij.x, ij.y) <= 0.0) {
+                if (isConstrainedX(idx))
+                    isConstrained[0][i] = true;
+                if (isConstrainedY(idx))
+                    isConstrained[1][i] = true;
             }
         }
     }
@@ -427,9 +428,11 @@ void generateInitialMesh(
 
 
 void splitStickyVertices(
-    std::vector<vec2> &vertices, std::vector<ivec3> &trigs
+    std::vector<vec2> &vertices, std::vector<ivec3> &trigs,
+    std::vector<bool> isConstrained[2]
 ) {
     int vn = (int)vertices.size();
+    assert(vn == isConstrained[0].size() && vn == isConstrained[1].size());
 
     // get neighbors
     std::vector<std::vector<int>> neighbors(vn);
@@ -448,6 +451,21 @@ void splitStickyVertices(
         }
     }
 
+    // break some constraints
+    for (int vi = 0; vi < vn; vi++) {
+        std::vector<int> nb = neighbors[vi];
+        for (int dim = 0; dim < 2; dim++) {
+            if (!isConstrained[dim][vi])
+                continue;
+            bool hasC = false;
+            for (int vj : nb)
+                if (isConstrained[dim][vj])
+                    hasC = true;
+            if (!hasC)
+                isConstrained[dim][vi] = false;
+        }
+    }
+
     // for each vertex
     std::vector<int> neighborMap(vn, -1);
     std::vector<int> additionalMap(vn);
@@ -461,7 +479,7 @@ void splitStickyVertices(
         // find disjoint components
         DisjointSet dsj(nn);
         for (int ii = 0; ii < nn; ii++) {
-            for (int ti : neighborTs[nb[ii]]) {
+            for (int ti : neighborTs[vi]) {
                 ivec3 t = trigs[ti];
                 int count = 0;
                 for (int i = 0; i < 3; i++) {
@@ -486,6 +504,8 @@ void splitStickyVertices(
                 if (dsjCount > 1) {
                     newVi[rep] = (int)vertices.size();
                     vertices.push_back(vertices[vi]);
+                    for (int _ = 0; _ < 2; _++)
+                        isConstrained[_].push_back(isConstrained[_][vi]);
                     additionalMap.push_back(vi);
                 }
                 else newVi[rep] = vi;
@@ -493,13 +513,9 @@ void splitStickyVertices(
         }
         // update trigs
         if (dsjCount > 1) {
-        printf("%d ", dsjCount);
-        // printf("%f %f\n", vertices[vi].x, vertices[vi].y);
-        // for (int i = 0; i < nn; i++) printf("%d ", newVi[i]); printf("\n");
             int changedCount = 0;
             for (int ti : neighborTs[vi]) {
                 ivec3 t = trigs[ti];
-                // printf("%d %d %d  ", t[0], t[1], t[2]);
                 for (int i = 0; i < 3; i++) {
                     if (t[i] != vi) continue;
                     for (int _ = 0; _ < 3; _++) if (i != _) {
@@ -509,7 +525,6 @@ void splitStickyVertices(
                         break;
                     }
                 }
-                // printf("%d %d %d\n", t[0], t[1], t[2]);
                 trigs[ti] = t;
             }
             assert(changedCount == (int)neighborTs[vi].size());
@@ -579,14 +594,10 @@ void smoothMesh(
     int nsteps,
     ScalarFieldFBatch F = nullptr,
     std::function<vec2(vec2)> constraint = nullptr,  // add this to bring point back
-    std::vector<int> constraintI = std::vector<int>(),
-    std::vector<vec2> constraintN = std::vector<vec2>()
+    std::vector<bool> isConstrained_[2] = nullptr
 ) {
-    printf("%d %d\n", (int)constraintI.size(), (int)constraintN.size());
     int vn = (int)verts.size(), svn = 0;  // # of vertices; # on boundary
     int tn = (int)trigs.size(), stn = 0;  // # of trigs; # on boundary
-    for (int i : constraintI)
-        assert(i >= 0 && i < vn);
 
     // boundary
     std::set<uint64_t> boundary;
@@ -608,7 +619,7 @@ void smoothMesh(
     std::vector<int> compressedIndex(vn, -1);  // [vn] global -> near boundary
     std::vector<int> fullIndex;  // [svn] near boundary -> global
     std::vector<int> boundaryTrigs;  // [stn] indices of trigs near boundary
-    std::vector<bool> isConstrained[3];  // [vn] constrained on domain boundary? (any, x, y, z)
+    std::vector<bool> isConstrained[3];  // [vn] constrained on domain boundary? (any, x, y)
     std::vector<bool> applyBoundaryConstraints(vn, false);  // [vn] constrained on isoboundary?
     auto isOnBoundary = [&](int i) {
         return isConstrained[0][i] || applyBoundaryConstraints[i];
@@ -625,15 +636,13 @@ void smoothMesh(
     // vertices near boundary
     for (int _ = 0; _ < 3; _++)
         isConstrained[_] = std::vector<bool>(vn, false);
-    for (int ci = 0; ci < (int)constraintI.size(); ci++) {
-        int i = constraintI[ci];
-        isConstrained[0][i] = true;
-        vec2 t = constraintN[ci];
-        if (t == vec2(1, 0))
-            isConstrained[1][i] = true;
-        else if (t == vec2(0, 1))
-            isConstrained[2][i] = true;
-        else assert(false);
+    if (isConstrained_) {
+        assert(isConstrained[0].size() == vn && isConstrained[1].size() == vn);
+        for (int i = 0; i < vn; i++) {
+            isConstrained[1][i] = isConstrained_[0][i];
+            isConstrained[2][i] = isConstrained_[1][i];
+            isConstrained[0][i] = isConstrained[1][i] || isConstrained[2][i];
+        }
     }
     if (F) {
         // on boundary
@@ -745,13 +754,6 @@ void smoothMesh(
                 if (boundaryVertGradWeights[i] <= 0.0) printf("%d %lf\n", i, boundaryVertGradWeights[i]);
                 assert(boundaryVertGradWeights[i] > 0.0);
                 boundaryVertGrads[i] /= boundaryVertGradWeights[i];
-            }
-            // boundary constraints
-            for (int ci = 0; ci < (int)constraintI.size(); ci++) {
-                int i = compressedIndex[constraintI[ci]];
-                if (i == -1) continue;
-                vec2 n = constraintN[ci];
-                boundaryVertGrads[i] -= dot(boundaryVertGrads[i], n) * n;
             }
             // move the vertex to the boundary
             for (int i = 0; i < svn; i++) {
