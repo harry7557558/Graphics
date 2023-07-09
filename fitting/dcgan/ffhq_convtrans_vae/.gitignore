@@ -1,0 +1,5 @@
+progress-32x32/*
+progress-64x64/*
+progress-128x128/*
+stb_image_write.h
+*.png

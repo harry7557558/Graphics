@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<title>GAN test (64x64)</title>
+	<meta name="description" content="Traditional GAN at 64x64 with convolutional transpose layers and LeakyReLU activation." />
+
+	<style>
+		body {
+			margin: 10px;
+			background-color: #eee;
+		}
+
+		#canvas {
+			touch-action: none;
+			/* image-rendering: pixelated; */
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 340px;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="320"></canvas>
+	<p id="error-message"></p>
+
+	<p>My third GAN after the <a href="../../ffhq_convtrans/webgl/">previous one</a>.
+		Trained on <select id="model-select">
+			<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+			<option value="../raw-weights-anime-64x64" disabled>Anime</option>
+		</select> with PyTorch and manually exported to WebGL 2.0.
+	</p>
+	<p>This version uses an variational encoder,
+		which produces results with higher variety and
+		more accurate colors.
+	</p>
+	<pre>
+==== Generator ====
+Latent - 32
+Dense layer - 512x32
+ => 512, LeakyReLU(0.1)
+Reshape to 32x4x4
+ConvTranspose2d - 32x64x4x4
+ => 64x8x8, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x32x4x4
+ => 32x16x16, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 32x16x4x4
+ => 16x32x32, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 16x3x4x4
+ => 3x64x64, Sigmoid
+</pre>
+
+</body>
+
+</html>
