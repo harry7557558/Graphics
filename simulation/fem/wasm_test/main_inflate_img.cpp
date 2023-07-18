@@ -9,6 +9,8 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "write_model.h"
 
@@ -18,12 +20,18 @@ int main(int argc, char* argv[]) {
     float threshold = 0.5;
     float grid0 = 0.01;
     int depth = 4;
+    bool hasNormal = true;
+    bool hasColor = false;
 
     enum ArgvNext {
-        vNone, vFilename, vOut, vThreshold, vGrid0, vDepth, vEnd
+        vNone, vFilename, vOut, vThreshold, vGrid0, vDepth, vNormal, vColor, vEnd
     } argvNext = vFilename;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
+            if (argvNext == vNormal)
+                hasNormal = true;
+            if (argvNext == vColor)
+                hasColor = true;
             const char *p = &argv[i][0];
             while (*p == '-') p++;
             argvNext = vNone;
@@ -37,6 +45,10 @@ int main(int argc, char* argv[]) {
                 argvNext = vGrid0;
             if (*p == 'd')
                 argvNext = vDepth;
+            if (*p == 'n')
+                argvNext = vNormal;
+            if (*p == 'c')
+                argvNext = vColor;
             if (argvNext == vNone) {
                 printf("Unknown parameter name %s\n", argv[i]);
                 return 1;
@@ -76,18 +88,25 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+        else if (argvNext == vNormal) {
+            hasNormal = (argv[i][0] != '0');
+        }
+        else if (argvNext == vColor) {
+            hasColor = (argv[i][0] != '0');
+        }
         if (argvNext != vEnd)
             argvNext = (ArgvNext)((int)argvNext + 1);
         else argvNext = vNone;
     }
 
     enum FileType {
-        fUnknown, STL, PLY, GLB
+        fUnknown, STL, PLY, OBJ, GLB
     } fileType = fUnknown;
     int extstart = fileout.rfind('.')+1;
     std::string ext = fileout.substr(extstart, (int)fileout.size()-extstart);
     if (ext == "stl") fileType = STL;
     else if (ext == "ply") fileType = PLY;
+    else if (ext == "obj") fileType = OBJ;
     else if (ext == "glb") fileType = GLB;
     else printf("Warning: Unknow file type %s\n", &ext[0]);
 
@@ -109,7 +128,8 @@ int main(int argc, char* argv[]) {
     };
 
     MeshgenTrigImplicit::ScalarFieldF F = [&](float x, float y) -> float {
-        x /= scale.x, y /= scale.y;
+        x = 0.5f + 0.5f * x / scale.x;
+        y = 0.5f + 0.5f * y / scale.y;
         x = fmax(x, 0.0f) * (X - 1);
         y = fmax(1.0f-y, 0.0f) * (Y - 1);
         int xi = (int)x; float xf = x - xi;
@@ -128,7 +148,7 @@ int main(int argc, char* argv[]) {
             v[i] = F(p[i].x, p[i].y);
     };
 
-    vec2 bc = 0.5f * scale, br = 0.5f * scale;
+    vec2 bc = vec2(0), br = scale;
     auto constraint = [=](vec2 p) {
         p -= bc;
         return -vec2(
@@ -162,8 +182,6 @@ int main(int argc, char* argv[]) {
     float t3 = getTimePast();
     printf("Mesh optimized in %.2g secs.\n", t3-t2);
 
-    free(pixels);
-
     DiscretizedModel<float, float> res = solveLaplacianLinearTrig(
         vs, std::vector<float>(vs.size(), 4.0f), trigs);
     for (int i = 0; i < res.N; i++)
@@ -195,13 +213,88 @@ int main(int argc, char* argv[]) {
         trigs.push_back(t);
     }
 
-    if (fileType == STL)
+    // STL
+    if (fileType == STL) {
         writeSTL(&fileout[0], verts, trigs);
-    else if (fileType == PLY)
-        writePLY(&fileout[0], verts, trigs);
-    else if (fileType == GLB)
-        writeGLB(&fileout[0], verts, trigs);
-    else writeSTL(&fileout[0], verts, trigs);
+        free(pixels);
+        return 0;
+    }
+
+    // compute normal
+    std::vector<vec3> normals;
+    if (hasNormal) {
+        normals = std::vector<vec3>(verts.size(), vec3(0));
+        for (ivec3 t : trigs) {
+            vec3 n = cross(verts[t[1]]-verts[t[0]], verts[t[2]]-verts[t[0]]);
+            n = normalize(n);
+            for (int _ = 0; _ < 3; _++)
+                normals[t[_]] += n;
+        }
+        for (size_t i = 0; i < normals.size(); i++)
+            normals[i] = normalize(normals[i]);
+    }
+
+    // PLY
+    if (fileType == PLY) {
+        writePLY(&fileout[0], verts, trigs,
+            hasNormal ? normals : std::vector<vec3>());
+        free(pixels);
+        return 0;
+    }
+
+    // compute texture coords
+    std::vector<vec2> texcoords;
+    if (hasColor) {
+        texcoords = std::vector<vec2>(verts.size(), vec3(0));
+        for (int i = 0; i < (int)verts.size(); i++) {
+            texcoords[i] = 0.5f + 0.5f * vec2(verts[i].x, verts[i].y) / scale;
+        }
+    }
+
+    // compute texture, BFS remove aliasing
+    std::vector<uint8_t> imgbytes;
+    if (hasColor) {
+        uint8_t pth = (uint8_t)(threshold*255+0.5);
+        for (int i = 0; i < X * Y; i++)
+            pixels[4*i+3] = (pixels[4*i+3]>pth ? 255 : 0);
+        std::vector<ivec2> visited;
+        for (int y = 0; y < Y; y++)
+            for (int x = 0; x < X; x++)
+                if (pixels[4*(y*X+x)+3])
+                    visited.push_back(ivec2(x, y));
+        while (!visited.empty()) {
+            std::vector<ivec2> visited1;
+            for (ivec2 ij : visited) {
+                int i0 = ij.x, j0 = ij.y;
+                for (int di = -1; di <= 1; di++)
+                    for (int dj = -1; dj <= 1; dj++) {
+                        int i = i0+di, j = j0+dj;
+                        if (i < 0 || j < 0 || i >= X || j >= Y)
+                            continue;
+                        if (pixels[4*(j*X+i)+3])
+                            continue;
+                        visited1.push_back(ivec2(i, j));
+                        ((uint32_t*)pixels)[j*X+i] = ((uint32_t*)pixels)[j0*X+i0];
+                    }
+            }
+            visited = visited1;
+        }
+        int nbytes;
+        uint8_t *imgbytes_raw = stbi_write_png_to_mem(pixels, 4*X, X, Y, 4, &nbytes);
+        imgbytes = std::vector<uint8_t>(imgbytes_raw, imgbytes_raw+nbytes);
+        free(imgbytes_raw);
+    }
+    free(pixels);
+
+    // OBJ and GLB
+    if (fileType == OBJ) {
+        writeOBJ(&fileout[0], verts, trigs, normals, texcoords, imgbytes);
+        return 0;
+    }
+    if (fileType == GLB || true) {
+        writeGLB(&fileout[0], verts, trigs, normals, texcoords, imgbytes);
+        return 0;
+    }
 
     return 0;
 }
