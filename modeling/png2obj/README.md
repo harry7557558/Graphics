@@ -7,3 +7,7 @@ Get a transparent PNG (ex. Discord emoji), config and run `inflate.py` to genera
 ![](https://media.discordapp.net/attachments/931320571453653072/1101762276333203466/image.png?width=875&height=586)
 
 Algorithm based on "Notes on Inflating Curves" by Ilya Baran and Jaakko Lehtinen: https://alecjacobson.com/weblog/media/notes-on-inflating-curves-2009-baran.pdf
+
+----
+
+**Update:** A much faster and more accurate (but less documented) C++ version of the algorithm can be found [here](https://github.com/harry7557558/Graphics/blob/master/simulation/fem/wasm_test/main_inflate_img.cpp).
