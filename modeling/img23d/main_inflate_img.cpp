@@ -1,4 +1,4 @@
-// generate 3D from images
+// CLI, compile with GCC
 
 #pragma GCC optimize "O2"
 #define SUPPRESS_ASSERT 1
