@@ -10,4 +10,4 @@ Algorithm based on "Notes on Inflating Curves" by Ilya Baran and Jaakko Lehtinen
 
 ----
 
-**Update:** A much faster and more accurate (but less documented) C++ version of the algorithm can be found [here](https://github.com/harry7557558/Graphics/blob/master/simulation/fem/wasm_test/main_inflate_img.cpp).
+**Update:** A much faster and more accurate (but less documented) C++ version of the algorithm can be found [here](https://github.com/harry7557558/Graphics/tree/master/modeling/img23d).
