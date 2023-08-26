@@ -26,8 +26,8 @@ int main(int argc, char* argv[]) {
     enum ArgvNext {
         vNone, vFilename, vOut, vThreshold, vGrid0, vDepth, vNormal, vColor, vEnd
     } argvNext = vFilename;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-') {
+    for (int i = 1; i <= argc; i++) {
+        if (i < argc && argv[i][0] == '-') {
             if (argvNext == vNormal)
                 hasNormal = true;
             if (argvNext == vColor)
@@ -56,14 +56,17 @@ int main(int argc, char* argv[]) {
             continue;
         }
         if (argvNext == vFilename) {
-            filename = argv[i];
+            if (i < argc)
+                filename = argv[i];
         }
         else if (argvNext == vOut) {
-            fileout = argv[i];
+            if (i < argc)
+                fileout = argv[i];
         }
         else if (argvNext == vThreshold) {
             try {
-                threshold = std::stof(argv[i]);
+                if (i < argc)
+                    threshold = std::stof(argv[i]);
             } catch (...) { threshold = -1.0; }
             if (!(threshold > 0.0 && threshold < 1.0)) {
                 printf("Threshold (%s) must be *between* 0 and 1.\n", argv[i]);
@@ -72,7 +75,8 @@ int main(int argc, char* argv[]) {
         }
         else if (argvNext == vGrid0) {
             try {
-                grid0 = std::stof(argv[i]);
+                if (i < argc)
+                    grid0 = std::stof(argv[i]);
             } catch (...) { grid0 = -1.0; }
             if (!(grid0 > 0.0 && grid0 < 1.0)) {
                 printf("Initial grid (%s) must be *between* 0 and 1.\n", argv[i]);
@@ -81,7 +85,8 @@ int main(int argc, char* argv[]) {
         }
         else if (argvNext == vDepth) {
             try {
-                depth = std::stoi(argv[i]);
+                if (i < argc)
+                    depth = std::stoi(argv[i]);
             } catch (...) { depth = -1; }
             if (!(depth >= 0)) {
                 printf("Depth (%s) must be a non-negative integer.\n", argv[i]);
@@ -89,15 +94,20 @@ int main(int argc, char* argv[]) {
             }
         }
         else if (argvNext == vNormal) {
-            hasNormal = (argv[i][0] != '0');
+            hasNormal = i < argc ? (argv[i][0] != '0') : true;
         }
         else if (argvNext == vColor) {
-            hasColor = (argv[i][0] != '0');
+            hasColor = i < argc ? (argv[i][0] != '0') : true;
         }
         if (argvNext != vEnd)
             argvNext = (ArgvNext)((int)argvNext + 1);
         else argvNext = vNone;
     }
+
+    if (filename == "")
+        return 0 * printf("No input file specified.\n");
+    if (fileout == "")
+        return 0 * printf("No output file specificed.\n");
 
     enum FileType {
         fUnknown, STL, PLY, OBJ, GLB
@@ -247,7 +257,7 @@ int main(int argc, char* argv[]) {
     if (hasColor) {
         texcoords = std::vector<vec2>(verts.size(), vec3(0));
         for (int i = 0; i < (int)verts.size(); i++) {
-            texcoords[i] = 0.5f + 0.5f * vec2(verts[i].x, verts[i].y) / scale;
+            texcoords[i] = 0.5f + 0.5f * vec2(verts[i].x, -verts[i].y) / scale;
         }
     }
 

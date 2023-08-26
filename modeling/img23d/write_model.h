@@ -15,21 +15,28 @@ std::string getNameFromFilename(std::string filename) {
 }
 
 
-void writeSTL(const char* filename,
+void extendVector(std::vector<uint8_t> &v, size_t n, const void *p) {
+    for (int i = 0; i < n; i++)
+        v.push_back(((uint8_t*)p)[i]);
+}
+void extendVectorS(std::vector<uint8_t> &v, const char* s) {
+    extendVector(v, strlen(s), s);
+}
+
+
+std::vector<uint8_t> writeSTL_(
     std::vector<vec3> verts, std::vector<ivec3> trigs
 ) {
-    FILE* fp = fopen(&filename[0], "wb");
-    if (!fp) {
-        printf("Error open file %s\n", filename);
-    }
-    for (int i = 0; i < 80; i++) fputc(0, fp);
+    std::vector<uint8_t> res;
+    for (int i = 0; i < 80; i++)
+        res.push_back(0);
     int n = (int)trigs.size();
-    fwrite(&n, 4, 1, fp);
+    extendVector(res, 4, &n);
     assert(sizeof(vec3) == 12);
     for (int i = 0; i < n; i++) {
         auto writevec3 = [&](vec3 v) {
             v = vec3(v.x, -v.z, v.y);
-            fwrite(&v, 4, 3, fp);
+            extendVector(res, 12, &v);
         };
         vec3 v0 = verts[trigs[i][0]];
         vec3 v1 = verts[trigs[i][1]];
@@ -39,51 +46,109 @@ void writeSTL(const char* filename,
         writevec3(v0);
         writevec3(v1);
         writevec3(v2);
-        fputc(0, fp); fputc(0, fp);
+        res.push_back(0); res.push_back(0);
     }
+    return res;
+}
+
+void writeSTL(
+    const char* filename,
+    std::vector<vec3> verts, std::vector<ivec3> trigs
+) {
+    FILE* fp = fopen(&filename[0], "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
+    std::vector<uint8_t> data = writeSTL_(verts, trigs);
+    fwrite(&data[0], 1, data.size(), fp);
     fclose(fp);
 }
 
 
-void writePLY(const char* filename,
+std::vector<uint8_t> writePLY_(
     std::vector<vec3> verts, std::vector<ivec3> trigs,
     std::vector<vec3> normals = std::vector<vec3>()
 ) {
-    assert(normals.empty() || normals.size() == verts.size());
-    FILE* fp = fopen(filename, "wb");
-    if (!fp) {
-        printf("Error open file %s\n", filename);
-    }
-    fprintf(fp, "ply\nformat binary_little_endian 1.0\n");
-    fprintf(fp, "element vertex %d\n", (int)verts.size());
-    fprintf(fp, "property float x\n");
-    fprintf(fp, "property float y\n");
-    fprintf(fp, "property float z\n");
+    std::vector<uint8_t> res;
+
+    std::stringstream header;
+    header << "ply\nformat binary_little_endian 1.0\n";
+    header << "element vertex " << (int)verts.size() << "\n";
+    header << "property float x\n";
+    header << "property float y\n";
+    header << "property float z\n";
     if (!normals.empty()) {
-        fprintf(fp, "property float nx\n");
-        fprintf(fp, "property float ny\n");
-        fprintf(fp, "property float nz\n");
+        header << "property float nx\n";
+        header << "property float ny\n";
+        header << "property float nz\n";
     }
-    fprintf(fp, "element face %d\n", (int)trigs.size());
-    fprintf(fp, "property list uchar int vertex_index\n");
-    fprintf(fp, "end_header\n");
+    header << "element face " << (int)trigs.size() << "\n";
+    header << "property list uchar int vertex_index\n";
+    header << "end_header\n";
+    extendVectorS(res, &header.str()[0]);
+
     assert(sizeof(vec3) == 12);
     for (int i = 0; i < (int)verts.size(); i++) {
         vec3 v = verts[i];
-        fwrite(&v, 4, 3, fp);
+        extendVector(res, 12, &v);
         if (!normals.empty()) {
             vec3 n = normals[i];
-            fwrite(&n, 4, 3, fp);
+            extendVector(res, 12, &n);
         }
     }
     assert(sizeof(ivec3) == 12);
     for (ivec3 t : trigs) {
-        fputc(3, fp);
-        fwrite(&t, 4, 3, fp);
+        res.push_back(3);
+        extendVector(res, 12, &t);
     }
+    return res;
+}
+
+void writePLY(
+    const char* filename,
+    std::vector<vec3> verts, std::vector<ivec3> trigs,
+    std::vector<vec3> normals = std::vector<vec3>()
+) {
+    FILE* fp = fopen(&filename[0], "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
+    std::vector<uint8_t> data = writePLY_(verts, trigs, normals);
+    fwrite(&data[0], 1, data.size(), fp);
     fclose(fp);
 }
 
+
+std::vector<uint8_t> writeOBJ_(
+    const char* name,
+    std::vector<vec3> verts, std::vector<ivec3> trigs,
+    std::vector<vec3> normals = std::vector<vec3>()
+) {
+    std::vector<uint8_t> res;
+    char buf[1024];
+    sprintf(buf, "o %s\n", name);
+    extendVectorS(res, buf);
+    for (vec3 v : verts) {
+        sprintf(buf, "v %.6g %.6g %.6g\n", v.x, v.y, v.z);
+        extendVectorS(res, buf);
+    }
+    for (vec3 n : normals) {
+        sprintf(buf, "vn %.6g %.6g %.6g\n", n.x, n.y, n.z);
+        extendVectorS(res, buf);
+    }
+    for (ivec3 t : trigs) {
+        t.x += 1, t.y += 1, t.z += 1;
+        if (!normals.empty()) {
+            sprintf(buf, "f %d//%d %d//%d %d//%d\n", t.x, t.x, t.y, t.y, t.z, t.z);
+            extendVectorS(res, buf);
+        }
+        else {
+            sprintf(buf, "f %d %d %d\n", t.x, t.y, t.z);
+            extendVectorS(res, buf);
+        }
+    }
+    return res;
+}
 
 void writeOBJ(const char* filename,
     std::vector<vec3> verts, std::vector<ivec3> trigs,
@@ -110,7 +175,7 @@ void writeOBJ(const char* filename,
     for (vec3 v : verts)
         fprintf(fp, "v %.6g %.6g %.6g\n", v.x, v.y, v.z);
     for (vec2 t : texcoords)
-        fprintf(fp, "vt %.6g %.6g\n", t.x, t.y);
+        fprintf(fp, "vt %.6g %.6g\n", t.x, 1.0f-t.y);
     for (vec3 n : normals)
         fprintf(fp, "vn %.6g %.6g %.6g\n", n.x, n.y, n.z);
 
@@ -154,12 +219,14 @@ void writeOBJ(const char* filename,
 }
 
 
-void writeGLB(const char* filename,
+std::vector<uint8_t> writeGLB_(
+    const char* name,
     std::vector<vec3> verts, std::vector<ivec3> trigs,
     std::vector<vec3> normals = std::vector<vec3>(),
     std::vector<vec2> texcoords = std::vector<vec2>(),
     std::vector<uint8_t> texImage = std::vector<uint8_t>()
 ) {
+    std::vector<uint8_t> res;
     if (!normals.empty())
         assert(normals.size() == verts.size());
     if (!texcoords.empty())
@@ -178,7 +245,6 @@ void writeGLB(const char* filename,
     int indiceIndex = texcoordIndex + 1;
     int imageIndex = indiceIndex + hasImage;
 
-    std::string name = getNameFromFilename(filename);
     std::stringstream json;
     json << "{";
     // asset
@@ -252,42 +318,50 @@ void writeGLB(const char* filename,
     while (jsons.size() % 4 != 0)
         jsons += " ";
 
-    // open file
-    FILE* fp = fopen(filename, "wb");
-    if (!fp) {
-        printf("Error open file %s\n", filename);
-    }
-
     // header
     int temp;
-    fprintf(fp, "glTF");
+    extendVectorS(res, "glTF");
     temp = 2;
-    fwrite(&temp, 4, 1, fp);
+    extendVector(res, 4, &temp);
     temp = 12 + (4+4+(int)jsons.size()) + (4+4+byteOffset);
-    fwrite(&temp, 4, 1, fp);
+    extendVector(res, 4, &temp);
 
     // JSON chunk
     temp = (int)jsons.size();
-    fwrite(&temp, 4, 1, fp);
+    extendVector(res, 4, &temp);
     temp = 0x4e4f534a;
-    fwrite(&temp, 4, 1, fp);
-    fprintf(fp, "%s", &jsons[0]);
+    extendVector(res, 4, &temp);
+    extendVectorS(res, &jsons[0]);
 
     // buffer
     temp = byteOffset;
-    fwrite(&temp, 4, 1, fp);
+    extendVector(res, 4, &temp);
     temp = 0x004e4942;
-    fwrite(&temp, 4, 1, fp);
-    fwrite(&verts[0], 12, vn, fp);
+    extendVector(res, 4, &temp);
+    extendVector(res, 12*vn, &verts[0]);
     if (hasNormal)
-        fwrite(&normals[0], 12, vn, fp);
-    if (hasTexcoord) {
-        for (int i = 0; i < vn; i++)
-            texcoords[i].y = 1.0f - texcoords[i].y;
-        fwrite(&texcoords[0], 8, vn, fp);
-    }
-    fwrite(&trigs[0], 12, trigs.size(), fp);
-    fwrite(&texImage[0], 1, texImage.size(), fp);
+        extendVector(res, 12*vn, &normals[0]);
+    if (hasTexcoord)
+        extendVector(res, 8*vn, &texcoords[0]);
+    extendVector(res, 12*trigs.size(), &trigs[0]);
+    extendVector(res, texImage.size(), &texImage[0]);
 
+    return res;
+}
+
+void writeGLB(const char* filename,
+    std::vector<vec3> verts, std::vector<ivec3> trigs,
+    std::vector<vec3> normals = std::vector<vec3>(),
+    std::vector<vec2> texcoords = std::vector<vec2>(),
+    std::vector<uint8_t> texImage = std::vector<uint8_t>()
+) {
+    FILE* fp = fopen(&filename[0], "wb");
+    if (!fp) {
+        printf("Error open file %s\n", filename);
+    }
+    std::vector<uint8_t> data = writeGLB_(
+        getNameFromFilename(filename).data(),
+        verts, trigs, normals, texcoords, texImage);
+    fwrite(&data[0], 1, data.size(), fp);
     fclose(fp);
 }

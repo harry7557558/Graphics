@@ -29,57 +29,43 @@ const char VERTEX_SHADER_SOURCE[] = R"""(#version 300 es
 precision highp float;
 in vec3 vertexPosition;
 in vec3 vertexNormal;
-in float vertexValue;
 in vec4 vertexColor;
+in vec2 vertexTexcoord;
 out vec3 fragNormal;
-out vec4 interpolatedColor;
+out vec2 fragTexcoord;
+out vec4 fragColor;
 uniform mat4 transformMatrix;
 void main() {
     gl_Position = transformMatrix * vec4(vertexPosition, 1);
     fragNormal = -(transformMatrix*vec4(vertexNormal,0)).xyz;
     // fragNormal = vertexNormal;
-    interpolatedColor = vertexColor;
+    fragColor = vertexColor;
+    fragTexcoord = vertexTexcoord;
 })""";
 
 const char FRAGMENT_SHADER_SOURCE[] = R"""(#version 300 es
 precision highp float;
 in vec3 fragNormal;
-in vec4 interpolatedColor;
-out vec4 fragColor;  // negative rgb for value<0-1> colormap
-uniform float maxValue;  // colormap, positive for smooth and negative for steps
-uniform float colorRemapK;  // negative for slider, positive for object
-uniform float brightness;  // multiply color by this number
-float log10(float x) { return log(x)/log(10.); }
-float remap(float t, float k) { return pow(t,k) / (pow(t,k) + pow(1.-t,k)); }
+in vec2 fragTexcoord;
+in vec4 fragColor;
+uniform sampler2D fragTexture;
+out vec4 glFragColor;
 void main() {
-    vec3 n = fragNormal==vec3(0) ? vec3(0): normalize(fragNormal);
-    float amb = 1.0+0.3*max(-n.z,0.);
-    float dif = max(n.z,0.);
-    float spc = pow(max(n.z,0.), 40.0);
-    vec3 col = interpolatedColor.xyz;
-    if (interpolatedColor.x < 0.0) {
-        float maxv = abs(maxValue);
-        float t = clamp(interpolatedColor.w, 0., 1.);
-        float tm = colorRemapK<0. ? remap(t, -1./colorRemapK) : t;
-        float v = mix(-maxv, maxv, tm);
-        if (maxValue < 0.0 && v != 0.0) {
-            float s = sign(v); v = abs(v);
-            float k = ceil(log10(v)) - 1.;
-            float u = log10(v) - k;
-            float w = u < log10(2.) ? 1.5 :
-                u < log10(5.) ? 3.5 : 7.5;
-            if (pow(10.,k)*w > maxv)
-                w = 0.5*(0.5*w + maxv*pow(0.1,k));
-            v = s * pow(10.,k) * w;
-        }
-        tm = clamp(0.5+0.5*v/maxv, 0., 1.);
-        t = remap(tm, abs(colorRemapK));
-        col = vec3(132.23,.39,-142.83)+vec3(-245.97,-1.4,270.69)*t+vec3(755.63,1.32,891.31)*cos(vec3(.3275,2.39,.3053)*t+vec3(-1.7461,-1.84,1.4092));
-        if (isnan(dot(col,col))) col = vec3(0,1,0);
+    vec3 col = fragColor.xyz;
+    if (dot(col, vec3(1)) < 0.0)
+        col = texture(fragTexture, fragTexcoord).xyz;
+    if (fragNormal == vec3(0)) {
+        glFragColor = vec4(col, 1.0);
+        return;
     }
-    fragColor.xyz = brightness*(0.2*amb+0.7*dif+0.1*spc)*col;
-    if (brightness < 0.0) fragColor.xyz = col;
-    fragColor.w = 1.0;
+    col = pow(col, vec3(2.0));
+    vec3 n = normalize(fragNormal);
+    float amb = 1.0+0.3*max(-n.z,0.);
+    float dif = dot(n,normalize(vec3(-0.5,-0.5,1)));
+    float spc = pow(max(n.z,0.), 10.0);
+    col *= 0.6*amb+0.4*max(dif,0.)+0.1*max(-dif,0.)+0.2*spc;
+    col += 0.025+0.025*dif;
+    glFragColor = vec4(pow(0.8*col, vec3(1.0/2.2)), 1.0);
 })""";
 
 
@@ -132,6 +118,19 @@ GLuint createShaderProgram(const char* vs_source, const char* fs_source) {
 }
 
 
+GLuint createSampleTexture() {
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    int color = 0x00ffffff;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &color);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    return tex;
+}
+
 
 class Viewport;
 
@@ -146,26 +145,11 @@ namespace RenderParams {
 }
 
 
-// toggles, buttons, sliders, etc.
-struct WindowInput {
-    // interaction
-    bool captured = false;
-    virtual bool isHover() = 0;
-    virtual void mouseClick() {}
-    virtual void mouseMove(glm::vec2 mouse_delta) {}
-    virtual void mouseScroll(float yoffset) {}
-    // rendering
-    virtual void render() = 0;
-};
-
-
 class Viewport {
 
     GLuint shaderProgram;
-    GLuint vertexbuffer, normalbuffer, indicebuffer, colorbuffer;
+    GLuint vertexbuffer, normalbuffer, indicebuffer, colorbuffer, texcoordbuffer;
     glm::mat4 transformMatrix;
-
-    std::vector<WindowInput*> windowInputs;
 
 public:
 
@@ -185,6 +169,7 @@ public:
         glGenBuffers(1, &this->normalbuffer);
         glGenBuffers(1, &this->indicebuffer);
         glGenBuffers(1, &this->colorbuffer);
+        glGenBuffers(1, &this->texcoordbuffer);
     }
 
     ~Viewport() {
@@ -193,45 +178,20 @@ public:
         glDeleteBuffers(1, &normalbuffer);
         glDeleteBuffers(1, &indicebuffer);
         glDeleteBuffers(1, &colorbuffer);
+        glDeleteBuffers(1, &texcoordbuffer);
         glDeleteProgram(this->shaderProgram);
-    }
-
-    // add a button/toggle/slider
-    void addWindowInput(WindowInput* wi) {
-        this->windowInputs.push_back(wi);
     }
 
     // interactions
     void mouseClick() {
-        for (WindowInput* mi : windowInputs) {
-            if (mi->isHover()) {
-                mi->mouseClick();
-                mi->captured = true;
-            }
-            else mi->captured = false;
-        }
         this->renderNeeded = true;
     }
     void mouseMove(glm::vec2 mouse_delta) {
-        for (WindowInput* mi : windowInputs) {
-            if (mi->captured) {
-                if (RenderParams::mouseDown) {
-                    mi->mouseMove(mouse_delta);
-                    return;
-                }
-                else mi->captured = false;
-            }
-        }
         this->rx -= 0.015f * mouse_delta.y;
         this->rz += 0.015f * mouse_delta.x;
         this->renderNeeded = true;
     }
     void mouseScroll(float yoffset) {
-        for (WindowInput* mi : windowInputs)
-            if (mi->isHover()) {
-                mi->mouseScroll(yoffset);
-                return;
-            }
         this->scale *= exp(0.04f * yoffset);
         this->renderNeeded = true;
     }
@@ -241,7 +201,7 @@ public:
         glUseProgram(this->shaderProgram);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        glClearColor(0.04f, 0.04f, 0.04f, 1.0);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // glDisable(GL_DEPTH_TEST);
@@ -252,7 +212,7 @@ public:
         transformMatrix = glm::perspective(0.2f * PIf, res.x / res.y, 0.1f / scale, 100.0f / scale);
         transformMatrix = glm::translate(transformMatrix, glm::vec3(0.0, 0.0, -3.0 / scale));
         transformMatrix = glm::rotate(transformMatrix, rx, glm::vec3(1, 0, 0));
-        transformMatrix = glm::rotate(transformMatrix, rz, glm::vec3(0, 0, 1));
+        transformMatrix = glm::rotate(transformMatrix, rz, glm::vec3(0, 1, 0));
         transformMatrix = glm::translate(transformMatrix, -center);
     }
     // Setup transformation matrix for 2D drawing
@@ -266,22 +226,14 @@ public:
             -1, -1, 0, 1
         );
     }
-    // Draw window input accessories
-    void drawWindowInputs() {
-        for (WindowInput* wi : windowInputs)
-            wi->render();
-    }
 
-    /*VBO drawing
-        Precombute vertices, normals (not necessarily normalized), indices, and colors
-        Colors: RGB must be non-negative; Pass vec4(-1,-1,-1,value<0-1>) for "heatmap"
-    */
     void drawVBO(
         std::vector<glm::vec3> vertices,
         std::vector<glm::vec3> normals,
         std::vector<glm::ivec3> indices,
         std::vector<glm::vec4> colors,
-        float maxValue = 1.0f, float colorRemapK = 1.0f, float brightness = 1.0f
+        std::vector<glm::vec2> texcoords,
+        GLuint texture
     ) {
         assert(sizeof(glm::vec3) == 12);
         assert(sizeof(glm::ivec3) == 12);
@@ -317,7 +269,7 @@ public:
             (void*)0  // array buffer offset
         );
 
-        // values/colors
+        // vertex colors
         GLuint vertexColorLocation = glGetAttribLocation(shaderProgram, "vertexColor");
         glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
         glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec4) * colors.size(), &colors[0], GL_STATIC_DRAW);
@@ -331,6 +283,20 @@ public:
             (void*)0  // array buffer offset
         );
 
+        // texcoords
+        GLuint vertexTexcoordLocation = glGetAttribLocation(shaderProgram, "vertexTexcoord");
+        glBindBuffer(GL_ARRAY_BUFFER, texcoordbuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * texcoords.size(), &texcoords[0], GL_STATIC_DRAW);
+        glEnableVertexAttribArray(vertexTexcoordLocation);
+        glVertexAttribPointer(
+            vertexTexcoordLocation,
+            2,  // size
+            GL_FLOAT,  // type
+            GL_FALSE,  // normalized?
+            0,  // stride
+            (void*)0  // array buffer offset
+        );
+
         // indices
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indicebuffer);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(glm::ivec3) * indices.size(), &indices[0], GL_STATIC_DRAW);
@@ -338,12 +304,9 @@ public:
         // set uniform(s)
         GLuint location = glGetUniformLocation(shaderProgram, "transformMatrix");
         glUniformMatrix4fv(location, 1, GL_FALSE, &transformMatrix[0][0]);
-        location = glGetUniformLocation(shaderProgram, "maxValue");
-        glUniform1f(location, maxValue);
-        location = glGetUniformLocation(shaderProgram, "colorRemapK");
-        glUniform1f(location, colorRemapK);
-        location = glGetUniformLocation(shaderProgram, "brightness");
-        glUniform1f(location, brightness);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glUniform1i(glGetUniformLocation(shaderProgram, "fragTexture"), 0);
 
         // draw
         glDrawElements(GL_TRIANGLES,
@@ -355,14 +318,14 @@ public:
         glDisableVertexAttribArray(vertexPositionLocation);
         glDisableVertexAttribArray(vertexNormalLocation);
         glDisableVertexAttribArray(vertexColorLocation);
+        glDisableVertexAttribArray(vertexTexcoordLocation);
     }
 
     void drawLinesVBO(
         std::vector<glm::vec3> vertices,
         std::vector<glm::vec3> normals,
         std::vector<glm::ivec2> indices,
-        std::vector<glm::vec4> colors,
-        float maxValue = 1.0f, float colorRemapK = 1.0f, float brightness = 1.0f
+        std::vector<glm::vec4> colors
     ) {
         glUseProgram(this->shaderProgram);
 
@@ -395,12 +358,6 @@ public:
         GLuint location = glGetUniformLocation(shaderProgram, "transformMatrix");
         glm::mat4 m = transformMatrix; m[3][2] -= 4e-5f;
         glUniformMatrix4fv(location, 1, GL_FALSE, &m[0][0]);
-        location = glGetUniformLocation(shaderProgram, "maxValue");
-        glUniform1f(location, maxValue);
-        location = glGetUniformLocation(shaderProgram, "colorRemapK");
-        glUniform1f(location, colorRemapK);
-        location = glGetUniformLocation(shaderProgram, "brightness");
-        glUniform1f(location, brightness);
 
         // draw
         glDrawElements(GL_LINES, 2 * (int)indices.size(), GL_UNSIGNED_INT, nullptr);
@@ -419,8 +376,11 @@ public:
 struct RenderModel {
     std::vector<glm::vec3> vertices;
     std::vector<glm::vec3> normals;
+    std::vector<glm::vec4> colors;
+    std::vector<glm::vec2> texcoords;
     std::vector<glm::ivec3> indicesF;
     std::vector<glm::ivec2> indicesE;
+    GLuint texture;
 } renderModel;
 
 
@@ -454,7 +414,7 @@ bool initWindow() {
     glBindVertexArray(RenderParams::vertexArrayID);
 
     RenderParams::viewport = new Viewport(
-        0.8f, glm::vec3(0.0f), -0.2f*PI, -0.1f*PI);
+        0.8f, glm::vec3(0.0f), 0.02f*PI, -0.05f*PI);
     return true;
 }
 
@@ -463,6 +423,8 @@ std::function<void()> loop;
 void main_loop() { loop(); }
 
 void mainGUI(void (*callback)(void)) {
+
+    renderModel.texture = createSampleTexture();
 
     // mouse action(s)
     glfwSetScrollCallback(RenderParams::window,
@@ -505,22 +467,26 @@ void mainGUI(void (*callback)(void)) {
             glm::vec4 colorsE(0.6, 0.6, 0.6, 1);
             viewport->drawVBO(
                 renderModel.vertices, renderModel.normals, renderModel.indicesF,
-                std::vector<glm::vec4>(renderModel.vertices.size(), colorsF));
+                !renderModel.colors.empty() ? renderModel.colors :
+                    std::vector<glm::vec4>(renderModel.vertices.size(),
+                        renderModel.texcoords.empty() ? colorsF : -colorsF),
+                !renderModel.texcoords.empty() ? renderModel.texcoords :
+                    std::vector<glm::vec2>(renderModel.vertices.size(), vec2(0.0f)),
+                renderModel.texture);
             if (!renderModel.indicesE.empty()) viewport->drawLinesVBO(
                 renderModel.vertices, renderModel.normals, renderModel.indicesE,
                 std::vector<glm::vec4>(renderModel.vertices.size(), colorsE));
         }
         // axes
         viewport->drawLinesVBO(
-            { vec3(0), vec3(3, 0, 0),
-                vec3(0), vec3(0, 3, 0),
-                vec3(0), vec3(0, 0, 3) },
-            std::vector<vec3>(6, vec3(0, 0, 1)),
+            { vec3(0), vec3(1.5, 0, 0),
+                vec3(0), vec3(0, 1.5, 0),
+                vec3(0), vec3(0, 0, 1.5) },
+            std::vector<vec3>(6, vec3(0)),
             { ivec2(0, 1), ivec2(2, 3), ivec2(4, 5) },
             { vec4(1, 0, 0, 1), vec4(1, 0, 0, 1),
                 vec4(0, 0.5, 0, 1), vec4(0, 0.5, 0, 1),
-                vec4(0, 0, 1, 1), vec4(0, 0, 1, 1) },
-            1.0f, 1.0f, -1.0f
+                vec4(0, 0, 1, 1), vec4(0, 0, 1, 1) }
         );
 
         glfwSwapBuffers(RenderParams::window);
