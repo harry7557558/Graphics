@@ -52,6 +52,10 @@ uniform sampler2D fragTexture;
 out vec4 glFragColor;
 void main() {
     vec3 col = fragColor.xyz;
+    if (dot(col, vec3(1)) == 0.0) {
+        glFragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
     if (dot(col, vec3(1)) < 0.0)
         col = texture(fragTexture, fragTexcoord).xyz;
     if (fragNormal == vec3(0)) {
@@ -63,9 +67,10 @@ void main() {
     float amb = 1.0+0.3*max(-n.z,0.);
     float dif = dot(n,normalize(vec3(-0.5,-0.5,1)));
     float spc = pow(max(n.z,0.), 10.0);
-    col *= 0.6*amb+0.4*max(dif,0.)+0.1*max(-dif,0.)+0.2*spc;
+    col *= 0.6*amb+0.5*max(dif,0.)+0.1*max(-dif,0.)+0.0*spc;
     col += 0.025+0.025*dif;
-    glFragColor = vec4(pow(0.8*col, vec3(1.0/2.2)), 1.0);
+    col = pow(0.8*col, vec3(1.0/2.2));
+    glFragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 })""";
 
 
@@ -374,6 +379,7 @@ public:
 
 
 struct RenderModel {
+    glm::vec2 bound;
     std::vector<glm::vec3> vertices;
     std::vector<glm::vec3> normals;
     std::vector<glm::vec4> colors;
@@ -464,7 +470,7 @@ void mainGUI(void (*callback)(void)) {
         viewport->initDraw3D();
         if (!renderModel.vertices.empty()) {
             glm::vec4 colorsF(0.9, 0.9, 0.9, 1);
-            glm::vec4 colorsE(0.6, 0.6, 0.6, 1);
+            glm::vec4 colorsE(0, 0, 0, 1);
             viewport->drawVBO(
                 renderModel.vertices, renderModel.normals, renderModel.indicesF,
                 !renderModel.colors.empty() ? renderModel.colors :
@@ -487,6 +493,14 @@ void mainGUI(void (*callback)(void)) {
             { vec4(1, 0, 0, 1), vec4(1, 0, 0, 1),
                 vec4(0, 0.5, 0, 1), vec4(0, 0.5, 0, 1),
                 vec4(0, 0, 1, 1), vec4(0, 0, 1, 1) }
+        );
+        vec2 b = renderModel.bound;
+        viewport->drawLinesVBO(
+            { vec3(-b.x, -b.y, 0), vec3(b.x, -b.y, 0),
+                vec3(b.x, b.y, 0), vec3(-b.x, b.y, 0) },
+            std::vector<vec3>(4, vec3(0)),
+            { ivec2(0, 1), ivec2(1, 2), ivec2(2, 3), ivec2(3, 0) },
+            std::vector<vec4>(4, vec4(1, 0.5, 0, 1))
         );
 
         glfwSwapBuffers(RenderParams::window);

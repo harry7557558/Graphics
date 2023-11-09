@@ -211,11 +211,14 @@
     </div>
 
     <div id="control">
-        <span>Drag and Drop Image</span>
+        <span>Drag and Drop Transparent PNG</span>
         <br/><br/>
-        <span title="show mesh"><input type="checkbox" id="checkbox-edge" checked />mesh</span>&ensp;
-        <span title="smooth shading"><input type="checkbox" id="checkbox-normal" />normal</span>&ensp;
+        <span><input type="checkbox" id="checkbox-edge" />edges</span>&ensp;
+        <span><input type="checkbox" id="checkbox-normal" checked />normal</span>
         <br />
+        <span><input type="checkbox" id="checkbox-double-sided" checked />two sided</span>
+        <span><input type="checkbox" id="checkbox-texture" checked />color</span>
+        <br /><br />
         <span>Export:
           <input id="export-stl" type="button" value="STL" />
           <input id="export-ply" type="button" value="PLY" />

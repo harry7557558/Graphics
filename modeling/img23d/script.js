@@ -134,9 +134,28 @@ function initInteraction() {
     onresize();
 }
 
+function initConfig() {
+    let checkboxEdge = document.getElementById("checkbox-edge");
+    let checkboxNormal = document.getElementById("checkbox-normal");
+    let checkboxDoubleSided = document.getElementById("checkbox-double-sided");
+    let checkboxTexture = document.getElementById("checkbox-texture");
+    function updateCheckboxes() {
+        Module.ccall('setMeshEdge', null, ['int'], [checkboxEdge.checked]);
+        Module.ccall('setMeshNormal', null, ['int'], [checkboxNormal.checked]);
+        Module.ccall('setMeshDoubleSided', null, ['int'], [checkboxDoubleSided.checked]);
+        Module.ccall('setMeshTexture', null, ['int'], [checkboxTexture.checked]);
+    }
+    checkboxEdge.addEventListener("input", updateCheckboxes);
+    checkboxNormal.addEventListener("input", updateCheckboxes);
+    checkboxDoubleSided.addEventListener("input", updateCheckboxes);
+    checkboxTexture.addEventListener("input", updateCheckboxes);
+    updateCheckboxes();
+}
+
 function onReady() {
     initInteraction();
     initDragDrop();
+    initConfig();
     ModelExporter.init();
 }
 
