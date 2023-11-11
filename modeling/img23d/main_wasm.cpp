@@ -18,6 +18,7 @@
 #include "render.h"
 
 #include "meshgen_trig_implicit.h"
+#include "marching_squares.h"
 
 #include "write_model.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -89,6 +90,10 @@ DiscretizedModel<float, float> imageTo3D() {
     vec2 scale = vec2(w, h) / (float)fmax(w, h);
     int gx = (int)(scale.x / grid0 + 1.0f);
     int gy = (int)(scale.y / grid0 + 1.0f);
+    vec2 bc = vec2(0), br = scale;
+    renderModel.bound = br;
+
+#if 0
 
     MeshgenTrigImplicit::ScalarFieldF F = [&](float x, float y) -> float {
         x = 0.5f + 0.5f * x / scale.x;
@@ -111,7 +116,6 @@ DiscretizedModel<float, float> imageTo3D() {
             v[i] = F(p[i].x, p[i].y);
     };
 
-    vec2 bc = vec2(0), br = scale;
     auto constraint = [=](vec2 p) {
         p -= bc;
         return -vec2(
@@ -119,7 +123,6 @@ DiscretizedModel<float, float> imageTo3D() {
             sign(p.y) * fmax(abs(p.y) - br.y, 0.0)
         );
     };
-    renderModel.bound = br;
 
     float t0 = getTimePast();
 
@@ -145,6 +148,47 @@ DiscretizedModel<float, float> imageTo3D() {
     MeshgenTrigImplicit::assertAreaEqual(vs, trigs);
     float t3 = getTimePast();
     printf("Mesh optimized in %.2g secs.\n", t3-t2);
+
+#else
+
+    std::vector<vec2> vs;
+    std::vector<ivec3> trigs;
+    uint8_t *alphas = new uint8_t[w*h];
+    for (int i = 0; i < w*h; i++)
+        alphas[i] = 255-data[4*i+3];
+
+#if 1
+    const int R = 1;
+    const int filter[2*R+1][2*R+1] = {
+        { 1, 2, 1 }, { 2, 4, 2 }, { 1, 2, 1 }
+    };
+    // const int filter[2*R+1][2*R+1] = {
+    //     { 1,4,7,4,1 }, { 4,16,26,16,4 }, { 7,26,41,26,7 }, { 4,16,26,16,4 }, { 1,4,7,4,1 }
+    // };
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int totw = 0, totv = 0;
+            for (int dy = -R; dy <= R; dy++) {
+                for (int dx = -R; dx <= R; dx++) {
+                    if (y+dy >= 0 && y+dy < h && x+dx >= 0 && x+dx < w) {
+                        totw += filter[dy+1][dx+1];
+                        totv += int(255-data[4*((y+dy)*w+(x+dx))+3]) * filter[dy+1][dx+1];
+                    }
+                }
+            }
+            alphas[y*w+x] = uint8_t((totv+totw/2)/totw);
+        }
+    }
+#endif
+
+    marchingSquares(w, h, alphas, (uint8_t)127, vs, trigs);
+    for (int i = 0; i < (int)vs.size(); i++)
+        vs[i] = (2.0f*vs[i]/vec2(w,h)-1.0f)*br*vec2(1,-1);
+    for (int i = 0; i < (int)trigs.size(); i++)
+        std::swap(trigs[i][1], trigs[i][2]);
+    delete[] alphas;
+
+#endif
 
     DiscretizedModel<float, float> res = solveLaplacianLinearTrig(
         vs, std::vector<float>(vs.size(), 4.0f), trigs);
