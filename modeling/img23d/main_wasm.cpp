@@ -154,8 +154,11 @@ DiscretizedModel<float, float> imageTo3D() {
     std::vector<vec2> vs;
     std::vector<ivec3> trigs;
     uint8_t *alphas = new uint8_t[w*h];
-    for (int i = 0; i < w*h; i++)
-        alphas[i] = 255-data[4*i+3];
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            alphas[y*w+x] = 255-data[4*((h-1-y)*w+x)+3];
+        }
+    }
 
 #if 1
     const int R = 1;
@@ -176,16 +179,16 @@ DiscretizedModel<float, float> imageTo3D() {
                     }
                 }
             }
-            alphas[y*w+x] = uint8_t((totv+totw/2)/totw);
+            alphas[((h-1-y)*w+x)] = uint8_t((totv+totw/2)/totw);
         }
     }
 #endif
 
-    marchingSquares(w, h, alphas, (uint8_t)127, vs, trigs);
+    // std::vector<std::vector<int>> boundary;
+    marchingSquaresTrigs(w, h, alphas, (uint8_t)127, vs, trigs);
+    // marchingSquaresEdges(w, h, alphas, (uint8_t)127, vs, boundary);
     for (int i = 0; i < (int)vs.size(); i++)
-        vs[i] = (2.0f*vs[i]/vec2(w,h)-1.0f)*br*vec2(1,-1);
-    for (int i = 0; i < (int)trigs.size(); i++)
-        std::swap(trigs[i][1], trigs[i][2]);
+        vs[i] = (2.0f*vs[i]/vec2(w,h)-1.0f)*br;
     delete[] alphas;
 
 #endif
