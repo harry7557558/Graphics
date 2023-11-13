@@ -8,28 +8,13 @@ var renderer = {
     width: -1,
     height: -1,
     iFrame: 0,
-    iBrightness: 1.0,
-    iGamma: 1.0,
     vsSource: "",
-    w01: null,
-    fs4x4: "",
-    program4x4: null,
-    target4x4: null,
-    w02: null,
-    fs8x8: "",
-    program8x8: null,
-    target8x8: "",
-    w03: null,
-    fs16x16: null,
-    program16x16: null,
-    target16x16: null,
-    w04: null,
-    fs32x32: null,
-    program32x32: null,
-    target32x32: null,
-    w05: null,
-    fs64x64: null,
-    program64x64: null,
+    fsConvTranspose2d421: "",
+    programConvTranspose2d421: null,
+    fsLeakyReLU: "",
+    programLeakyReLU: null,
+    fsOutput: "",
+    programOutput: null,
 };
 
 // request shader sources
@@ -92,11 +77,11 @@ function createRenderTarget(width, height) {
     const framebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-    const sampler = createSampleTexture(gl, width, height);
+    // const sampler = createSampleTexture(gl, width, height);
     return {
         texture: tex,
         framebuffer: framebuffer,
-        sampler: sampler
+        // sampler: sampler
     };
 }
 function destroyRenderTarget(target) {
@@ -105,7 +90,9 @@ function destroyRenderTarget(target) {
     gl.deleteFramebuffer(target.framebuffer);
 }
 
-function loadWeightTexture(url, texture_name) {
+function loadWeightTexture(name, texture_name) {
+    let modelSelector = document.getElementById("model-select");
+    let root = modelSelector.value;
     const gl = renderer.gl;
 
     function onload(weights) {
@@ -130,10 +117,11 @@ function loadWeightTexture(url, texture_name) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
 
         renderer[texture_name] = tex;
+        updateModel();
     }
 
     var req = new XMLHttpRequest();
-    req.open("GET", url, true);
+    req.open("GET",  root+'/'+name+'.bin', true);
     req.responseType = "arraybuffer";
     req.onerror = function (e) {
         alert("Failed to load texture " + texture_name);
@@ -141,6 +129,7 @@ function loadWeightTexture(url, texture_name) {
     req.onload = function (e) {
         if (req.status == 200) {
             var weights = new Float32Array(req.response);
+            renderer[name] = weights;
             onload(weights);
         }
         else {
@@ -151,110 +140,245 @@ function loadWeightTexture(url, texture_name) {
 }
 
 
+// set position buffer for vertex shader
+function setPositionBuffer(program) {
+    let gl = renderer.gl;
+    var vpLocation = gl.getAttribLocation(program, "vertexPosition");
+    const numComponents = 2;
+    const type = gl.FLOAT;
+    const normalize = false;
+    const stride = 0, offset = 0;
+    gl.bindBuffer(gl.ARRAY_BUFFER, renderer.positionBuffer);
+    gl.vertexAttribPointer(
+        vpLocation,
+        numComponents, type, normalize, stride, offset);
+    gl.enableVertexAttribArray(vpLocation);
+}
+
+
+function CNNBuffer(n, w, h) {
+    this.n = n;
+    this.w = w, this.h = h;
+    this.imgs = [];
+    for (var i = 0; i < n; i += 4)
+        this.imgs.push(createRenderTarget(w, h));
+    this.setData = function(data) {
+        var layers = [];
+        for (var i = 0; i < this.n; i++)
+            layers[i] = data.slice(i*w*h, (i+1)*w*h);
+        let gl = renderer.gl;
+        for (var i = 0; i < this.n; i += 4) {
+            var data = new Float32Array(4*w*h);
+            for (var j = 0; j < 4 && i+j < this.n; j++)
+                for (var k = 0; k < w*h; k++)
+                    data[4*k+j] = layers[i+j][k];
+            gl.bindTexture(gl.TEXTURE_2D, this.imgs[Math.floor(i/4)].texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F,
+                w, h, 0,
+                gl.RGBA, gl.FLOAT,
+                data);
+        }
+    };
+}
+
+function ConvTranspose2D421(
+    grid_size, tile_size, n_in, n_out, weights, bn_biases
+) {
+    if (weights.length != n_in*n_out*16)
+        throw new Error("Incorrect weight size");
+    if (bn_biases.length != n_out)
+        throw new Error("Incorrect bias size");
+    this.grid_size = grid_size;
+    this.tile_size_in = tile_size;
+    this.tile_size_out = tile_size * 2;
+    this.n_in = n_in;
+    this.n_out = n_out;
+    this.weights = weights;
+    this.bn_biases = Array.from(bn_biases);
+    while (this.bn_biases.length % 4 != 0.0)
+        this.bn_biases.push(0.0);
+
+    this.mats = [];
+    for (var i = 0; i < this.n_out; i += 4) {
+        var mats = [];
+        for (var j = 0; j < this.n_in; j += 4) {
+            var matsj = [];
+            for (var wi = 0; wi < 4; wi++) {
+                for (var wj = 0; wj < 4; wj++) {
+                    var mat = new Float32Array(16);
+                    for (var a = 0; a < 4; a++) {
+                        for (var b = 0; b < 4; b++) {
+                            var mi = (j+a)*n_out+(i+b);
+                            mat[4*a+b] = this.weights[16*mi+((3-wi)*4+(3-wj))];
+                        }
+                    }
+                    matsj.push(mat);
+                }
+            }
+            mats.push(matsj);
+        }
+        this.mats.push(mats);
+    }
+
+    this.forward = function(buffer_in, buffer_out) {
+        if (buffer_in.n != this.n_in)
+            throw new Error("Incorrect input buffer length ("+buffer_in.n+","+this.n_in+")");
+        if (buffer_out.n != this.n_out)
+            throw new Error("Incorrect output buffer length ("+buffer_out.n+","+this.n_out+")");
+        let gl = renderer.gl;
+        let program = renderer.programConvTranspose2d421;
+        gl.useProgram(program);
+        gl.viewport(0, 0, this.grid_size*this.tile_size_out, this.grid_size*this.tile_size_out);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        for (var i = 0; i < this.n_out; i += 4) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, buffer_out.imgs[Math.floor(i/4)].framebuffer);
+            gl.clearColor(this.bn_biases[i], this.bn_biases[i+1], this.bn_biases[i+2], this.bn_biases[i+3]);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            for (var j = 0; j < this.n_in; j += 4) {
+                for (var li = 0; li < 16; li++) {
+                    let uniformLocation = gl.getUniformLocation(program, 'w['+li+']');
+                    var mat = this.mats[i/4][j/4][li];
+                    gl.uniformMatrix4fv(uniformLocation, false, mat);
+                }
+                gl.uniform1i(gl.getUniformLocation(program, 'tileSize'), this.tile_size_in);
+                setPositionBuffer(program);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, buffer_in.imgs[Math.floor(j/4)].texture);
+                gl.uniform1i(gl.getUniformLocation(program, "uSrc"), 0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            }
+        }
+        gl.disable(gl.BLEND);
+    }
+}
+
+function LeakyReLU(grid_size, tile_size, n_in, negative_slope) {
+    this.grid_size = grid_size;
+    this.tile_size = tile_size;
+    this.n_in = n_in;
+    this.n_out = n_in;
+    this.negative_slope = negative_slope;
+
+    this.forward = function(buffer_in, buffer_out) {
+        let gl = renderer.gl;
+        let program = renderer.programLeakyReLU;
+        gl.useProgram(program);
+        gl.viewport(0, 0, this.grid_size*this.tile_size, this.grid_size*this.tile_size);
+        for (var i = 0; i < this.n_out; i += 4) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, buffer_out.imgs[Math.floor(i/4)].framebuffer);
+            gl.uniform1f(gl.getUniformLocation(program, 'negative_slope'), this.negative_slope);
+            setPositionBuffer(program);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, buffer_in.imgs[Math.floor(i/4)].texture);
+            gl.uniform1i(gl.getUniformLocation(program, "uSrc"), 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+    }
+}
+
+
 // call this function to re-render
 async function drawScene() {
     let gl = renderer.gl;
 
-    // set position buffer for vertex shader
-    function setPositionBuffer(program) {
-        var vpLocation = gl.getAttribLocation(program, "vertexPosition");
-        const numComponents = 2;
-        const type = gl.FLOAT;
-        const normalize = false;
-        const stride = 0, offset = 0;
-        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.positionBuffer);
-        gl.vertexAttribPointer(
-            vpLocation,
-            numComponents, type, normalize, stride, offset);
-        gl.enableVertexAttribArray(vpLocation);
-    }
-
     gl.viewport(0, 0, renderer.width, renderer.height);
 
-    // first layer - (32) => (512) => (32, 4, 4)
-    gl.useProgram(renderer.program4x4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.target4x4.framebuffer);
-    setPositionBuffer(renderer.program4x4);
-    gl.uniform1i(gl.getUniformLocation(renderer.program4x4, "iFrame"), renderer.iFrame);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.w01);
-    gl.uniform1i(gl.getUniformLocation(renderer.program4x4, "uWeights"), 1);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    let r = renderer;
 
-    // second layer - (32, 4, 4) => (64, 8, 8)
-    gl.useProgram(renderer.program8x8);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.target8x8.framebuffer);
-    setPositionBuffer(renderer.program8x8);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.target4x4.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.program8x8, "uSrc"), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.w02);
-    gl.uniform1i(gl.getUniformLocation(renderer.program8x8, "uWeights"), 1);
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.b02);
-    gl.uniform1i(gl.getUniformLocation(renderer.program8x8, "uBiases"), 2);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    let n = Math.floor(canvas.width / 64);
+    var initial = new Float32Array(n*n*32*4*4);
+    for (var gi = 0; gi < n; gi++) {
+        for (var gj = 0; gj < n; gj++) {
+            // random numbers
+            function hash(i) {
+                var s = 12345.67*Math.sin(12.34*gi+56.78*gj+9.012*i+3.45);
+                return s - Math.floor(s);
+            }
+            var t = 1e-3*performance.now()*0.4;
+            var i0 = Math.floor(t);
+            var i1 = i0 + 1.0;
+            var tf = t - i0;
+            var latent = new Array(32).fill(0.0);
+            for (var i = 0; i < 32; i++) {
+                var u1 = hash(i0*32+i), u2 = hash(i1*32+i);
+                var u = u1 + (u2-u1) * tf;
+                var v1 = hash(i0*32+i+0.5), v2 = hash(i1*32+i+0.5);
+                var v = v1 + (v2-v1) * tf;
+                u = 0.5 + 0.999999*(u-0.5);
+                u = 0.5-u*u*(Math.log(u)-0.5)+(u-1.)*(u-1.)*(Math.log(1.-u)-0.5);
+                v = 0.5 + 0.999999*(v-0.5);
+                v = 0.5-v*v*(Math.log(v)-0.5)+(v-1.)*(v-1.)*(Math.log(1.-v)-0.5);
+                latent[i] = Math.sqrt(-2.*Math.log(u)) * Math.sin(2.0*Math.PI*v);
+            }
+            
+            // linear - (32) => (512)
+            var layer1js = new Array(512).fill(0.0);
+            let w01 = renderer.w01_512_32;
+            for (var i = 0; i < 512; i++)
+                for (var j = 0; j < 32; j++)
+                    layer1js[i] += latent[j] * w01[i*32+j];
+            // leaky relu
+            for (var i = 0; i < 512; i++)
+                layer1js[i] = Math.max(layer1js[i], 0.1*layer1js[i]);
+            // add to data
+            for (var i = 0; i < 32; i++)
+                for (var y = 0; y < 4; y++)
+                    for (var x = 0; x < 4; x++)
+                        initial[i*4*n*4*n+(gj*4+y)*(4*n)+(gi*4+x)] = layer1js[i*4*4+y*4+x];
+        }
+    }
+    r.layer1.setData(initial);
 
-    // third layer - (64, 8, 8) -> (32, 16, 16)
-    gl.useProgram(renderer.program16x16);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.target16x16.framebuffer);
-    setPositionBuffer(renderer.program16x16);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.target8x8.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.program16x16, "uSrc"), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.w03);
-    gl.uniform1i(gl.getUniformLocation(renderer.program16x16, "uWeights"), 1);
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.b03);
-    gl.uniform1i(gl.getUniformLocation(renderer.program16x16, "uBiases"), 2);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    r.conv2.forward(r.layer1, r.layer2);
+    r.relu2.forward(r.layer2, r.layer2a);
+    r.conv3.forward(r.layer2a, r.layer3);
+    r.relu3.forward(r.layer3, r.layer3a);
+    r.conv4.forward(r.layer3a, r.layer4);
+    r.relu4.forward(r.layer4, r.layer4a);
+    r.conv5.forward(r.layer4a, r.layer5);
 
-    // fourth layer - (32, 16, 16) -> (16, 32, 32)
-    gl.useProgram(renderer.program32x32);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.target32x32.framebuffer);
-    setPositionBuffer(renderer.program32x32);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.target16x16.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.program32x32, "uSrc"), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.w04);
-    gl.uniform1i(gl.getUniformLocation(renderer.program32x32, "uWeights"), 1);
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.b04);
-    gl.uniform1i(gl.getUniformLocation(renderer.program32x32, "uBiases"), 2);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-    // fifth layer - (16, 32, 32) -> (3, 64, 64)
-    gl.useProgram(renderer.program64x64);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    setPositionBuffer(renderer.program64x64);
-    gl.uniform1f(gl.getUniformLocation(renderer.program64x64, "iBrightness"), renderer.iBrightness);
-    gl.uniform1f(gl.getUniformLocation(renderer.program64x64, "iGamma"), renderer.iGamma);
+    gl.useProgram(renderer.programOutput);
+    gl.viewport(0, 0, 64*n, 64*n);
+    setPositionBuffer(renderer.programOutput);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.target32x32.texture);
-    gl.uniform1i(gl.getUniformLocation(renderer.program64x64, "uSrc"), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, renderer.w05);
-    gl.uniform1i(gl.getUniformLocation(renderer.program64x64, "uWeights"), 1);
+    gl.bindTexture(gl.TEXTURE_2D, r.layer5.imgs[0].texture);
+    gl.uniform1i(gl.getUniformLocation(renderer.programOutput, "uSrc"), 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
 }
 
 
 // load model
 function loadModel() {
-    let modelSelector = document.getElementById("model-select");
-    let path = modelSelector.value;
-    loadWeightTexture(path + "/w01_512_32.bin", "w01");
-    loadWeightTexture(path + "/w02_32_64_4_4.bin", "w02");
-    loadWeightTexture(path + "/b02_64.bin", "b02");
-    loadWeightTexture(path + "/w03_64_32_4_4.bin", "w03");
-    loadWeightTexture(path + "/b03_32.bin", "b03");
-    loadWeightTexture(path + "/w04_32_16_4_4.bin", "w04");
-    loadWeightTexture(path + "/b04_16.bin", "b04");
-    loadWeightTexture(path + "/w05_16_3_4_4.bin", "w05");
+    loadWeightTexture("w01_512_32", "w01");
+    loadWeightTexture("w02_32_64_4_4", "w02");
+    loadWeightTexture("b02_64", "b02");
+    loadWeightTexture("w03_64_32_4_4", "w03");
+    loadWeightTexture("b03_32", "b03");
+    loadWeightTexture("w04_32_16_4_4", "w04");
+    loadWeightTexture("b04_16", "b04");
+    loadWeightTexture("w05_16_3_4_4", "w05");
+}
+
+function updateModel() {
+    let r = renderer;
+    let n = Math.floor(canvas.width / 64);
+    r.layer1 = new CNNBuffer(32, 4*n, 4*n);
+    r.conv2 = new ConvTranspose2D421(n, 4, 32, 64, r.w02_32_64_4_4, r.b02_64);
+    r.layer2 = new CNNBuffer(64, 8*n, 8*n);
+    r.relu2 = new LeakyReLU(n, 8, 64, 0.1);
+    r.layer2a = new CNNBuffer(64, 8*n, 8*n);
+    r.conv3 = new ConvTranspose2D421(n, 8, 64, 32, r.w03_64_32_4_4, r.b03_32);
+    r.layer3 = new CNNBuffer(32, 16*n, 16*n);
+    r.relu3 = new LeakyReLU(n, 16, 32, 0.1);
+    r.layer3a = new CNNBuffer(32, 16*n, 16*n);
+    r.conv4 = new ConvTranspose2D421(n, 16, 32, 16, r.w04_32_16_4_4, r.b04_16);
+    r.layer4 = new CNNBuffer(16, 32*n, 32*n);
+    r.relu4 = new LeakyReLU(n, 32, 16, 0.1);
+    r.layer4a = new CNNBuffer(16, 32*n, 32*n);
+    r.conv5 = new ConvTranspose2D421(n, 32, 16, 3, r.w05_16_3_4_4, [0, 0, 0]);
+    r.layer5 = new CNNBuffer(3, 64*n, 64*n);
 }
 
 // load renderer/interaction
@@ -273,6 +397,8 @@ window.onload = function () {
         return onError("Error: Your browser may not support WebGL.");
     if (renderer.gl.getExtension("EXT_color_buffer_float") == null)
         return onError("Error: Your device does not support the `EXT_color_buffer_float` extension.");
+    if (renderer.gl.getExtension("EXT_float_blend") == null)
+        return onError("Error: Your device does not support the `EXT_float_blend` extension.");
     canvas.addEventListener("webglcontextlost", function (event) {
         event.preventDefault();
         onError("Error: WebGL context lost.");
@@ -288,21 +414,17 @@ window.onload = function () {
     console.time("load glsl code");
     renderer.vsSource = "#version 300 es\nin vec4 vertexPosition;" +
         "void main(){gl_Position=vertexPosition;}";
-    renderer.fs4x4 = loadShaderSource("fs-4x4.glsl");
-    renderer.fs8x8 = loadShaderSource("fs-8x8.glsl");
-    renderer.fs16x16 = loadShaderSource("fs-16x16.glsl");
-    renderer.fs32x32 = loadShaderSource("fs-32x32.glsl");
-    renderer.fs64x64 = loadShaderSource("fs-64x64.glsl");
+    renderer.fsConvTranspose2d421 = loadShaderSource("convtranspose2d421.glsl");
+    renderer.fsLeakyReLU = loadShaderSource("leakyrelu.glsl");
+    renderer.fsOutput = loadShaderSource("output.glsl");
     console.timeEnd("load glsl code");
 
     // shaders
     console.time("compile shader");
     try {
-        renderer.program4x4 = createShaderProgram(renderer.vsSource, renderer.fs4x4);
-        renderer.program8x8 = createShaderProgram(renderer.vsSource, renderer.fs8x8);
-        renderer.program16x16 = createShaderProgram(renderer.vsSource, renderer.fs16x16);
-        renderer.program32x32 = createShaderProgram(renderer.vsSource, renderer.fs32x32);
-        renderer.program64x64 = createShaderProgram(renderer.vsSource, renderer.fs64x64);
+        renderer.programConvTranspose2d421 = createShaderProgram(renderer.vsSource, renderer.fsConvTranspose2d421);
+        renderer.programLeakyReLU = createShaderProgram(renderer.vsSource, renderer.fsLeakyReLU);
+        renderer.programOutput = createShaderProgram(renderer.vsSource, renderer.fsOutput);
     }
     catch (e) {
         return onError(e);
@@ -314,13 +436,6 @@ window.onload = function () {
     renderer.gl.bindBuffer(renderer.gl.ARRAY_BUFFER, renderer.positionBuffer);
     var positions = [-1, 1, 1, 1, -1, -1, 1, -1];
     renderer.gl.bufferData(renderer.gl.ARRAY_BUFFER, new Float32Array(positions), renderer.gl.STATIC_DRAW);
-
-    // framebuffers
-    renderer.target4x4 = createRenderTarget(renderer.width, renderer.height);
-    renderer.target8x8 = createRenderTarget(renderer.width, renderer.height);
-    renderer.target16x16 = createRenderTarget(renderer.width, renderer.height);
-    renderer.target32x32 = createRenderTarget(renderer.width, renderer.height);
-    renderer.target64x64 = createRenderTarget(renderer.width, renderer.height);
 
     // rendering
     function render() {
