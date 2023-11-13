@@ -1,0 +1,3 @@
+[submodule "modeling/img23d/glm"]
+	path = modeling/img23d/glm
+	url = https://github.com/g-truc/glm
