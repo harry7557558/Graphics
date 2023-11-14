@@ -188,7 +188,14 @@ function ConvTranspose2D421(
         throw new Error("Incorrect weight size");
     if (bn_biases.length != n_out)
         throw new Error("Incorrect bias size");
-    this.grid_size = grid_size;
+    if (typeof grid_size == 'number') {
+        this.grid_size_x = grid_size;
+        this.grid_size_y = grid_size;
+    }
+    else {
+        this.grid_size_x = grid_size[0];
+        this.grid_size_y = grid_size[1];
+    }
     this.tile_size_in = tile_size;
     this.tile_size_out = tile_size * 2;
     this.n_in = n_in;
@@ -228,7 +235,7 @@ function ConvTranspose2D421(
         let gl = renderer.gl;
         let program = renderer.programConvTranspose2d421;
         gl.useProgram(program);
-        gl.viewport(0, 0, this.grid_size*this.tile_size_out, this.grid_size*this.tile_size_out);
+        gl.viewport(0, 0, this.grid_size_x*this.tile_size_out, this.grid_size_y*this.tile_size_out);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE);
         for (var i = 0; i < this.n_out; i += 4) {
@@ -254,7 +261,14 @@ function ConvTranspose2D421(
 }
 
 function LeakyReLU(grid_size, tile_size, n_in, negative_slope) {
-    this.grid_size = grid_size;
+    if (typeof grid_size == 'number') {
+        this.grid_size_x = grid_size;
+        this.grid_size_y = grid_size;
+    }
+    else {
+        this.grid_size_x = grid_size[0];
+        this.grid_size_y = grid_size[1];
+    }
     this.tile_size = tile_size;
     this.n_in = n_in;
     this.n_out = n_in;
@@ -264,7 +278,7 @@ function LeakyReLU(grid_size, tile_size, n_in, negative_slope) {
         let gl = renderer.gl;
         let program = renderer.programLeakyReLU;
         gl.useProgram(program);
-        gl.viewport(0, 0, this.grid_size*this.tile_size, this.grid_size*this.tile_size);
+        gl.viewport(0, 0, this.grid_size_x*this.tile_size, this.grid_size_y*this.tile_size);
         for (var i = 0; i < this.n_out; i += 4) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, buffer_out.imgs[Math.floor(i/4)].framebuffer);
             gl.uniform1f(gl.getUniformLocation(program, 'negative_slope'), this.negative_slope);
@@ -282,25 +296,25 @@ function LeakyReLU(grid_size, tile_size, n_in, negative_slope) {
 async function drawScene() {
     let gl = renderer.gl;
 
-    gl.viewport(0, 0, renderer.width, renderer.height);
-
     let r = renderer;
 
-    let n = Math.floor(canvas.width / 64);
-    var initial = new Float32Array(n*n*32*4*4);
-    for (var gi = 0; gi < n; gi++) {
-        for (var gj = 0; gj < n; gj++) {
+    var time0 = performance.now();
+
+    let nx = Math.floor(canvas.width / 64);
+    let ny = Math.floor(canvas.height / 64);
+    var initial = new Float32Array(32*4*ny*4*nx);
+    for (var gi = 0; gi < nx; gi++) {
+        for (var gj = 0; gj < ny; gj++) {
             // random numbers
             function hash(i) {
                 var s = 12345.67*Math.sin(12.34*gi+56.78*gj+9.012*i+3.45);
                 return s - Math.floor(s);
             }
             var t = 1e-3*performance.now()*0.4;
-            var i0 = Math.floor(t);
-            var i1 = i0 + 1.0;
-            var tf = t - i0;
             var latent = new Array(32).fill(0.0);
             for (var i = 0; i < 32; i++) {
+                var t1 = t + hash(i);
+                var i0 = Math.floor(t1), i1 = i0 + 1.0, tf = t1 - i0;
                 var u1 = hash(i0*32+i), u2 = hash(i1*32+i);
                 var u = u1 + (u2-u1) * tf;
                 var v1 = hash(i0*32+i+0.5), v2 = hash(i1*32+i+0.5);
@@ -325,7 +339,7 @@ async function drawScene() {
             for (var i = 0; i < 32; i++)
                 for (var y = 0; y < 4; y++)
                     for (var x = 0; x < 4; x++)
-                        initial[i*4*n*4*n+(gj*4+y)*(4*n)+(gi*4+x)] = layer1js[i*4*4+y*4+x];
+                        initial[i*4*ny*4*nx+(gj*4+y)*(4*nx)+(gi*4+x)] = layer1js[i*4*4+y*4+x];
         }
     }
     r.layer1.setData(initial);
@@ -340,12 +354,15 @@ async function drawScene() {
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.useProgram(renderer.programOutput);
-    gl.viewport(0, 0, 64*n, 64*n);
+    gl.viewport(0, 0, 64*nx, 64*ny);
     setPositionBuffer(renderer.programOutput);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, r.layer5.imgs[0].texture);
     gl.uniform1i(gl.getUniformLocation(renderer.programOutput, "uSrc"), 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    var time1 = performance.now();
+    // console.log("JS time", (time1-time0).toFixed(2), "ms");
 }
 
 
@@ -363,22 +380,24 @@ function loadModel() {
 
 function updateModel() {
     let r = renderer;
-    let n = Math.floor(canvas.width / 64);
-    r.layer1 = new CNNBuffer(32, 4*n, 4*n);
+    let nx = Math.floor(canvas.width / 64);
+    let ny = Math.floor(canvas.height / 64);
+    let n = [nx, ny];
+    r.layer1 = new CNNBuffer(32, 4*nx, 4*ny);
     r.conv2 = new ConvTranspose2D421(n, 4, 32, 64, r.w02_32_64_4_4, r.b02_64);
-    r.layer2 = new CNNBuffer(64, 8*n, 8*n);
+    r.layer2 = new CNNBuffer(64, 8*nx, 8*ny);
     r.relu2 = new LeakyReLU(n, 8, 64, 0.1);
-    r.layer2a = new CNNBuffer(64, 8*n, 8*n);
+    r.layer2a = new CNNBuffer(64, 8*nx, 8*ny);
     r.conv3 = new ConvTranspose2D421(n, 8, 64, 32, r.w03_64_32_4_4, r.b03_32);
-    r.layer3 = new CNNBuffer(32, 16*n, 16*n);
+    r.layer3 = new CNNBuffer(32, 16*nx, 16*ny);
     r.relu3 = new LeakyReLU(n, 16, 32, 0.1);
-    r.layer3a = new CNNBuffer(32, 16*n, 16*n);
+    r.layer3a = new CNNBuffer(32, 16*nx, 16*ny);
     r.conv4 = new ConvTranspose2D421(n, 16, 32, 16, r.w04_32_16_4_4, r.b04_16);
-    r.layer4 = new CNNBuffer(16, 32*n, 32*n);
+    r.layer4 = new CNNBuffer(16, 32*nx, 32*ny);
     r.relu4 = new LeakyReLU(n, 32, 16, 0.1);
-    r.layer4a = new CNNBuffer(16, 32*n, 32*n);
+    r.layer4a = new CNNBuffer(16, 32*nx, 32*ny);
     r.conv5 = new ConvTranspose2D421(n, 32, 16, 3, r.w05_16_3_4_4, [0, 0, 0]);
-    r.layer5 = new CNNBuffer(3, 64*n, 64*n);
+    r.layer5 = new CNNBuffer(3, 64*nx, 64*ny);
 }
 
 // load renderer/interaction
@@ -438,10 +457,14 @@ window.onload = function () {
     renderer.gl.bufferData(renderer.gl.ARRAY_BUFFER, new Float32Array(positions), renderer.gl.STATIC_DRAW);
 
     // rendering
+    var time0 = performance.now();
     function render() {
         drawScene();
         renderer.iFrame += 1;
-        setTimeout(function () { requestAnimationFrame(render); }, 100);
+        setTimeout(() => requestAnimationFrame(render), 20);
+        var time1 = performance.now();
+        // console.log("Total time", (time1-time0).toFixed(2), "ms");
+        time0 = time1;
     }
     requestAnimationFrame(render);
 
