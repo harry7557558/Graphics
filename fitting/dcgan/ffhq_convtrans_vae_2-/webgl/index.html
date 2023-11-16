@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<title>GAN test (64x64)</title>
+	<meta name="description" content="GAN at 64x64 trained on FFHQ with a variational autoencoder." />
+
+	<style>
+		body {
+			margin: 10px;
+			background-color: #eee;
+		}
+
+		#canvas {
+			touch-action: none;
+			image-rendering: pixelated;
+			max-width: 100%;
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 320px;
+			max-width: 100%;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="128"></canvas>
+	<!-- <canvas id="canvas" width="64" height="64"></canvas> -->
+	<p id="error-message"></p>
+
+	<p>A variation of <a href="../../ffhq_convtrans_vae_2/webgl/">my fourth GAN</a> trained on the same day.
+		<br/>
+		Intended to test the possibility of running large CNN models
+		(especially with 3x3 convolutional layers) in web browsers in real time.
+	</p>
+	<p>
+		This is slower and visually worse than the previous one due to
+		convolutional layers at the end smoothing out high-frequency details.
+	</p>
+	<select id="model-select" style="display:none;">
+		<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+	</select>
+	<pre>
+==== Generator (314k params) ====
+Latent - 32
+Dense layer - 768x32+768
+ => 768, LeakyReLU(0.1)
+ => 48x4x4
+Conv2d - 48x64x3x3
+ => 64x4x4, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x64x4x4
+ => 64x8x8, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x64x4x4
+ => 64x16x16, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x64x4x4
+ => 64x32x32, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x48x4x4
+ => 48x64x64, BatchNorm2d, LeakyReLU(0.1)
+Conv2d - 32x48x3x3
+ => 32x64x64, BatchNorm2d, LeakyReLU(0.1)
+Conv2d - 3x48x3x3
+ => 3x64x64, Tanh*0.5+0.5
+</pre>
+
+</body>
+
+</html>

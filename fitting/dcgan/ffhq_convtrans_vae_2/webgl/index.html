@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<title>GAN test (64x64)</title>
+	<meta name="description" content="GAN at 64x64 trained on FFHQ with a variational autoencoder." />
+
+	<style>
+		body {
+			margin: 10px;
+			background-color: #eee;
+		}
+
+		#canvas {
+			touch-action: none;
+			image-rendering: pixelated;
+			max-width: 100%;
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 320px;
+			max-width: 100%;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="320"></canvas>
+	<!-- <canvas id="canvas" width="64" height="64"></canvas> -->
+	<p id="error-message"></p>
+
+	<p>My fourth GAN after the <a href="../../ffhq_convtrans_vae/webgl/">previous one</a>.
+		Trained on <select id="model-select">
+			<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+		</select> with PyTorch and manually exported to WebGL 2.0.
+	</p>
+	<p>This is a larger model with regularization and hyperparameter tuning consideration.
+		In addition, there is a feedback of generator results into VAE encoder.
+	</p>
+	<pre>
+==== Generator (271k params) ====
+Latent - 32
+Dense layer - 1024x32+1024
+ => 1024, LeakyReLU(0.1)
+ => 64x4x4
+Conv2d - 64x64x3x3
+ => 64x4x4, BatchNorm2d, <del title="didn't realize I forgot this until I finished training it">LeakyReLU(0.1)</del>
+ConvTranspose2d - 64x64x4x4
+ => 64x8x8, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x64x4x4
+ => 64x16x16, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x64x4x4
+ => 64x32x32, BatchNorm2d, LeakyReLU(0.1)
+ConvTranspose2d - 64x3x4x4
+ => 3x64x64, BatchNorm2d, Tanh*0.5+0.5
+</pre>
+
+</body>
+
+</html>
