@@ -1,0 +1,12 @@
+# https://github.com/hendrycks/robustness
+Icons-50/*
+
+# https://github.com/googlefonts/noto-emoji, Apache-2.0
+noto-emoji/*
+
+# https://github.com/twitter/twemoji, CC-BY-4.0
+twemoji/*
+
+# https://emoji.supply/kitchen/, not crawled yet
+emoji-kitchen/*
+
