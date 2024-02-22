@@ -54,13 +54,15 @@ class Modelx4(torch.nn.Module):
         return x_o
 
 
-model = Modelx4(3, 3, 32, 10).to(device)
-model = torch.load("model01_x4.pth").to(device)
+#model = Modelx4(3, 3, 32, 10).to(device)
+#model = torch.load("model01_x4.pth").to(device)
+model = Modelx4(3, 3, 24, 10).to(device)
+model = torch.load("model03_1_g.pth").to(device)
 
 model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
 
 from PIL import Image
-filename = "test/full-00747.png"
+filename = "test/pride-parade.jpg"
 x = Image.open(filename).convert("RGB")
 #x = x.resize((x.size[0]//2, x.size[1]//2), Image.Resampling.BICUBIC)
 x = np.array(x, dtype=np.float32) / 255.0
