@@ -31,6 +31,7 @@
 *.pdf binary
 *.ai binary
 *.psd binary
+*.tza binary
 
 *.ipynb linguist-vendored
 
