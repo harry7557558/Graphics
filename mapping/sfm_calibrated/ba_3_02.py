@@ -20,18 +20,61 @@ def pixel2cam(p):
     return np.array([(p[0]-K[0,2])/K[0,0], (p[1]-K[1,2])/K[1,1]])
 
 
+def KDT_NMS(kps, descs=None, r=15, k_max=20):
+    """ https://stackoverflow.com/a/57390077
+    Use kd-tree to perform local non-maximum suppression of key-points
+    kps - key points obtained by one of openCVs 2d features detectors (SIFT, SURF, AKAZE etc..)
+    r - the radius of points to query for removal
+    k_max - maximum points retreived in single query
+    """
+    from scipy.spatial.kdtree import KDTree
+
+    # sort by score to keep highest score features in each locality
+    neg_responses = [-kp.response for kp in kps]
+    order = np.argsort(neg_responses)
+    kps = np.array(kps)[order].tolist()
+
+    # create kd-tree for quick NN queries
+    data = np.array([list(kp.pt) for kp in kps])
+    kd_tree = KDTree(data)
+
+    # perform NMS using kd-tree, by querying points by score order, 
+    # and removing neighbors from future queries
+    N = len(kps)
+    removed = set()
+    for i in range(N):
+        if i in removed:
+            continue
+
+        dist, inds = kd_tree.query(data[i,:],k=k_max,distance_upper_bound=r)
+        for j in inds: 
+            if j>i:
+                removed.add(j)
+
+    kp_filtered = [kp for i,kp in enumerate(kps) if i not in removed]
+    descs_filtered = None
+    if descs is not None:
+        descs = descs[order]
+        descs_filtered = np.array([desc for i,desc in enumerate(descs) if i not in removed])
+    print('Filtered',len(kp_filtered),'of',N)
+    return kp_filtered, descs_filtered
+
+
 def extract_features(imgs):
-    detector = cv.ORB_create(1000)
+    detector = cv.ORB_create(10000)
+    # detector = cv.SIFT_create(1000)
 
     features = []
     for img in imgs:
         feature = detector.detectAndCompute(img, None)
+        feature = KDT_NMS(feature[0], feature[1])
         features.append(feature)
 
     return features
 
 def match_feature_pair(feature1, feature2):
     matcher = cv.BFMatcher(cv.NORM_HAMMING)
+    # matcher = cv.BFMatcher(cv.NORM_L2)
 
     keypoints_1, descriptors_1 = feature1
     keypoints_2, descriptors_2 = feature2
@@ -73,15 +116,13 @@ def pose_estimation(keypoints_1, keypoints_2, matches):
 
     return R, t
 
-def triangulation(keypoints_1, keypoints_2, matches, R, t):
+def triangulation(keypoints_1, keypoints_2, matches, R1, t1, R2, t2):
 
     pts_1 = np.array([pixel2cam(keypoints_1[match.queryIdx].pt) for match in matches])
     pts_2 = np.array([pixel2cam(keypoints_2[match.trainIdx].pt) for match in matches])
 
-    T1 = np.array([[1, 0, 0, 0],
-                   [0, 1, 0, 0],
-                   [0, 0, 1, 0]], dtype=np.float32)
-    T2 = np.hstack((R, t))
+    T1 = np.hstack((R1, t1))
+    T2 = np.hstack((R2, t2))
 
     pts_4d_homogeneous = cv.triangulatePoints(T1, T2, pts_1.T, pts_2.T)
     pts_4d = pts_4d_homogeneous / np.tile(pts_4d_homogeneous[-1, :], (4, 1))
@@ -91,8 +132,8 @@ def triangulation(keypoints_1, keypoints_2, matches, R, t):
 
 
 def estimate_poses_points(features):
-    # relative pose estimation
-    # (R0,t0) = (I,0), tij are in proportion
+
+    # relative pose estimation between 0 and 1
     keypoints_0, descriptors_0 = features[0]
     keypoints_1, descriptors_1 = features[1]
     keypoints_2, descriptors_2 = features[2]
@@ -100,32 +141,36 @@ def estimate_poses_points(features):
     matches_02 = match_feature_pair(features[0], features[2])
     matches_12 = match_feature_pair(features[1], features[2])
     R01, t01 = pose_estimation(keypoints_0, keypoints_1, matches_01)
-    R02, t02 = pose_estimation(keypoints_0, keypoints_2, matches_02)
-    R12, t12 = pose_estimation(keypoints_1, keypoints_2, matches_12)
+    points_3d = triangulation(keypoints_0, keypoints_1, matches_01,
+                              np.eye(3), np.zeros((3,1)), R01, t01)
     # draw_matches(imgs[0], keypoints_0, imgs[1], keypoints_1, matches_01)
 
-    # s01 R12' R01' t01 + s12 R12' t12 = s02 R02' t02
-    # s01 e01 + s02 e02 + s12 e12 = 0
-    # minimize ||[e01 e02 e12] [s01 s02 s12]^T||^2 s.t. ||[s01 s02 s12]||^2 = 1
-    E = np.array([R12.T@R01.T@t01, -R02.T@t02, R12.T@t12]).reshape((3, 3)).T
-    U, S, V = np.linalg.svd(E)
-    s01, s02, s12 = V[np.argmin(S)] / np.mean(V[np.argmin(S)])
-    # s01, s02, s12 = 1, 2, 1
-    # print(S)
-    print('s:', s01, s02, s12)
-    # print((s01*R12@t01+s12*t12).T)
-    # print(s02*t02.T)
-    # __import__('sys').exit(0)
-    R0, t0 = np.eye(3), np.zeros((3,))
-    print(log_so3t(R01, t01))
-    R1, t1 = R01.T, -s01*R01.T@t01
-    R2, t2 = R02.T, -s02*R02.T@t02
-    # R2, t2 = R12.T@R01.T, R12.T@t1-s12*R12.T@t12
-    # print(R12@R1-R02)
-    # print((t2-t1)/s12-t12)
-    # print(s02*t02.T, (R12@t1+s12*t12).T)
-    # __import__('sys').exit(0)
-    poses = [(R0, t0), (R1, t1), (R2, t2)]
+    # find pose for 2
+    points_map = {}
+    for m, p in zip(matches_01, points_3d):
+        points_map[(0, m.queryIdx)] = p
+        points_map[(1, m.trainIdx)] = p
+    pts_2d, pts_3d = [], []
+    for m in matches_02:
+        key = (0, m.queryIdx)
+        if key in points_map:
+            pts_2d.append(keypoints_2[m.trainIdx].pt)
+            pts_3d.append(points_map[key])
+    for m in matches_12:
+        key = (1, m.queryIdx)
+        if key in points_map:
+            pts_2d.append(keypoints_2[m.trainIdx].pt)
+            pts_3d.append(points_map[key])
+    print(len(pts_2d), 'points for PnP')
+    _, r, t = cv.solvePnP(np.array(pts_3d), np.array(pts_2d), K, None,
+                          useExtrinsicGuess=True, rvec=cv.Rodrigues(R01)[0], tvec=1*t01,
+                          flags=cv.SOLVEPNP_ITERATIVE)
+    R, _ = cv.Rodrigues(r)
+    poses = [
+        (np.eye(3), np.zeros((3,1))),
+        (R01, t01),
+        (R, t)
+    ]
 
     keypoints_3d = []  # list of list of 3d keypoints
     keypoints_map = {}  # (fi, pi): keypoints_3d index
@@ -138,12 +183,9 @@ def estimate_poses_points(features):
         keypoints_1, descriptors_1 = features[f1]
         keypoints_2, descriptors_2 = features[f2]
         matches = [matches_01, matches_02, matches_12][fi]
-        R = [R01, R02, R12][fi]
-        t = [s01*t01, s02*t02, s12*t12][fi]
-        points_3d = triangulation(keypoints_1, keypoints_2, matches, R, t)
-        # points_3d /= [s01, s02, s12][fi]
-        R0, t0 = poses[f1]
-        # points_3d = (points_3d - t0.T) @ np.linalg.inv(R0).T
+        R1, t1 = poses[f1]
+        R2, t2 = poses[f2]
+        points_3d = triangulation(keypoints_1, keypoints_2, matches, R1, t1, R2, t2)
 
         # add keypoints
         keypoints_3d = []
@@ -238,9 +280,8 @@ def bundle_adjustment_01(poses, points, observations):
         points_proj = points_c[:,0:2] / points_c[:,2:3]
         # points_proj = (points_proj-K[0:2,2]) @ np.linalg.inv(K[:2,:2])
         residual = (points_proj-points_2d).flatten()
-        # residual = np.arcsinh(residual)
-        regularization = 0.0 * params[6*n_pose:]
-        return np.concatenate((residual, regularization))
+        return residual
+        # return np.arcsinh(residual)
 
     residuals = fun(params_init)
     print('rmse before:', np.mean(residuals**2)**0.5)
@@ -256,15 +297,12 @@ def bundle_adjustment_01(poses, points, observations):
 
     # jacobian sparsity
     sp = scipy.sparse.lil_matrix(
-        (2*n_obs+3*n_point, 6*n_pose+3*n_point), dtype=int)
+        (2*n_obs, 6*n_pose+3*n_point), dtype=int)
     for i, (pose_i, point_i, uv) in enumerate(observations):
         p0 = 6*pose_i
         sp[2*i:2*i+2, p0:p0+6] = 1  # to pose
         p0 = 6*n_pose+3*point_i
         sp[2*i:2*i+2, p0:p0+3] = 1  # to point
-    for i in range(n_point):
-        j0, i0 = 2*n_obs+3*i, 6*n_pose+3*i
-        sp[j0:j0+3, i0:i0+3] = 1
 
     # optimization
     res = scipy.optimize.least_squares(
@@ -325,16 +363,34 @@ def set_axes_equal(ax):
 
 
 if __name__ == "__main__":
+
+    # read images + extract features
     imgs = [
         cv.imread(f"img/{i}.jpg", cv.IMREAD_COLOR)
         for i in [0, 2, 4]
+        # for i in [0, 1, 2]
+        # for i in [1, 2, 3]
+        # for i in [0, 2, 5]
         # for i in [0, 3, 6]
+        # for i in [7, 8, 9]
+        # for i in [6, 8, 10]
     ]
     features = extract_features(imgs)
 
+    # pose estimation
     poses, points, observations = estimate_poses_points(features)
-    # poses, points = bundle_adjustment_01(poses, points, observations)
+    poses, points = bundle_adjustment_01(poses, points, observations)
 
+    # rgb colors for points
+    colors = np.zeros_like(points)
+    counts = np.zeros((len(colors), 1))
+    for pose_i, point_i, uv in observations:
+        x, y = map(int, uv)
+        colors[point_i] += imgs[pose_i][y, x]
+        counts[point_i] += 1
+    colors = colors / (255.0*counts)
+
+    # plot
     plt.figure(figsize=(8, 8))
     ax = plt.axes(projection='3d')
     sc = np.linalg.det(np.cov(points.T))**(1/6)
@@ -342,7 +398,7 @@ if __name__ == "__main__":
     sc = 1.0
     for R, t in poses:
         plot_camera(ax, R, t, sc)
-    plot_points(ax, points, 1000.0, None)
+    plot_points(ax, points, 1000.0, colors)
     set_axes_equal(ax)
     ax.set_xlabel('x')
     ax.set_ylabel('z')

@@ -4,8 +4,8 @@ SfM with images taken from the same calibrated camera.
  - `triangulation_01`: recover pose from essential matrix + triangulation, looks good
 
 `ba_3`: give 3 frames, estimate relative poses and feature point positions
- - `ba_3_01`: compute pairwise relative pose, minimize relative translation constraint; fail, translation becomes negative
- - `ba_3_02`: two pairwise + PnP?
+ - `ba_3_01`: estimate pairwise relative pose, minimize relative translation constraint; fail, translation becomes negative
+ - `ba_3_02`: estimate relative pose for two frames, find pose for third frame using PnP; working
 
 `ba_n`: give $n\ge3$ frames, estimate relative poses and feature point positions
  - `ba_n_01`: fail, optimization becomes unstable
