@@ -27,7 +27,7 @@ def KDT_NMS(kps, descs=None, r=15, k_max=20):
     r - the radius of points to query for removal
     k_max - maximum points retreived in single query
     """
-    from scipy.spatial.kdtree import KDTree
+    from scipy.spatial import KDTree
 
     # sort by score to keep highest score features in each locality
     neg_responses = [-kp.response for kp in kps]
@@ -188,9 +188,6 @@ def estimate_poses_points(features):
         points_3d = triangulation(keypoints_1, keypoints_2, matches, R1, t1, R2, t2)
 
         # add keypoints
-        keypoints_3d = []
-        keypoints_map = {}
-        observations = []
         num_new_points = 0
         for match, point in zip(matches, points_3d):
             i1, i2 = match.queryIdx, match.trainIdx
@@ -280,12 +277,14 @@ def bundle_adjustment_01(poses, points, observations):
         points_proj = points_c[:,0:2] / points_c[:,2:3]
         # points_proj = (points_proj-K[0:2,2]) @ np.linalg.inv(K[:2,:2])
         residual = (points_proj-points_2d).flatten()
-        return residual
+        # return residual
         # return np.arcsinh(residual)
+        delta = 2
+        qr_residual = np.sign(residual) * np.sqrt(delta*np.fmax(2.0*np.abs(residual)-delta, 0.0))
+        return residual + (qr_residual-residual) * (np.abs(residual) > delta)
 
     residuals = fun(params_init)
     print('rmse before:', np.mean(residuals**2)**0.5)
-    # plt.plot(fun(params_init), '.')
     # plt.plot(abs(fun(params_init)), '.')
     # plt.yscale('log')
     # plt.show()
@@ -310,7 +309,8 @@ def bundle_adjustment_01(poses, points, observations):
         verbose=0, x_scale='jac', ftol=1e-4, method='trf')
     print('(nfev, njev):', res.nfev, res.njev)
     print('rmse after:', np.mean(fun(res.x)**2)**0.5)
-    # plt.plot(fun(res.x), '.')
+    # plt.plot(abs(fun(res.x)), '.')
+    # plt.yscale('log')
     # plt.show()
     # __import__('sys').exit(0)
     
@@ -367,8 +367,8 @@ if __name__ == "__main__":
     # read images + extract features
     imgs = [
         cv.imread(f"img/{i}.jpg", cv.IMREAD_COLOR)
-        for i in [0, 2, 4]
-        # for i in [0, 1, 2]
+        for i in [0, 1, 2]
+        # for i in [0, 2, 4]
         # for i in [1, 2, 3]
         # for i in [0, 2, 5]
         # for i in [0, 3, 6]
@@ -395,9 +395,8 @@ if __name__ == "__main__":
     ax = plt.axes(projection='3d')
     sc = np.linalg.det(np.cov(points.T))**(1/6)
     print('sc:', sc)
-    sc = 1.0
     for R, t in poses:
-        plot_camera(ax, R, t, sc)
+        plot_camera(ax, R, t, 0.5*sc)
     plot_points(ax, points, 1000.0, colors)
     set_axes_equal(ax)
     ax.set_xlabel('x')

@@ -1,4 +1,4 @@
-SfM with images taken from the same calibrated camera.
+SfM with images taken from the same calibrated camera, on ordered video frames.
 
 `triangulation`: give 2 frames, estimate relative pose and feature point positions
  - `triangulation_01`: recover pose from essential matrix + triangulation, looks good
@@ -9,3 +9,4 @@ SfM with images taken from the same calibrated camera.
 
 `ba_n`: give $n\ge3$ frames, estimate relative poses and feature point positions
  - `ba_n_01`: fail, optimization becomes unstable
+ - `ba_n_02`: $O(N^2)$ pairwise feature matching, choose two frames for initial reconstruction, incrementally add more frames; largely working but fails on some scenes
