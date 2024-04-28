@@ -10,3 +10,4 @@ SfM with images taken from the same calibrated camera, on ordered video frames.
 `ba_n`: give $n\ge3$ frames, estimate relative poses and feature point positions
  - `ba_n_01`: fail, optimization becomes unstable
  - `ba_n_02`: $O(N^2)$ pairwise feature matching, choose two frames for initial reconstruction, incrementally add more frames; largely working but fails on some scenes
+ - `ba_n_03`: try autodiff BA Jacobian using Jax, doesn't make faster
