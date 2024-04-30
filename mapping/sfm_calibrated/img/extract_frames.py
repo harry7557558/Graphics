@@ -4,14 +4,19 @@ import os
 
 
 video_filename = "/home/harry7557558/20240423_132951.mp4"
+video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20240428_174233.mp4"
+video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230624_201539.mp4"
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()
 
 
+# pit: 50, 40, 11 frames
+# arena: 20, 15, 40 frames
+# float:
 fi = 0
-skip = 50
-keep = 40
+skip = 12
+keep = 8
 
 iqms = []
 frames_buf = []
@@ -51,7 +56,10 @@ while cap.isOpened():
 
         frame = cv2.resize(frame[2], (960, 540))
 
-        cv2.imwrite('{:d}.jpg'.format(fi//skip-1), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        cv2.imwrite('float_{:d}.jpg'.format(fi//skip-1), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+    if len(frames) >= 30:
+        break
 
 cap.release()
 
