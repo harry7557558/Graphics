@@ -13,8 +13,9 @@ from mpl_toolkits.mplot3d import Axes3D
 IMG_SHAPE = np.array([960.0, 540.0])
 
 # initial guess
-K = np.array([[800., 0., 480.],
-              [0., 800., 270.],
+F = 800.
+K = np.array([[F, 0., IMG_SHAPE[0]/2],
+              [0., F, IMG_SHAPE[1]/2],
               [0., 0., 1.]])
 
 
@@ -136,6 +137,8 @@ def log_so3t(R, t):
     phi, _ = cv.Rodrigues(R)
     return np.concatenate((phi.flatten(), t.flatten()))
 
+OUTLIER_Z = 8
+
 def bundle_adjustment_01(camera_params, poses, points, observations):
     """points and poses only"""
 
@@ -193,11 +196,15 @@ def bundle_adjustment_01(camera_params, poses, points, observations):
     # plt.show()
     # __import__('sys').exit(0)
 
+    residual = np.abs(res.fun.reshape((-1, 2)))
+    mask = residual > OUTLIER_Z*np.mean(residual)
+    outliers = np.where(mask[:,0] | mask[:,1])
+
     params = res.x
     so3ts = params[:6*n_pose].reshape((n_pose, 6))
     poses = [exp_so3t(so3t) for so3t in so3ts]
     points_3d = params[6*n_pose:].reshape((n_point, 3))
-    return camera_params, poses, points_3d
+    return camera_params, poses, points_3d, outliers
 
 def bundle_adjustment_02(camera_params, poses, points, observations):
     """points + poses + camera intrinsics (f,cx,cy)"""
@@ -259,17 +266,24 @@ def bundle_adjustment_02(camera_params, poses, points, observations):
         verbose=0, x_scale='jac', ftol=1e-4, method='trf')
     print('(nfev, njev):', res.nfev, res.njev)
     print('rmse after:', np.mean(fun(res.x)**2)**0.5)
-    # plt.plot(abs(fun(res.x)), '.')
+    # plt.plot(abs(res.fun), '.')
+    # plt.hist(abs(res.fun), bins=20)
     # plt.yscale('log')
     # plt.show()
     # __import__('sys').exit(0)
+
+    # residual = np.linalg.norm(res.fun.reshape((-1,2)), axis=1)
+    # outliers = np.where(residual > OUTLIER_Z*np.mean(residual))
+    residual = np.abs(res.fun.reshape((-1, 2)))
+    mask = residual > OUTLIER_Z*np.mean(residual)
+    outliers = np.where(mask[:,0] | mask[:,1])
 
     params = res.x
     camera_params = params[:3]
     so3ts = params[3:3+6*n_pose].reshape((n_pose, 6))
     poses = [exp_so3t(so3t) for so3t in so3ts]
     points_3d = params[3+6*n_pose:].reshape((n_point, 3))
-    return camera_params, poses, points_3d
+    return camera_params, poses, points_3d, outliers
 
 def bundle_adjustment_03(camera_params, poses, points, observations):
     """points + poses + camera intrinsics (f,cx,cy,*dist_coeffs)"""
@@ -341,14 +355,16 @@ def bundle_adjustment_03(camera_params, poses, points, observations):
     # plt.show()
     # __import__('sys').exit(0)
 
+    residual = np.abs(res.fun.reshape((-1, 2)))
+    mask = residual > OUTLIER_Z*np.mean(residual)
+    outliers = np.where(mask[:,0] | mask[:,1])
+
     params = res.x
     camera_params = params[:n_int]
     so3ts = params[n_int:n_int+6*n_pose].reshape((n_pose, 6))
     poses = [exp_so3t(so3t) for so3t in so3ts]
     points_3d = params[n_int+6*n_pose:].reshape((n_point, 3))
-    return camera_params, poses, points_3d
-
-bundle_adjustment = bundle_adjustment_02
+    return camera_params, poses, points_3d, outliers
 
 
 
@@ -365,6 +381,7 @@ all_observations = []  # (fi, pi, uv)
 
 def bundle_adjustment_update(frames=None):
     global camera_params
+    global all_observations
 
     if frames is None:
         frames = [i for i in range(len(all_poses)) if all_poses[i] is not None]
@@ -380,12 +397,13 @@ def bundle_adjustment_update(frames=None):
 
     # observations and points
     observations = []
+    observations_map = []
 
     # points
     points = []
     points_map = []
     points_invmap = {}
-    for (fi, pi, uv) in all_observations:
+    for i, (fi, pi, uv) in enumerate(all_observations):
         if fi not in poses_invmap:
             continue
         if pi not in points_invmap:
@@ -393,10 +411,13 @@ def bundle_adjustment_update(frames=None):
             points.append(all_points[pi])
             points_map.append(pi)
         observations.append((poses_invmap[fi], points_invmap[pi], uv))
+        observations_map.append(i)
 
     # run bundle adjustment
-    camera_params, poses_updated, points_updated = bundle_adjustment(
+    camera_params, poses_updated, points_updated, outliers = bundle_adjustment(
         camera_params, poses, np.array(points), observations)
+    if len(outliers[0]) > 0:
+        print(f"{len(outliers[0])}/{len(observations)} outliers")
 
     # to-do: relative pose matching using SVD
 
@@ -405,6 +426,8 @@ def bundle_adjustment_update(frames=None):
         all_poses[i] = (R, t.reshape((3,1)))
     for i, point in zip(points_map, points_updated):
         all_points[i] = point
+    outliers = set(*outliers)
+    all_observations = [all_observations[i] for i in range(len(all_observations)) if i not in outliers]
 
 
 def add_frame_init(features):
@@ -560,7 +583,7 @@ def plot_points(ax, points_3d, colors, cull=None):
     if colors is None:
         ax.scatter(points[:,0], points[:,2], points[:,1], zorder=4)
         return
-    ax.scatter(points[:,0], points[:,2], points[:,1], c=colors, zorder=4)
+    ax.scatter(points[:,0], points[:,2], points[:,1], c=colors, marker='.', zorder=4)
 
 def plot_camera(ax, R, t, sc=1.0):
     points = np.array([
@@ -615,10 +638,13 @@ if __name__ == "__main__":
     print()
 
     # reconstruction
-    for feature in features:
-        print("adding new frame")
+    bundle_adjustment = bundle_adjustment_02
+    for i, feature in enumerate(features):
+        print(f"adding new frame ({i}/{len(features)})")
         add_frame(feature)
         print()
+        if i >= 10:
+            bundle_adjustment = bundle_adjustment_02
 
     print("camera params:", camera_params)
 
