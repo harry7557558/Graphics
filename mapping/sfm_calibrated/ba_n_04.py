@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import scipy.sparse
 import scipy.optimize
+from scipy.spatial import KDTree
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -20,14 +21,13 @@ K = np.array([[F, 0., IMG_SHAPE[0]/2],
 
 
 
-def filter_features(kps, descs=None, r=15, k_max=20):
+def filter_features(kps, descs=None, r=20, k_max=20):
     """ https://stackoverflow.com/a/57390077
     Use kd-tree to perform local non-maximum suppression of key-points
     kps - key points obtained by one of openCVs 2d features detectors (SIFT, SURF, AKAZE etc..)
     r - the radius of points to query for removal
     k_max - maximum points retreived in single query
     """
-    from scipy.spatial import KDTree
 
     # sort by score to keep highest score features in each locality
     neg_responses = [-kp.response for kp in kps]
@@ -65,29 +65,65 @@ def extract_features(imgs):
     features = []
     for img in imgs:
         feature = detector.detectAndCompute(img, None)
-        feature = filter_features(feature[0], feature[1])
-        features.append(feature)
+        keypoints, descriptors = filter_features(feature[0], feature[1])
+        features.append((img, keypoints, descriptors))
 
     return features
 
-def match_feature_pair(feature1, feature2):
-    matcher = cv.BFMatcher(cv.NORM_HAMMING)
-    # matcher = cv.BFMatcher(cv.NORM_L2)
+def match_feature_pair(frame1, frame2):
 
-    keypoints_1, descriptors_1 = feature1
-    keypoints_2, descriptors_2 = feature2
+    img_1, keypoints_1, descriptors_1 = frame1
+    img_2, keypoints_2, descriptors_2 = frame2
 
-    matches = matcher.match(descriptors_1, descriptors_2)
+    if False:
+        matcher = cv.BFMatcher(cv.NORM_HAMMING)
+        # matcher = cv.BFMatcher(cv.NORM_L2)
+        matches = matcher.match(descriptors_1, descriptors_2)
+        # plt.figure()
+        # plt.hist([match.distance for match in matches])
+        # plt.show()
+        good_matches = []
+        min_dist = min([match.distance for match in matches])
+        for match in matches:
+            if match.distance <= max(2 * min_dist, 30):
+                good_matches.append(match)
+        matches = good_matches
 
-    good_matches = []
-    min_dist = min([match.distance for match in matches])
-    for match in matches:
-        if match.distance <= max(2 * min_dist, 30):
-            good_matches.append(match)
+    else:
+        kp1_flat = np.array([kp.pt for kp in keypoints_1], dtype=np.float32)
+        gray_1 = cv.cvtColor(img_1, cv.COLOR_BGR2GRAY)
+        gray_2 = cv.cvtColor(img_2, cv.COLOR_BGR2GRAY)
+        p2, st, err = cv.calcOpticalFlowPyrLK(gray_1, gray_2, kp1_flat, None)
+
+        kp2_flat = np.array([kp.pt for kp in keypoints_2], dtype=np.float32)
+        tree = KDTree(kp2_flat)
+        matches = []
+        for i, (p, st) in enumerate(zip(p2, st)):
+            dists, js = tree.query(p, k=2)
+            for dist, j in zip(dists, js):
+                xor_result = np.bitwise_xor(descriptors_1[i], descriptors_2[j])
+                dist = np.unpackbits(xor_result).sum()
+                matches.append((i, j, dist))
+        # plt.figure()
+        # plt.hist([match[2] for match in matches])
+        # plt.show()
+
+        good_matches = []
+        dists_sorted = sorted([match[2] for match in matches])
+        dist_th = dists_sorted[max(len(matches)//20, 10)]
+        for (i, j, dist) in matches:
+            if dist <= max(dist_th, 2):
+                m = cv.DMatch(i, j, np.linalg.norm(kp1_flat[i]-kp2_flat[j]))
+                good_matches.append(m)
+        matches = good_matches        
+
+    # draw_matches(frame1, frame2, matches)
     
-    return good_matches
+    return matches
 
-def draw_matches(img_1, keypoints_1, img_2, keypoints_2, matches):
+def draw_matches(frame1, frame2, matches):
+    img_1, keypoints_1, descriptors_1 = frame1
+    img_2, keypoints_2, descriptors_2 = frame2
     img_matches = np.empty((img_1.shape[0], img_1.shape[1], 3), dtype=np.uint8)
     cv.drawKeypoints(img_1, keypoints_1, img_matches)
     for match in matches:
@@ -373,8 +409,9 @@ camera_params = None  # depends on BA function
 all_frames = []  # (keypoints, descriptor)
 all_poses = []  # (R, t) | None
 all_matches = {}  # (f1, f2): matches
-all_keypoints = {}  # (f, i) : i_3d
-all_points = []  # 3d points
+all_keypoints = []  # [f][i]: index of 3d point
+all_points_indices = []  # indices of 3d points
+all_points, all_points_n, all_points_cov = [], [], []  # 3d points
 all_observations = []  # (fi, pi, uv)
 
 
@@ -427,23 +464,30 @@ def bundle_adjustment_update(frames=None):
     for i, point in zip(points_map, points_updated):
         all_points[i] = point
     outliers = set(*outliers)
-    all_observations = [all_observations[i] for i in range(len(all_observations)) if i not in outliers]
+    all_observations_new = []
+    for i, obs in enumerate(all_observations):
+        if i in outliers:
+            fi, pi, uv = obs
+            all_points_n[pi] -= 1
+        else:
+            all_observations_new.append(obs)
+    all_observations = all_observations_new
 
 
-def add_frame_init(features):
+def add_frame_init(frame):
     global camera_params
     global all_points
 
     N = len(all_poses)
-    keypoints, descriptors = features
+    img, keypoints, descriptors = frame
 
     # try matching until success
     success_pair = None
     for i, features_0 in enumerate(all_frames):
         if i >= N:
             break
-        keypoints_0, descriptors_0 = features_0
-        matches = match_feature_pair(features_0, features)
+        img_0, keypoints_0, descriptors_0 = features_0
+        matches = match_feature_pair(features_0, frame)
         all_matches[(i, N)] = matches
         if len(matches) < 9:
             continue
@@ -469,33 +513,42 @@ def add_frame_init(features):
         all_points.append(p3d)
         all_observations.append((i, pi, p0))
         all_observations.append((N, pi, p))
-        all_keypoints[(i, matches[j].queryIdx)] = pi
-        all_keypoints[(N, matches[j].trainIdx)] = pi
+        all_points_n.append(2)
+        all_keypoints[i][matches[j].queryIdx] = pi
+        all_keypoints[N][matches[j].trainIdx] = pi
+    print(len(all_points), 'initial points')
 
     return True
 
-def add_frame_incremental(features):
+def add_frame_incremental(frame):
 
     N = len(all_poses)
-    keypoints, descriptors = features
+    img, keypoints, descriptors = frame
 
-    success_pair = None
-    pts_3d, pts_2d = [], []
-    for i in range(len(all_poses)-1, -1, -1):
+    SW = 4  # sliding window
+    min_i = max(len(all_poses)-SW,0)
+
+    # feature matching
+    for i in range(len(all_poses)-1, min_i-1, -1):
         if all_poses[i] is None:
             continue
-        features_0 = all_frames[i]
-        keypoints_0 = features_0[0]
-        matches = match_feature_pair(features_0, features)
-        all_matches[(i, N)] = matches
+        all_matches[(i, N)] = match_feature_pair(all_frames[i], frame)
+
+    # find new pose using PnP
+    success_pair = None
+    pts_3d, pts_2d = [], []
+    for i in range(len(all_poses)-1, min_i-1, -1):
+        if all_poses[i] is None:
+            continue
+        img_0, keypoints_0, descriptors_0 = all_frames[i]
+        matches = all_matches[(i, N)]
 
         # PnP points
         for m in matches:
-            key0 = (i, m.queryIdx)
-            if key0 not in all_keypoints:
+            pi = all_keypoints[i][m.queryIdx]
+            if pi == -1:
                 continue
-            pi = all_keypoints[key0]
-            all_keypoints[(N,m.trainIdx)] = pi
+            all_keypoints[N][m.trainIdx] = pi
             pts_3d.append(all_points[pi])
             pts_2d.append(keypoints[m.trainIdx].pt)
         if len(pts_3d) < 4:
@@ -531,36 +584,57 @@ def add_frame_incremental(features):
 
     # add data to global map
     all_poses.append((cv.Rodrigues(r)[0], t))
-    for j, (p0, p, p3d) in enumerate(zip(points_0, points, points_3d)):
+    num_new_points = 0
+    for j, (p0, p, p3d, idxi, idxN) in enumerate(zip(
+            points_0, points, points_3d,
+            [m.queryIdx for m in matches], [m.trainIdx for m in matches]
+        )):
         if not p3d[2] > 0:
             continue
-        key0 = (i, matches[j].queryIdx)
-        if key0 in all_keypoints:
-            pi = all_keypoints[key0]
-        else:
+        pi = all_keypoints[i][matches[j].queryIdx]
+        # find previous keypoint matches, slow and doesn't improve much
+        if pi == -1 and False:
+            for i0 in range(i-1, min_i-1, -1):
+                if (i0, i) not in all_matches:
+                    continue
+                matches_i = all_matches[(i0, i)]
+                for m in matches_i:
+                    if m.trainIdx == idxi:
+                        pi = all_keypoints[i0][m.queryIdx]
+                        if pi != -1:
+                            break
+                if pi != -1:
+                    break
+        # add keypoint
+        if pi == -1:
             pi = len(all_points)
             all_points.append(p3d)
-            all_keypoints[key0] = pi
+            all_keypoints[i][matches[j].queryIdx] = pi
             all_observations.append((i, pi, p0))
-        all_keypoints[(N, matches[j].trainIdx)] = pi
+            all_points_n.append(1)
+            num_new_points += 1
+        all_keypoints[N][matches[j].trainIdx] = pi
         all_observations.append((N, pi, p))
+        all_points_n[pi] += 1
+    print(num_new_points, 'new points added')
     # to-do: add missed points from previously-matched frames to shared points
     #  - create an indice map between all_keypoints and all_points?
 
     return True
 
-def add_frame(features):
-    all_frames.append(features)
+def add_frame(frame):
+    all_frames.append(frame)
+    all_keypoints.append([-1 for _ in range(len(frame[1]))])
     if len(all_frames) < 2:
         all_poses.append(None)
         return
     
     if all_poses.count(None) == len(all_poses):
-        status = add_frame_init(features)
+        status = add_frame_init(frame)
         print("initialization success:", status)
         return
     
-    status = add_frame_incremental(features)
+    status = add_frame_incremental(frame)
     print("add frame success:", status)
     if status:
         print("running ba")
@@ -626,16 +700,25 @@ if __name__ == "__main__":
         cv.imread(f"img/arena_{i}.jpg", cv.IMREAD_COLOR)
         for i in range(0, 14, 1)
         # for i in range(0, 20, 1)
+        # for i in range(8, 13, 1)
         # for i in range(30, 40, 1)
         # cv.imread(f"img/float_{i}.jpg", cv.IMREAD_COLOR)
         # for i in range(0, 12, 1)
-        # for i in range(10, 20, 1)
+        # for i in range(11, 20, 1)
+        # for i in range(0, 25, 1)
+        # cv.imread(f"img/temp_{i}.jpg", cv.IMREAD_COLOR)
+        # for i in range(80, 100, 1)
     ]
     time0 = perf_counter()
     features = extract_features(imgs)
     time1 = perf_counter()
     print("features extracted in {:.1f} ms".format(1000*(time1-time0)))
     print()
+
+    if False:
+        all_frames = features
+        match_feature_pair(features[0], features[1])
+        __import__('sys').exit(0)
 
     # reconstruction
     bundle_adjustment = bundle_adjustment_02
@@ -649,6 +732,7 @@ if __name__ == "__main__":
     print("camera params:", camera_params)
 
     points = np.array(all_points)
+    # print(all_points_n, np.mean(all_points_n))
 
     # rgb colors for points
     colors = np.zeros_like(points)
@@ -657,7 +741,9 @@ if __name__ == "__main__":
         x, y = map(int, uv)
         colors[point_i] += imgs[pose_i][y, x]
         counts[point_i] += 1
-    colors = colors / (255.0*counts)
+    nonzero_i = np.where(counts.flatten() > 0)
+    colors = colors[nonzero_i] / (255.0*counts[nonzero_i])
+    points = points[nonzero_i]
 
     # plot
     plt.figure(figsize=(8, 8))
@@ -665,7 +751,7 @@ if __name__ == "__main__":
     ax.computed_zorder = False
     sc = np.linalg.det(np.cov(points.T))**(1/6)
     print('sc:', sc)
-    sc *= 0.2 * np.sqrt(K[0,0]*K[1,1]) / np.sqrt(np.prod(IMG_SHAPE))
+    sc *= 0.2 * np.sqrt(K[0,0]*K[1,1]) / np.sqrt(np.prod(IMG_SHAPE)) * (10/len(all_poses))**0.5
     for pose in all_poses:
         if pose is not None:
             plot_camera(ax, *pose, sc)

@@ -13,10 +13,10 @@ assert cap.isOpened()
 
 # pit: 50, 40, 11 frames
 # arena: 20, 15, 40 frames
-# float:
+# float: 12, 8, 30 frames
 fi = 0
-skip = 12
-keep = 8
+skip = 5
+keep = 4
 
 iqms = []
 frames_buf = []
@@ -56,9 +56,9 @@ while cap.isOpened():
 
         frame = cv2.resize(frame[2], (960, 540))
 
-        cv2.imwrite('float_{:d}.jpg'.format(fi//skip-1), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        cv2.imwrite('temp_{:d}.jpg'.format(fi//skip-1), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
 
-    if len(frames) >= 30:
+    if len(frames) >= 100:
         break
 
 cap.release()
