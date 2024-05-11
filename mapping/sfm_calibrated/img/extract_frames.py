@@ -6,6 +6,8 @@ import os
 video_filename = "/home/harry7557558/20240423_132951.mp4"
 video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20240428_174233.mp4"
 video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230624_201539.mp4"
+video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230626_204354.mp4"
+video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230903_162404.mp4"
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()
@@ -56,9 +58,11 @@ while cap.isOpened():
 
         frame = cv2.resize(frame[2], (960, 540))
 
-        cv2.imwrite('temp_{:d}.jpg'.format(fi//skip-1), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        filename = 'temp_{:d}.jpg'.format(fi//skip-1)
+        cv2.imwrite(filename, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        print(filename)
 
-    if len(frames) >= 100:
+    if len(frames) >= 200:
         break
 
 cap.release()
