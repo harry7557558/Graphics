@@ -3,11 +3,40 @@ import numpy as np
 import os
 
 
-video_filename = "/home/harry7557558/20240423_132951.mp4"
-video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20240428_174233.mp4"
-video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230624_201539.mp4"
-video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230626_204354.mp4"
-video_filename = "/media/harry7557558/OS/Archive/sfm_videos/20230903_162404.mp4"
+video_filename = [
+# [0] car (easy one)
+"/media/harry7557558/OS/Archive/sfm_videos/20240110_135513.mp4",
+# [1] arena 1
+"/media/harry7557558/OS/Archive/sfm_videos/20240428_174233.mp4",
+# [2] pride float, evening
+"/media/harry7557558/OS/Archive/sfm_videos/20230624_201539.mp4",
+# [3] pride float, front of GB
+"/media/harry7557558/OS/Archive/sfm_videos/20230626_204354.mp4",
+# [4] dye tank
+"/media/harry7557558/OS/Archive/sfm_videos/20230903_162404.mp4",
+# [5] pride float, morning (with abrupt camera motion)
+"/media/harry7557558/OS/Archive/sfm_videos/20230625_072208.mp4",
+# [6] desk with flowers and stickers (with poor lighting)
+"/media/harry7557558/OS/Archive/sfm_videos/20230713_180332.mp4",
+# [7] tree stump (easy one)
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_134050.mp4",
+# [8] magazines on couch (with repetitive/periodic patterns)
+"/media/harry7557558/OS/Archive/sfm_videos/20240217_191644.mp4",
+# [9] wood bridge on table (with reflection/highlight)
+"/media/harry7557558/OS/Archive/sfm_videos/20231206_210138.mp4",
+# [10] pit 1 (starts with pure rotation)
+"/media/harry7557558/OS/Archive/sfm_videos/20230618_230143.mp4",
+# [11] pit 2 (pure rotation + poor lighting)
+"/media/harry7557558/OS/Archive/sfm_videos/20230623_232927.mp4",
+# [12] arena 2 (abrupt motion + poor lighting + moving shadow)
+"/media/harry7557558/OS/Archive/sfm_videos/20230726_180931.mp4",
+# [13] wood castle (poor lighting)
+"/media/harry7557558/OS/Archive/sfm_videos/20231121_213351.mp4",
+# [14] breadboard (poor lighting + extreme low focal length)
+"/media/harry7557558/OS/Archive/sfm_videos/20230925_161429.mp4",
+# [15] building
+"/media/harry7557558/OS/Archive/sfm_videos/20230627_174847.mp4",
+][0]
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()
