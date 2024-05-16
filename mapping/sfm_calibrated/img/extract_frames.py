@@ -8,7 +8,7 @@ video_filename = [
 "/media/harry7557558/OS/Archive/sfm_videos/20240110_135513.mp4",
 # [1] arena 1
 "/media/harry7557558/OS/Archive/sfm_videos/20240428_174233.mp4",
-# [2] pride float, evening
+# [2] pride float, afternoon
 "/media/harry7557558/OS/Archive/sfm_videos/20230624_201539.mp4",
 # [3] pride float, front of GB
 "/media/harry7557558/OS/Archive/sfm_videos/20230626_204354.mp4",
@@ -36,7 +36,7 @@ video_filename = [
 "/media/harry7557558/OS/Archive/sfm_videos/20230925_161429.mp4",
 # [15] building
 "/media/harry7557558/OS/Archive/sfm_videos/20230627_174847.mp4",
-][0]
+][3]
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()

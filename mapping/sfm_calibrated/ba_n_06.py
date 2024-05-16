@@ -255,7 +255,7 @@ import ba_solver.ba_solver as ba_solver
 
 BA_OUTLIER_Z = 8
 BA_TH_RMSE = np.prod(IMG_SHAPE)**0.5 / 1000
-BA_SW = 20
+BA_SW = 30
 
 def bundle_adjustment_3(camera_params, poses, points, observations, force=True):
     """points + poses + camera intrinsics (f,cx,cy)"""
@@ -390,7 +390,8 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations, force=
     old_points = np.array(points)
     residuals = ba_solver.solve_ba_3(
         camera_params, poses, points,
-        poses_i, points_i, points_2d
+        poses_i, points_i, points_2d,
+        force
     )
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
@@ -412,9 +413,7 @@ def bundle_adjustment_8(camera_params, poses, points, observations, force=True):
     # params
     n_int = 7  # number of camera intrinsics, 3+len(dist_coeffs)
     if camera_params is None:
-        f0 = np.sqrt(K[0,0]*K[1,1])
-        cx0, cy0 = K[:2,2]
-        camera_params = np.array([f0, cx0, cy0])
+        camera_params = np.array([K[0,0], K[1,1], K[0,2], K[1,2]])
     if len(camera_params) < n_int:
         camera_params = np.concatenate((camera_params[:3], [0]*(n_int-3)))
     n_pose = len(poses)
@@ -549,7 +548,8 @@ def bundle_adjustment_ceres_8(camera_params, poses, points, observations, force=
     old_points = np.array(points)
     residuals = ba_solver.solve_ba_8(
         camera_params, poses, points,
-        poses_i, points_i, points_2d
+        poses_i, points_i, points_2d,
+        force
     )
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
@@ -693,6 +693,13 @@ def add_frame_init(frame):
         all_poses.append(None)
         return False
 
+    # outlier rejection
+    points_proj = points3d[:,:2] @ K[:2,:2] / points3d[:,2:] + K[:2,2:].T
+    residuals = points_proj-points0
+    cutoff = 3 * 1.414 * np.std(residuals)
+    outlier_mask = np.linalg.norm(residuals, axis=1) > cutoff
+    feasible_mask &= ~outlier_mask
+    
     # add data to global map
     all_poses[fi] = (np.eye(3), np.zeros((3,1)))
     all_poses.append((R, t))
@@ -746,16 +753,18 @@ def add_frame_incremental(frame):
             elif i+di < N and all_poses[i+di] is not None:
                 R0, t0 = all_poses[i+di]
                 break
-        _, r, t = cv.solvePnP(np.array(pts_3d), np.array(pts_2d), K, None,
-                            useExtrinsicGuess=True, rvec=cv.Rodrigues(R0)[0], tvec=1.0*t0,
-                            flags=cv.SOLVEPNP_ITERATIVE)
+        _, r, t, inliners = cv.solvePnPRansac(
+        # _, r, t = cv.solvePnP(
+            np.array(pts_3d), np.array(pts_2d), K, None,
+            useExtrinsicGuess=True, rvec=cv.Rodrigues(R0)[0], tvec=1.0*t0,
+            flags=cv.SOLVEPNP_ITERATIVE)
         R, _ = cv.Rodrigues(r)
         points_0 = [keypoints_0[ki0].pt for (pi, ki0, ki) in matches]
         points = [keypoints[ki].pt for (pi, ki0, ki) in matches]
         try:
             points_3d = triangulation(points_0, points, *all_poses[i], R, t)
-        except cv.error:
-            print(cv.error)
+        except cv.error as e:
+            print(e.err)
             continue
         points_3d_r = points_3d @ R.T + t.T
         valid_mask = (points_3d_r[:,2] > 0)
@@ -770,12 +779,24 @@ def add_frame_incremental(frame):
         all_poses.append(None)
         return False
 
+    # outlier rejection
+    points_r = points_3d @ R.T + t.T
+    points_proj = points_r[:,:2] @ K[:2,:2] / points_r[:,2:] + K[:2,2:].T
+    residuals = points_proj-points
+    cutoff = 3 * 1.414 * np.std(residuals)
+    outlier_mask = np.linalg.norm(residuals, axis=1) > cutoff
+    # plt.figure()
+    # plt.plot(np.linalg.norm(residuals, axis=1), '.')
+    # plt.axhline(cutoff, 0, len(residuals))
+    # plt.show()
+    valid_mask &= ~outlier_mask
+    
     # add data to global map
     all_poses.append((R, t))
     num_new_points = 0
-    for j, (p0, p, p3d, (pi, ki0, ki)) in enumerate(zip(
-            points_0, points, points_3d, matches)):
-        if not p3d[2] > 0:
+    for j, (p0, p, p3d, (pi, ki0, ki), valid) in enumerate(zip(
+            points_0, points, points_3d, matches, valid_mask)):
+        if not valid:
             continue
         assert pi == all_keypoints[i][ki0]
         assert pi == all_keypoints[N][ki]
@@ -847,7 +868,7 @@ def add_frame(img, previous_ba=[-1]):
     status = add_frame_incremental(frame)
     print("add frame success:", status)
     if status:
-        f_start = max(min(previous_ba[0]-BA_SW//2, N-BA_SW), 0)
+        f_start = max(min(previous_ba[0]-BA_SW//2, N-BA_SW+1), 0)
         bundle_adjustment_update(frames=range(f_start, N+1), fix_start=True)
         previous_ba[0] = N
 
@@ -1030,7 +1051,7 @@ if __name__ == "__main__":
     time_start = perf_counter()
 
     # reconstruction
-    bundle_adjustment = bundle_adjustment_3
+    bundle_adjustment = bundle_adjustment_ceres_3
     # bundle_adjustment = bundle_adjustment_ceres
     for i, img in enumerate(imgs):
         print(f"adding new frame ({i}/{len(imgs)})")
@@ -1038,7 +1059,7 @@ if __name__ == "__main__":
         print()
         if i >= max(4, BA_SW//2):
             bundle_adjustment = bundle_adjustment_ceres_3
-    bundle_adjustment = bundle_adjustment_ceres_3
+    # bundle_adjustment = bundle_adjustment_ceres_8
     bundle_adjustment_update(fix_start=False)
     print()
 
@@ -1055,12 +1076,14 @@ if __name__ == "__main__":
     for i, p in enumerate(all_points):
         if p is None and i in nonzero_i:
             nonzero_i.remove(i)
-    print(counts.flatten().tolist())
+    # print(counts.flatten().tolist())
+    print("ba density:", np.mean(counts))
     nonzero_i = sorted(nonzero_i)
     colors = colors[nonzero_i] / (255.0*counts[nonzero_i])
     points = np.array([all_points[i] for i in nonzero_i])
     assert len(points) > 2 and "reconstruction failed"
-    points, colors = cull_points(points, colors, 2.5)
+    points, colors = cull_points(points, colors, 3.5)
+    points, colors = cull_points(points, colors, 3.0)
     print(len(points), "final points")
 
     time_end = perf_counter()

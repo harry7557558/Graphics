@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 
 #include <vector>
+#include <thread>
 
 namespace py = pybind11;
 
@@ -105,7 +106,8 @@ Eigen::MatrixXd solve_ba_8(
     Eigen::Ref<Eigen::MatrixXd> points,
     const Eigen::VectorXi &poses_i,
     const Eigen::VectorXi &points_i,
-    const Eigen::MatrixXd& points_2d
+    const Eigen::MatrixXd& points_2d,
+    bool verbose
 ) {
     size_t n_pose = poses.rows();
     size_t n_point = points.rows();
@@ -162,7 +164,7 @@ Eigen::MatrixXd solve_ba_8(
 
     // Set solver options
     ceres::Solver::Options options;
-    // options.minimizer_progress_to_stdout = true;
+    options.minimizer_progress_to_stdout = verbose;
     options.function_tolerance = 1e-4;
     options.gradient_tolerance = 1e-6;
     options.parameter_tolerance = 1e-5;
@@ -262,7 +264,8 @@ Eigen::MatrixXd solve_ba_3(
     Eigen::Ref<Eigen::MatrixXd> points,
     const Eigen::VectorXi &poses_i,
     const Eigen::VectorXi &points_i,
-    const Eigen::MatrixXd& points_2d
+    const Eigen::MatrixXd& points_2d,
+    bool verbose
 ) {
     size_t n_pose = poses.rows();
     size_t n_point = points.rows();
@@ -319,10 +322,12 @@ Eigen::MatrixXd solve_ba_3(
 
     // Set solver options
     ceres::Solver::Options options;
-    // options.minimizer_progress_to_stdout = true;
+    options.minimizer_progress_to_stdout = verbose;
     options.function_tolerance = 1e-4;
     options.gradient_tolerance = 1e-6;
     options.parameter_tolerance = 1e-5;
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    options.num_threads = std::thread::hardware_concurrency();
 
     // Run the solver
     ceres::Solver::Summary summary;
