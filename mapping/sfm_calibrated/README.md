@@ -13,3 +13,8 @@ SfM with images taken from the same calibrated camera, on ordered video frames.
  - `ba_n_03`: try autodiff BA Jacobian using Jax, doesn't make faster
  - `ba_n_04`: incrementally add frames in order after initial matches, run BA after adding each PnP point cloud; incorporate optical flow in feature matching; works on much longer sequences, fails on scenes with large rotation and coplanar geometry
  - `ba_n_05`: multi-frame optical flow feature tracking, skipped bundle adjustment; able to track long sequences of frames under good conditions, fails at large drift
+ - `ba_n_06`: bundle adjustment with Ceres solver; outlier rejection
+
+`feature`: explore better management of features
+ - `feature_01`: using OpenCV RANSAC outlier rejection for matched features; performance isn't promising
+ - `feature_02`: 
