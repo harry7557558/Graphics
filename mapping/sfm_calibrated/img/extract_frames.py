@@ -36,7 +36,9 @@ video_filename = [
 "/media/harry7557558/OS/Archive/sfm_videos/20230925_161429.mp4",
 # [15] building
 "/media/harry7557558/OS/Archive/sfm_videos/20230627_174847.mp4",
-][3]
+# [16] pit 3 (average lighting)
+"/media/harry7557558/OS/Archive/sfm_videos/20230715_113856.mp4",
+][2]
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()
