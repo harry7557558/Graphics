@@ -275,89 +275,6 @@ BA_OUTLIER_Z = 8
 BA_TH_RMSE = np.prod(IMG_SHAPE)**0.5 / 1000
 BA_SW = 30
 
-def bundle_adjustment_3(camera_params, poses, points, observations, force=True):
-    """points + poses + camera intrinsics (f,cx,cy)"""
-
-    # params
-    if camera_params is None:
-        f0 = np.sqrt(K[0,0]*K[1,1])
-        cx0, cy0 = K[:2,2]
-        camera_params = np.array([f0, cx0, cy0])
-    n_pose = len(poses)
-    n_point = len(points)
-    n_obs = len(observations)
-    poses = np.array([log_so3t(*pose) for pose in poses])
-    points_2d = np.array([uv for (pose_i, point_i, uv) in observations])
-    params_init = np.concatenate((camera_params, poses.flatten(), points.flatten()))
-    poses_i = np.array([o[0] for o in observations])
-    points_i = np.array([o[1] for o in observations])
-
-    # function
-    def fun(params):
-        global K
-        f, cx, cy = params[:3]
-        K = np.array([[f, 0., cx], [0., f, cy], [0., 0., 1.]])
-        so3ts = params[3:6*n_pose+3].reshape((n_pose, 6))
-        poses = [exp_so3t(so3t) for so3t in so3ts]
-        R = np.array([p[0] for p in poses])
-        t = np.array([p[1] for p in poses])
-        points_3d = params[6*n_pose+3:].reshape((n_point, 3))
-        points_r = np.einsum('kij,kj->ki', R[poses_i], points_3d[points_i]) + t[poses_i]
-        points_c = points_r @ K.T
-        points_proj = points_c[:,0:2] / points_c[:,2:3]
-        residual = (points_proj-points_2d).flatten()
-        # return residual
-        # return np.arcsinh(residual)
-        delta = 2
-        qr_residual = np.sign(residual) * np.sqrt(delta*np.fmax(2.0*np.abs(residual)-delta, 0.0))
-        return residual + (qr_residual-residual) * (np.abs(residual) > delta)
-
-    residuals = fun(params_init)
-    rmse = np.mean(residuals**2)**0.5
-    print('rmse before:', rmse)
-    if rmse < BA_TH_RMSE and not force:
-        return None
-
-    # jacobian sparsity
-    sp = scipy.sparse.lil_matrix(
-        (2*n_obs, 3+6*n_pose+3*n_point), dtype=int)
-    for i, (pose_i, point_i, uv) in enumerate(observations):
-        p0 = 3+6*pose_i
-        sp[2*i:2*i+2, p0:p0+6] = 1  # to pose
-        p0 = 3+6*n_pose+3*point_i
-        sp[2*i:2*i+2, p0:p0+3] = 1  # to point
-    sp[:, :3] = 1
-
-    # optimization
-    res = scipy.optimize.least_squares(
-        fun, params_init, jac_sparsity=sp,
-        verbose=0, x_scale='jac', ftol=1e-4, method='trf')
-    print('(nfev, njev):', res.nfev, res.njev)
-    print('rmse after:', np.mean(res.fun**2)**0.5)
-    
-    # covariance?
-    H = res.jac.T @ res.jac
-    dof = res.jac.shape[0]-res.jac.shape[1]-1
-    sigma2 = np.sum(res.fun**2)/max(dof,1)
-    cov = sigma2 * H
-    stdev = sigma2/H.diagonal()**0.5
-    # print(stdev[:3])
-    # print(stdev[3:3+6*n_pose].reshape((n_pose, 6)))
-    # print(stdev[3+6*n_pose:].reshape((n_point, 3)))
-
-    # residual = np.linalg.norm(res.fun.reshape((-1,2)), axis=1)
-    # outliers = np.where(residual > OUTLIER_Z*np.mean(residual))
-    residual = np.abs(res.fun.reshape((-1, 2)))
-    mask = residual > BA_OUTLIER_Z*np.mean(residual)
-    outliers = np.where(mask[:,0] | mask[:,1])
-
-    params = res.x
-    camera_params = params[:3]
-    so3ts = params[3:3+6*n_pose].reshape((n_pose, 6))
-    poses = [exp_so3t(so3t) for so3t in so3ts]
-    points_3d = params[3+6*n_pose:].reshape((n_point, 3))
-    return camera_params, poses, points_3d, outliers
-
 def bundle_adjustment_ceres_3(camera_params, poses, points, observations, force=True):
     """points + poses + camera intrinsics (fx,fy,cx,cy,*dist_coeffs)"""
 
@@ -409,7 +326,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations, force=
     residuals = ba_solver.solve_ba_3(
         camera_params, poses, points,
         poses_i, points_i, points_2d,
-        True
+        force
     )
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
@@ -424,92 +341,6 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations, force=
 
     poses = [exp_so3t(so3t) for so3t in poses]
     return camera_params, poses, points, outliers
-
-def bundle_adjustment_8(camera_params, poses, points, observations, force=True):
-    """points + poses + camera intrinsics (f,cx,cy,*dist_coeffs)"""
-
-    # params
-    n_int = 7  # number of camera intrinsics, 3+len(dist_coeffs)
-    if camera_params is None:
-        camera_params = np.array([K[0,0], K[1,1], K[0,2], K[1,2]])
-    if len(camera_params) < n_int:
-        camera_params = np.concatenate((camera_params[:3], [0]*(n_int-3)))
-    n_pose = len(poses)
-    n_point = len(points)
-    n_obs = len(observations)
-    poses = np.array([log_so3t(*pose) for pose in poses])
-    points_2d = np.array([uv for (pose_i, point_i, uv) in observations])
-    params_init = np.concatenate((camera_params, poses.flatten(), points.flatten()))
-    poses_i = np.array([o[0] for o in observations])
-    points_i = np.array([o[1] for o in observations])
-
-    # function
-    def fun(params):
-        global K
-        f, cx, cy = params[:3]
-        k1, k2, p1, p2 = params[3:n_int]
-        K = np.array([[f, 0., cx], [0., f, cy], [0., 0., 1.]])
-        so3ts = params[n_int:n_int+6*n_pose].reshape((n_pose, 6))
-        poses = [exp_so3t(so3t) for so3t in so3ts]
-        R = np.array([p[0] for p in poses])
-        t = np.array([p[1] for p in poses])
-        points_3d = params[n_int+6*n_pose:].reshape((n_point, 3))
-        points_r = np.einsum('kij,kj->ki', R[poses_i], points_3d[points_i]) + t[poses_i]
-        points_proj = points_r[:,0:2] / points_r[:,2:3]
-        x, y = points_proj[:,0], points_proj[:,1]
-        r2 = x**2 + y**2
-        distortion = 1.0 + r2 * (k1 + k2 * r2)
-        points_proj[:,0] = x * distortion + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
-        points_proj[:,1] = y * distortion + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
-        points_proj = points_proj @ K[:2,:2] + K[0:2,2]
-        residual = (points_proj-points_2d).flatten()
-        # return residual
-        # return np.arcsinh(residual)
-        delta = 2
-        qr_residual = np.sign(residual) * np.sqrt(delta*np.fmax(2.0*np.abs(residual)-delta, 0.0))
-        return residual + (qr_residual-residual) * (np.abs(residual) > delta)
-
-    residuals = fun(params_init)
-    rmse = np.mean(residuals**2)**0.5
-    print('rmse before:', rmse)
-    # plt.plot(abs(fun(params_init)), '.')
-    # plt.yscale('log')
-    # plt.show()
-    # __import__('sys').exit(0)
-    if rmse < BA_TH_RMSE and not force:
-        return None
-
-    # jacobian sparsity
-    sp = scipy.sparse.lil_matrix(
-        (2*n_obs, n_int+6*n_pose+3*n_point), dtype=int)
-    for i, (pose_i, point_i, uv) in enumerate(observations):
-        p0 = n_int+6*pose_i
-        sp[2*i:2*i+2, p0:p0+6] = 1  # to pose
-        p0 = n_int+6*n_pose+3*point_i
-        sp[2*i:2*i+2, p0:p0+3] = 1  # to point
-    sp[:, :n_int] = 1
-
-    # optimization
-    res = scipy.optimize.least_squares(
-        fun, params_init, jac_sparsity=sp,
-        verbose=0, x_scale='jac', ftol=1e-4, method='trf')
-    print('(nfev, njev):', res.nfev, res.njev)
-    print('rmse after:', np.mean(fun(res.x)**2)**0.5)
-    # plt.plot(abs(fun(res.x)), '.')
-    # plt.yscale('log')
-    # plt.show()
-    # __import__('sys').exit(0)
-
-    residual = np.abs(res.fun.reshape((-1, 2)))
-    mask = residual > BA_OUTLIER_Z*np.mean(residual)
-    outliers = np.where(mask[:,0] | mask[:,1])
-
-    params = res.x
-    camera_params = params[:n_int]
-    so3ts = params[n_int:n_int+6*n_pose].reshape((n_pose, 6))
-    poses = [exp_so3t(so3t) for so3t in so3ts]
-    points_3d = params[n_int+6*n_pose:].reshape((n_point, 3))
-    return camera_params, poses, points_3d, outliers
 
 def bundle_adjustment_ceres_8(camera_params, poses, points, observations, force=True):
     """points + poses + camera intrinsics (fx,fy,cx,cy,*dist_coeffs)"""
@@ -567,7 +398,7 @@ def bundle_adjustment_ceres_8(camera_params, poses, points, observations, force=
     residuals = ba_solver.solve_ba_8(
         camera_params, poses, points,
         poses_i, points_i, points_2d,
-        True
+        force
     )
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
@@ -701,7 +532,7 @@ def add_frame_init(frame):
             continue
         R, t = pose
 
-        if (1-inliner_mask.astype(np.int32)).sum() <= len(points3d)//10+1:
+        if (1-inliner_mask.astype(np.int32)).sum() <= len(inliner_mask)//10+1:
             success_pair = (fi, N)
             break
 
@@ -849,8 +680,17 @@ def add_frame(img, previous_ba=[-1]):
         div_factor = 20 if N == 1 else np.clip(len(frame[1])//len(previous_frame[1]), 2, 50)
         print('div factor:', div_factor)
         matches = match_feature_pair(previous_frame, frame, div_factor)
+        print(len(matches), "matches")
         if len(matches) < 10:
             continue
+
+        # skip frames that are too close
+        if fi == N-1:
+            dists = [m.distance for m in matches]
+            sc = 0.05 if fi == 0 else 0.02
+            if np.median(dists) < sc * np.prod(IMG_SHAPE)**0.5:
+                print("skip frame - too close")
+                return
 
         # clean features
         keeps = [m.trainIdx for m in matches]
@@ -1084,6 +924,7 @@ if __name__ == "__main__":
         cv.imread(f"img/temp_{i}.jpg", cv.IMREAD_COLOR)
         for i in range(0, 200, 1)
     ]
+    IMG_SHAPE = np.array([imgs[0].shape[1], imgs[0].shape[0]])
     imgs = [cv.resize(img, IMG_SHAPE.astype(np.int32)) for img in imgs]
 
     time_start = perf_counter()
@@ -1101,6 +942,7 @@ if __name__ == "__main__":
     bundle_adjustment_update(fix_start=False)
     print()
 
+    print(len(all_frames), "result frames")
     if camera_params is not None:
         print("camera params:", camera_params[:4], camera_params[4:])
 
@@ -1124,6 +966,7 @@ if __name__ == "__main__":
     points, colors = cull_points(points, colors, 3.5)
     points, colors = cull_points(points, colors, 3.5)
     points, colors = cull_points(points, colors, 3.0)
+    colors = np.flip(colors, axis=1)
     print(len(points), "final points")
 
     time_end = perf_counter()

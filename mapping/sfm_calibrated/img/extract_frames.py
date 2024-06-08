@@ -38,7 +38,35 @@ video_filename = [
 "/media/harry7557558/OS/Archive/sfm_videos/20230627_174847.mp4",
 # [16] pit 3 (average lighting)
 "/media/harry7557558/OS/Archive/sfm_videos/20230715_113856.mp4",
-][2]
+# [17] flight simulator
+"/media/harry7557558/OS/Archive/sfm_videos/20240421_200438.mp4",
+# [18] grass
+"/media/harry7557558/OS/Archive/sfm_videos/20240516_171423.mp4",
+# [19] pipe hole
+"/media/harry7557558/OS/Archive/sfm_videos/20240518_182001.mp4",
+# [20] coffee cups
+"/media/harry7557558/OS/Archive/sfm_videos/20240521_183201.mp4",
+# [21] crab shell (depth of field + pure rotation)
+"/media/harry7557558/OS/Archive/sfm_videos/20240607_135514.mp4",
+# [22] bottles (poor lighting)
+"/media/harry7557558/OS/Archive/sfm_videos/20240526_235851.mp4",
+# [23] pumpkins (poor lighting + dynamic obstacles)
+"/media/harry7557558/OS/Archive/sfm_videos/20231026_193050.mp4",
+# [24] pit 4 (poor lighting + motion blur)
+"/media/harry7557558/OS/Archive/sfm_videos/20230928_144035.mp4",
+# [25] eyes
+"/media/harry7557558/OS/Archive/sfm_videos/20240523_185059.mp4",
+# [26] woods 1, rock formation
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_125608.mp4",
+# [27] woods 2, logs
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_181801.mp4",
+# [28] woods 3, rock with grass
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_144827.mp4",
+# [29] woods 4, cottage
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_183025.mp4",
+# [30] woods 5, rock
+"/media/harry7557558/OS/Archive/sfm_videos/20230729_125806.mp4",
+][30]
 
 cap = cv2.VideoCapture(video_filename)
 assert cap.isOpened()
@@ -87,7 +115,7 @@ while cap.isOpened():
         frame = sorted(frames_buf, key=lambda x: x[1], reverse=True)[0]
         frames.append(frame)
 
-        frame = cv2.resize(frame[2], (960, 540))
+        frame = cv2.resize(frame[2], (frame[2].shape[1]//2, frame[2].shape[0]//2))
 
         filename = 'temp_{:d}.jpg'.format(fi//skip-1)
         cv2.imwrite(filename, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
