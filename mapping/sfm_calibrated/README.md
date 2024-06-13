@@ -18,4 +18,6 @@ SfM with images taken from the same calibrated camera, on ordered video frames.
 
 `feature`: explore better management of features
  - `feature_01`: using OpenCV RANSAC outlier rejection for matched features; performance isn't promising
- - `feature_02`: 
+
+`lc`: explore loop closure
+ - `ba_n_01`: get basic loop closure working, doesn't work well for noisy scenes
