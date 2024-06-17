@@ -33,6 +33,7 @@ all_points = []  # 3d points
 all_observations = {}  # (fi, pi): uv
 vocabulary = lc_solver.Vocabulary()
 all_bows = []
+all_loops = []  # (fi1, fi2)
 
 
 
@@ -407,7 +408,7 @@ def bundle_adjustment_ceres_8(camera_params, poses, points, observations, force=
     residuals = ba_solver.solve_ba_8(
         camera_params, poses, points,
         poses_i, points_i, points_2d,
-        force
+        True
     )
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
@@ -504,7 +505,7 @@ def bundle_adjustment_update(frames=None, fix_start=True):
 
 # loop closure
 
-def find_similar_frames(bow, max_checks=50):
+def find_similar_frames(bow, max_checks=200):
     scores = {}
     # for i, bow1 in enumerate(all_bows):
     skip = max(len(all_bows)//max_checks, 1)
@@ -652,7 +653,7 @@ def add_frame_incremental(frame: Union[int, tuple]):
             print(e.err)
             continue
         num_invalid, num_point = np.sum(1-inliner_mask_pnp), len(pts_3d)
-        if num_invalid < num_point//10+1:
+        if num_invalid < max(num_point//5, num_point//10+1):
             success_pair = (i, N)
             break
         else:
@@ -694,6 +695,31 @@ def add_frame_incremental(frame: Union[int, tuple]):
     return True
 
 def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
+
+    # add frame only when not too close
+    previous_keypoints = None
+    for fi in range(len(all_frames)-1, -1, -1):
+        if all_poses[fi] is not None:
+            previous_frame, previous_keypoints, _ = all_frames[fi]
+            break
+    if previous_keypoints is None and len(all_frames) > 0:
+        previous_frame, previous_keypoints, _ = all_frames[-1]
+    if previous_keypoints is not None:
+        keypoints_flat = np.array([kp.pt for kp in previous_keypoints], dtype=np.float32)
+        previous_gray = cv.cvtColor(previous_frame, cv.COLOR_BGR2GRAY)
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        maxlevel = max(3, int(np.log2(np.prod(IMG_SHAPE)**0.5 / 16)))
+        p2, st, err = cv.calcOpticalFlowPyrLK(
+            previous_gray, gray, keypoints_flat, None, maxLevel=maxlevel)
+        dists = np.linalg.norm(p2-keypoints_flat, axis=1)
+        dist_rel = np.median(dists) / np.prod(IMG_SHAPE)**0.5
+        if dist_rel < 0.03:
+            # print('skip frame -', dist_rel)
+            return
+
+    print(f"adding new frame ({len(all_frames)})")
+
+    # feature extraction
     frame = extract_features(img)  # (img, keypoints, descriptors)
     N = len(all_poses)
     if N == 0:
@@ -709,16 +735,6 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         print(len(matches), "matches")
         if len(matches) < 10:
             continue
-
-        # skip frames that are too close
-        is_init = all_poses.count(None) == len(all_poses)
-        #if fi == (0 if is_init else N-1):
-        if fi == N-1:
-            dists = [m.distance for m in matches]
-            sc = 0.05 if fi == 0 else 0.02
-            if np.median(dists) < sc * np.prod(IMG_SHAPE)**0.5:
-                print("skip frame - too close")
-                return
 
         # clean features
         keeps = [m.trainIdx for m in matches]
@@ -754,12 +770,14 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         all_frames.append(frame)
         all_keypoints.append([-1]*len(frame[1]))
         all_poses.append(None)
+        print()
         return
 
     # add the current frame
     if all_poses.count(None) == len(all_poses):
         status = add_frame_init(frame)
         print("initialization success:", status)
+        print()
         return
     status = add_frame_incremental(frame)
     print("add frame success:", status)
@@ -785,14 +803,17 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
                 bundle_adjustment_update(frames=range(f_start, N+1), fix_start=True)
                 previous_ba[0] = N
     else:
+        print()
         return
 
     # loop closure
     if previous_lc[0] > N-LC_MUTE:
+        print()
         return
     if success:
         similar_frames = find_similar_frames(bow)
     if len(similar_frames) == 0:
+        print()
         return
     current_keypoints = set(all_keypoints[N])
     current_keypoints.discard(-1)
@@ -810,7 +831,7 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         img_N, keypoints_N, descriptors_N = all_frames[N]
 
         matches = match_feature_pair(all_frames[fi], all_frames[N], -1)
-        if len(matches) <= 30:
+        if len(matches) <= 40:
             continue
         points_i = np.array([keypoints_i[m.queryIdx].pt for m in matches])
         points_N = np.array([keypoints_N[m.trainIdx].pt for m in matches])
@@ -818,10 +839,13 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         inliner_ratio = np.mean(inliner_mask.astype(np.float32))
         attempt_count += 1
 
-        if inliner_ratio > 0.8:
+        print(inliner_ratio)
+
+        if inliner_ratio > 0.4:
             found = True
             print("Close loop:", "frames", (N, fi),
                   "score", score, "matches", len(matches), "inliners", inliner_ratio)
+            all_loops.append((fi, N))
             inliners = np.where(inliner_mask.flatten())
             points_i, points_N = points_i[inliners], points_N[inliners]
             matches = [m for m, valid in zip(matches, inliner_mask) if valid]
@@ -831,6 +855,7 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         if attempt_count >= 1:
             break
     if not found:
+        print()
         return
     for j, (p0, p, p3d, m) in enumerate(zip(
             points_i, points_N, points_3d, matches)):
@@ -868,7 +893,10 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
             all_observations[(N, idx_N)] = keypoints_N[m.trainIdx].pt
             continue
     previous_lc[0] = N
+    # global bundle_adjustment
+    # bundle_adjustment = bundle_adjustment_ceres_8
     bundle_adjustment_update(fix_start=False)
+    print()
 
 
 
@@ -1006,41 +1034,52 @@ if __name__ == "__main__":
     np.random.seed(42)
     cv.setRNGSeed(42)
 
-    # read images + extract features
-    imgs = [
-        # cv.imread(f"img/pit_{i}.jpg", cv.IMREAD_COLOR)
-        # for i in range(0, 11, 1)
-        # cv.imread(f"img/arena_{i}.jpg", cv.IMREAD_COLOR)
-        # for i in range(0, 20, 1)
-        # for i in range(0, 40, 1)
-        # cv.imread(f"img/float_{i}.jpg", cv.IMREAD_COLOR)
-        # for i in range(0, 20, 1)
-        # for i in range(0, 30, 1)
-        cv.imread(f"img/temp_{i}.jpg", cv.IMREAD_COLOR)
-        for i in range(0, 200, 1)
-    ]
-    IMG_SHAPE = np.array([imgs[0].shape[1], imgs[0].shape[0]])
-    imgs = [cv.resize(img, IMG_SHAPE.astype(np.int32)) for img in imgs]
+    import img.videos
+    video_filename = img.videos.videos[17]
+    cap = cv.VideoCapture(video_filename)
+    assert cap.isOpened()
 
     vocab_path = "/home/harry7557558/GitHub/external/fbow/vocabularies/orb_mur.fbow"
     vocabulary.readFromFile(vocab_path)
 
+    bundle_adjustment = bundle_adjustment_ceres_3
+
     time_start = perf_counter()
 
-    # reconstruction
-    bundle_adjustment = bundle_adjustment_ceres_3
-    # bundle_adjustment = bundle_adjustment_ceres
-    for i, img in enumerate(imgs):
-        print(f"adding new frame ({i}/{len(imgs)})")
-        add_frame(img)
-        print()
-        if i >= max(4, BA_SW//2):
-            bundle_adjustment = bundle_adjustment_ceres_3
-    # bundle_adjustment = bundle_adjustment_ceres_8
+    target_img_size = np.prod(IMG_SHAPE)**0.5
+    IMG_SHAPE = None
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if IMG_SHAPE is None:
+            img_size = np.prod(frame.shape[:2])**0.5
+            sc = target_img_size / img_size
+            IMG_SHAPE = np.round([sc*frame.shape[1], sc*frame.shape[0]])
+            print("Image shape:", IMG_SHAPE)
+        frame = cv.resize(frame, IMG_SHAPE.astype(np.int32))
+
+        cv.imshow('Frame', frame)
+        if cv.waitKey(25) & 0xFF == ord('q'):
+            break
+
+        add_frame(frame)
+
+        if len(all_frames) >= 250:
+            break
+
+    cap.release() 
+    cv.destroyAllWindows()
+
+    bundle_adjustment_update(fix_start=False)
+    bundle_adjustment = bundle_adjustment_ceres_8
     bundle_adjustment_update(fix_start=False)
     print()
 
     print(len(all_frames), "result frames")
+    print(len(all_poses)-all_poses.count(None), "valid frames")
     if camera_params is not None:
         print("camera params:", camera_params[:4], camera_params[4:])
 
@@ -1049,7 +1088,8 @@ if __name__ == "__main__":
     counts = np.zeros((len(colors), 1), dtype=np.int32)
     for (pose_i, point_i), uv in all_observations.items():
         x, y = map(int, uv)
-        colors[point_i] += imgs[pose_i][y, x]
+        frame = all_frames[pose_i][0]
+        colors[point_i] += frame[y, x]
         counts[point_i] += 1
     nonzero_i = set(np.where(counts.flatten() > 1)[0])
     for i, p in enumerate(all_points):
@@ -1088,6 +1128,13 @@ if __name__ == "__main__":
             plot_camera(ax, *pose, sc)
         else:
             ax.scatter(np.nan, np.nan)
+    for fi1, fi2 in all_loops:
+        R1, t1 = all_poses[fi1]
+        t1 = -R1.T @ t1.reshape((3, 1))
+        R2, t2 = all_poses[fi2]
+        t2 = -R2.T @ t2.reshape((3, 1))
+        t1, t2 = t1.flatten(), t2.flatten()
+        ax.plot([t1[0], t2[0]], [t1[2], t2[2]], [t1[1], t2[1]], 'k-')
     # plot_points(ax, points, colors)
     plot_points(ax, points, colors)
     set_axes_equal(ax)
