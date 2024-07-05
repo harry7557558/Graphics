@@ -1,4 +1,33 @@
-SfM with images taken from the same calibrated camera, on ordered video frames.
+Recover poses and camera intrinsic for ordered images taken from a monocular video.
+
+How it works
+ - It reconstructs the scene (and estimates intrinsics) incrementally (frames are added one by one)
+ - Feature extraction and matching: extract features from adjacent frames, match using optical flow
+ - Pose recovery: recovers pose based on epipolar geometry and PnP with RANSAC outlier rejection (using OpenCV)
+ - Bundle adjustment: optimize poses, points, and camera intrinsics as error accumulates
+ - Loop closure: close loops to correct drift over time
+
+Speed / Robustness
+ - On my laptop (16 CPU cores), recent versions (see Progress Breakdown) extracts 150-250 frames from a 30-60s 30fps video in 2-4min
+ - Works well for most scenes with clear structures and good lighting, failure rate is higher on scenes with rich details, strong moving shadow/highlights, strong noise / blur, repetitive patterns, or large rotation with little translation
+
+Accuracy
+ - Works for training NeRF / Gaussian Splatting, better with camera poses further optimized with gradient descent
+ - Successful loop closure can significantly increase accuracy
+
+Failure cases
+ - PnP failure; signs: "in-the-wild" cameras, small clusters of cameras
+ - Camera intrinsics converge to a poor local minima
+
+C++ Dependencies
+ - Ceres Solver, for bundle adjustment
+ - FBOW, for loop closure
+   - Set `vocab_path` in the script to the path to vocabulary
+ - At this time, you need to manually build bindings for these libraries in `ba_solver` and `lc_solver` directories
+
+## Progress Breakdown
+
+Each script is independent. Roughly in chronological order listing my progress building the tool.
 
 `triangulation`: give 2 frames, estimate relative pose and feature point positions
  - `triangulation_01`: recover pose from essential matrix + triangulation, looks good
@@ -20,4 +49,7 @@ SfM with images taken from the same calibrated camera, on ordered video frames.
  - `feature_01`: using OpenCV RANSAC outlier rejection for matched features; performance isn't promising
 
 `lc`: explore loop closure
- - `ba_n_01`: get basic loop closure working, doesn't work well for noisy scenes
+ - `lc_01`: get basic loop closure working, doesn't work well for noisy scenes
+ - `lc_02`: directly read from video (instead of image sequence), automatically select frames
+ - `lc_03`: basic relocalization after tracking lost
+ - `lc_04`: don't change camera intrinsics after pre-calibration

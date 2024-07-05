@@ -4,6 +4,8 @@ This repository contains source files for my experiments covering a wide range o
 
 An outline of the repository is below (approximately ordered by update recency):
 
+`mapping/`: Related generating 3D data from sensors, including generating 3D models from multi-view images, LiDAR point cloud processing, etc.
+
 `fitting/`: Related to regression tasks, including vectorization, neural representations, generative models, etc.
 
 `image/`: Related to image processing, such as denoising, super-resolution, color replacement,  image stylization, etc.

@@ -100,13 +100,14 @@ struct ReprojectionCost8 {
 };
 
 
-Eigen::MatrixXd solve_ba_8(
+Eigen::MatrixXd solve_ba_8_raw(
     Eigen::Ref<Eigen::VectorXd> camera,
     Eigen::Ref<Eigen::MatrixXd> poses,
     Eigen::Ref<Eigen::MatrixXd> points,
     const Eigen::VectorXi &poses_i,
     const Eigen::VectorXi &points_i,
     const Eigen::MatrixXd& points_2d,
+    bool fixed_intrinsic,
     bool verbose
 ) {
     size_t n_pose = poses.rows();
@@ -120,6 +121,8 @@ Eigen::MatrixXd solve_ba_8(
 
     // Add intrinsic parameter block
     problem.AddParameterBlock((double*)camera.data(), 8);
+    if (fixed_intrinsic)
+        problem.SetParameterBlockConstant((double*)camera.data());
 
     // Add pose parameter blocks
     typedef Eigen::Matrix<double, 6, 1> Vector6d;
@@ -194,6 +197,22 @@ Eigen::MatrixXd solve_ba_8(
     return residuals;
 }
 
+Eigen::MatrixXd solve_ba_8(
+    Eigen::Ref<Eigen::VectorXd> camera,
+    Eigen::Ref<Eigen::MatrixXd> poses,
+    Eigen::Ref<Eigen::MatrixXd> points,
+    const Eigen::VectorXi &poses_i,
+    const Eigen::VectorXi &points_i,
+    const Eigen::MatrixXd& points_2d,
+    bool verbose
+) {
+    return solve_ba_8_raw(
+        camera, poses, points,
+        poses_i, points_i, points_2d,
+        false, verbose
+    );
+}
+
 
 
 // f, cx, cy
@@ -258,13 +277,14 @@ struct ReprojectionCost3 {
     double v;
 };
 
-Eigen::MatrixXd solve_ba_3(
+Eigen::MatrixXd solve_ba_3_raw(
     Eigen::Ref<Eigen::VectorXd> camera,
     Eigen::Ref<Eigen::MatrixXd> poses,
     Eigen::Ref<Eigen::MatrixXd> points,
     const Eigen::VectorXi &poses_i,
     const Eigen::VectorXi &points_i,
     const Eigen::MatrixXd& points_2d,
+    bool fixed_intrinsic,
     bool verbose
 ) {
     size_t n_pose = poses.rows();
@@ -278,6 +298,8 @@ Eigen::MatrixXd solve_ba_3(
 
     // Add intrinsic parameter block
     problem.AddParameterBlock((double*)camera.data(), 3);
+    if (fixed_intrinsic)
+        problem.SetParameterBlockConstant((double*)camera.data());
 
     // Add pose parameter blocks
     typedef Eigen::Matrix<double, 6, 1> Vector6d;
@@ -354,8 +376,26 @@ Eigen::MatrixXd solve_ba_3(
     return residuals;
 }
 
+Eigen::MatrixXd solve_ba_3(
+    Eigen::Ref<Eigen::VectorXd> camera,
+    Eigen::Ref<Eigen::MatrixXd> poses,
+    Eigen::Ref<Eigen::MatrixXd> points,
+    const Eigen::VectorXi &poses_i,
+    const Eigen::VectorXi &points_i,
+    const Eigen::MatrixXd& points_2d,
+    bool verbose
+) {
+    return solve_ba_3_raw(
+        camera, poses, points,
+        poses_i, points_i, points_2d,
+        false, verbose
+    );
+}
+
 
 PYBIND11_MODULE(ba_solver, m) {
     m.def("solve_ba_8", &solve_ba_8, "");
     m.def("solve_ba_3", &solve_ba_3, "");
+    m.def("solve_ba_8_raw", &solve_ba_8_raw, "");
+    m.def("solve_ba_3_raw", &solve_ba_3_raw, "");
 }
