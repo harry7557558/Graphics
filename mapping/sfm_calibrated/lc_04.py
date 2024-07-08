@@ -183,7 +183,12 @@ def draw_matches(frame1, frame2, matches, inliner_mask=None):
 def pixel2cam(p):
     return np.array([(p[0]-K[0,2])/K[0,0], (p[1]-K[1,2])/K[1,1]])
 
-def triangulation(points1, points2, R1, t1, R2, t2):
+def triangulation(points1, points2, R1, t1, R2, t2, undistort=False):
+    if undistort and camera_params is not None and len(camera_params) > 4:
+        dist_coeffs = camera_params[-4:]
+        points1, points2 = np.array(points1), np.array(points2)
+        points1 = cv.undistortImagePoints(points1, K, dist_coeffs)[:,0,:]
+        points2 = cv.undistortImagePoints(points2, K, dist_coeffs)[:,0,:]
     points1 = np.array([pixel2cam(p) for p in points1])
     points2 = np.array([pixel2cam(p) for p in points2])
     T1 = np.hstack((R1, t1))
@@ -466,6 +471,7 @@ def bundle_adjustment_update(frames=None, fix_intrinsic=None, fix_start=True):
             fix_intrinsic = False
         if len(all_match_groups) > 1:
             fix_intrinsic = True
+        fix_intrinsic = True
 
     # poses
     poses = []
@@ -680,6 +686,7 @@ def add_frame_incremental(frame: Union[int, tuple]):
         print(len(pts_3d), 'point pairs for PnP')
 
         # solve PnP
+        R0 = None
         for di in range(1,len(all_poses)):
             if fi-di >= 0 and all_poses[fi-di] is not None:
                 R0, t0 = all_poses[fi-di]
@@ -687,12 +694,14 @@ def add_frame_incremental(frame: Union[int, tuple]):
             elif fi+di < N and all_poses[fi+di] is not None:
                 R0, t0 = all_poses[fi+di]
                 break
+        if R0 is None:
+            continue
         # (R, t), inliner_mask_pnp = pose_estimation_3d2d_ransac(pts_3d, pts_2d, R0, t0)
         (R, t), inliner_mask_pnp = pose_estimation_3d2d(pts_3d, pts_2d, R0, t0)
         points_0 = [keypoints_0[ki0].pt for (pi, ki0, ki) in matches]
         points = [keypoints[ki].pt for (pi, ki0, ki) in matches]
         try:
-            points_3d = triangulation(points_0, points, *all_poses[fi], R, t)
+            points_3d = triangulation(points_0, points, *all_poses[fi], R, t, undistort=True)
         except cv.error as e:
             print(e.err)
             continue
@@ -775,6 +784,8 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
     N = len(all_poses)
     if N == 0:
         frame = (frame[0], *filter_features(frame[1], frame[2]))
+        if len(frame[2]) == 0:
+            return
 
     # add matched features
     success = False
@@ -793,6 +804,8 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
         # clean features
         keeps = [m.trainIdx for m in matches]
         keypoints, descriptors, index_map = filter_features(frame[1], frame[2], keeps)
+        if len(descriptors) == 0:
+            continue
         frame = (frame[0], keypoints, descriptors)
         for m in matches:
             m.trainIdx = index_map[m.trainIdx]
@@ -906,7 +919,7 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
 
         print(inliner_ratio)
 
-        if inliner_ratio > 0.4:
+        if inliner_ratio > 0.6:
             found = True
             print("Close loop:", "frames", (N, fi),
                   "score", score, "matches", len(matches), "inliners", inliner_ratio)
@@ -931,7 +944,7 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
     # regular LC
     if all_match_group_indices[fi] == all_match_group_indices[N]:
 
-        points_3d = triangulation(points_i, points_N, *all_poses[fi], *all_poses[N])
+        points_3d = triangulation(points_i, points_N, *all_poses[fi], *all_poses[N], undistort=True)
 
         for j, (p3d, m) in enumerate(zip(points_3d, matches)):
             idx_i = all_keypoints[fi][m.queryIdx]
@@ -1017,7 +1030,7 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
                 t1 = s * t0 - R1 @ t.reshape(3, 1)
                 all_poses[fj] = (R1, t1)
 
-        points_3d = triangulation(points_i, points_N, *all_poses[fi], *all_poses[N])
+        points_3d = triangulation(points_i, points_N, *all_poses[fi], *all_poses[N], undistort=True)
 
         # merge features
         for j, (p3d, m) in enumerate(zip(points_3d, matches)):
@@ -1238,6 +1251,7 @@ if __name__ == "__main__":
             IMG_SHAPE = np.round([sc*frame.shape[1], sc*frame.shape[0]])
             print("Image shape:", IMG_SHAPE)
         frame = cv.resize(frame, IMG_SHAPE.astype(np.int32))
+        # frame = cv.GaussianBlur(frame,(5,5),0)
 
         cv.imshow('Frame', frame)
         if cv.waitKey(25) & 0xFF == ord('q'):
