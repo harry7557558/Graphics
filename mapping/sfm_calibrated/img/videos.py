@@ -61,4 +61,8 @@ videos = [
 "/media/harry7557558/OS/Archive/sfm_videos/20230729_183025.mp4",
 # [30] woods 5, rock
 "/media/harry7557558/OS/Archive/sfm_videos/20230729_125806.mp4",
+# [31] pirate ship
+"/media/harry7557558/OS/Archive/sfm_videos/20240629_042929.mp4",
+# [32] student lounge
+"/media/harry7557558/OS/Archive/sfm_videos/20240707_220934.mp4",
 ]

@@ -24,7 +24,7 @@ K = np.array([[F, 0., IMG_SHAPE[0]/2],
 
 # global map
 camera_params = None  # depends on BA function
-all_frames = []  # (keypoints, descriptor)
+all_frames = []  # (img, keypoints, descriptor)
 all_poses = []  # (R, t) | None
 all_keypoints = []  # [f][i]: index of 3d point
 all_points_frames = []  # list of points [(f,i)]
@@ -308,7 +308,7 @@ def log_so3t(R, t):
     phi, _ = cv.Rodrigues(R)
     return np.concatenate((phi.flatten(), t.flatten()))
 
-BA_OUTLIER_Z = 10
+BA_OUTLIER_Z = 8
 BA_TH_RMSE = np.prod(IMG_SHAPE)**0.5 / 1000
 BA_SW = 40
 LC_MUTE = 5
@@ -370,7 +370,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations,
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
     residuals = np.abs(residuals)
-    mask = residuals > BA_OUTLIER_Z*np.mean(residuals)
+    mask = ~(residuals < BA_OUTLIER_Z*np.mean(residuals))
     outliers = np.where(mask[:,0] | mask[:,1])
 
     params_init = np.concatenate((camera_params, poses.flatten(), points.flatten()))
@@ -443,7 +443,7 @@ def bundle_adjustment_ceres_8(camera_params, poses, points, observations,
     # print(np.median(np.abs(poses-old_poses)), np.median(np.abs(points-old_points)))
 
     residuals = np.abs(residuals)
-    mask = residuals > BA_OUTLIER_Z*np.mean(residuals)
+    mask = ~(residuals < BA_OUTLIER_Z*np.mean(residuals))
     outliers = np.where(mask[:,0] | mask[:,1])
 
     params_init = np.concatenate((camera_params, poses.flatten(), points.flatten()))
@@ -471,7 +471,6 @@ def bundle_adjustment_update(frames=None, fix_intrinsic=None, fix_start=True):
             fix_intrinsic = False
         if len(all_match_groups) > 1:
             fix_intrinsic = True
-        fix_intrinsic = True
 
     # poses
     poses = []
@@ -494,6 +493,9 @@ def bundle_adjustment_update(frames=None, fix_intrinsic=None, fix_start=True):
         if fi not in poses_invmap:
             continue
         if pi == -1 or all_points[pi] is None:
+            continue
+        if not (np.linalg.norm(all_points[pi]) < 1e6):
+            all_points[pi] = None
             continue
         if pi not in points_invmap:
             points_invmap[pi] = len(points)
@@ -1093,13 +1095,16 @@ def add_frame(img, previous_ba=[-1], previous_lc=[-1]):
 
 # plotting and exporting
 
-def cull_points(points, colors, stdev):
+def cull_points(points, colors, stdev, mask=None):
     points, colors = np.array(points), np.array(colors)
-    mean = np.mean(points, axis=0)
-    cov_matrix = np.cov(points, rowvar=False)
+    if mask is None:
+        mask = np.ones(len(points), dtype=np.bool_)
+    points_masked = points[np.where(mask)]
+    mean = np.mean(points_masked, axis=0)
+    cov_matrix = np.cov(points_masked, rowvar=False)
     mahalanobis_dist = np.sqrt(np.sum(np.dot((points-mean), np.linalg.inv(cov_matrix)) * (points-mean), axis=1))
-    mask = mahalanobis_dist < stdev
-    return points[mask], colors[mask]
+    mask &= (mahalanobis_dist < stdev)
+    return mask
 
 def plot_points(ax, points, colors):
     if colors is None:
@@ -1226,7 +1231,7 @@ if __name__ == "__main__":
     cv.setRNGSeed(42)
 
     import img.videos
-    video_filename = img.videos.videos[4]
+    video_filename = img.videos.videos[32]
     cap = cv.VideoCapture(video_filename)
     assert cap.isOpened()
 
@@ -1306,9 +1311,11 @@ if __name__ == "__main__":
     colors = colors[nonzero_i] / (255.0*counts[nonzero_i])
     points = np.array([all_points[i] for i in nonzero_i])
     assert len(points) > 2 and "reconstruction failed"
-    points, colors = cull_points(points, colors, 3.5)
-    points, colors = cull_points(points, colors, 3.5)
-    points, colors = cull_points(points, colors, 3.0)
+    mask = None
+    for i in range(6):
+        mask = cull_points(points, colors, 3.5, mask)
+    inliners = np.where(mask)
+    points, colors = points[inliners], colors[inliners]
     colors = np.flip(colors, axis=1)
     print(len(points), "final points")
 
