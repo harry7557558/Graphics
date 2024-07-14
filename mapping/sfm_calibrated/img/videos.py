@@ -65,4 +65,8 @@ videos = [
 "/media/harry7557558/OS/Archive/sfm_videos/20240629_042929.mp4",
 # [32] student lounge
 "/media/harry7557558/OS/Archive/sfm_videos/20240707_220934.mp4",
+# [33] building sign
+"/media/harry7557558/OS/Archive/sfm_videos/20240710_145859.mp4",
+# [34] whiteboard 1
+"/media/harry7557558/OS/Archive/sfm_videos/20240710_180944.mp4"
 ]
