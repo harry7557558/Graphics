@@ -241,61 +241,168 @@ class Model(torch.nn.Module):
         print(A.shape)
 
         # Solve for the essential matrix using SVD
-        if False:
+        # findings:
+        #  - eigh is much faster than svd, svd gives MLE for large A
+        #  - eigh(A^T A) is numerically inaccurate
+        #  - numerical inaccuracy of A^T A affects eigenvalues more than eigenvectors
+        #  - eigenvectors for larger eigenvalues have higher accuracy
+        if 0:
             U, S, Vh = torch.linalg.svd(A)
-            E = Vh.T[-1].view(3, 3)
+            E = Vh[-1].view(3, 3)
+        elif 0:
+            # ATA = A.T.double() @ A.double()
+            ATA = (A.T @ A).double()
+            # ATA = (A.T @ A)
+            S, V = torch.linalg.eigh(ATA)
+            S, V = S.float(), V.float()
+            S, Vh = torch.sqrt(S), V.T
+            E = Vh[0].view(3, 3)
+            a = torch.zeros(9, device=device).float()
+            a[0] = 1.0
         else:
-            S, V = torch.linalg.eigh(A.T @ A)
-            S = torch.sqrt(S)
-            E = V[0].view(3, 3).T
-        print("E:")
-        print(E)
-        U, S, Vh = torch.linalg.svd(E)
+            ATA = (A.T @ A)
+            invATA = torch.linalg.inv(ATA)
+            S, V = torch.linalg.eigh(invATA)
+            # S = 1.0 / torch.sqrt(S)
+            S = torch.linalg.norm(A @ V, axis=0)
+            # print(torch.dist(V.T @ V, torch.eye(9).to(V)))
+            Vh = V.T
+            E = Vh[-1].view(3, 3)
+            a = torch.zeros(9, device=device).float()
+            a[-1] = 1.0
         print("S:", S)
+        print("E:", E, sep='\n')
+        print("proj err:", torch.linalg.norm(A @ E.flatten()).item())
+        for s, e in zip(S, Vh):
+            print(s.item(), torch.linalg.norm(A @ e).item())
+        # U, S, Vh = torch.linalg.svd(E)
+        # print("S:", S)
 
-        # E1, _ = cv.findEssentialMat(
-        #     points1.reshape(2, -1).T.detach().cpu().numpy(),
-        #     points2.reshape(2, -1).T.detach().cpu().numpy(),
-        #     torch.sqrt(fx*fy).item(),
-        #     self.camera_c.detach().cpu().numpy(),
-        #     method=cv.FM_8POINT)
-        # E = torch.tensor(E1).float().to(device)
-        # print("E:")
-        # print(E)
+        nc = 10  # number of constraints
+
+        # https://en.wikipedia.org/wiki/Essential_matrix#Properties
+        I3 = torch.eye(3, device=device)
+        delta4 = torch.zeros((3, 3, 3, 3), device=device)
+        for i in range(3):
+            for j in range(3):
+                delta4[i, j, i, j] = 1.0
+        def F(E):
+            c1 = torch.linalg.det(E)
+            EET = E @ E.T
+            c2 = 2.0 * EET @ E - torch.trace(EET) * E
+            f = torch.concat((c1.flatten(), 0.0*c2.flatten()))
+            return f
+        def F_with_jac(E):
+            c1 = torch.linalg.det(E)
+            g_c1 = c1 * torch.linalg.inv(E).T
+            EET = E @ E.T
+            g_EET = torch.einsum('ikab,jk->ijab', delta4, E) + \
+                torch.einsum('jkab,ik->ijab', delta4, E)
+            trEET = torch.trace(EET)
+            g_trEET = torch.einsum('ij,ijab->ab', I3, g_EET)
+            EETE = EET @ E
+            g_EETE = torch.einsum('ikab,kj->ijab', g_EET, E) + \
+                torch.einsum('kjab,ik->ijab', delta4, EET)
+            trEETE = trEET * E
+            g_trEETE = torch.einsum('ab,ij->ijab', g_trEET, E) + \
+                delta4 * trEET
+            c2 = 2.0 * EETE - trEETE
+            g_c2 = 2.0 * g_EETE - g_trEETE
+            f = torch.concat((c1.flatten(), 0.0*c2.flatten()))
+            g = torch.concat((g_c1.reshape((-1, 3, 3)), 0.0*g_c2.reshape((-1, 3, 3))))
+            return f, g
+        print("cons err:", F(E).norm().item(), F(E))
+
+        # TODO: iteratively find better E subject to essential matrix constraints
+        # Introduce a, E_i = V[i], E = \sum_i a_i E_i
+        # Minimize L = || \sum_i a_i S_i ||^2
+        # s.t. g1 = || a ||^2 - 1 = 0, g2 = F(\sum_i a_i E_i) = 0
+        # F(E): https://en.wikipedia.org/wiki/Essential_matrix#Properties
+        # d L / d a_i = 2 S_i (\sum_j a_j S_j)
+        # d^2 L / d a_i a_j = 2 S_i S_j
+        # d g1 / d a = 2 a
+        # d g2 / d a_i = E_i \cdot \nabla F(\sum_j a_j E_j)
+        # H = [ d^2 L / d a^2, (d g / d a)^T; d g / d a, 0 ]
+        # G = [d L / d a + (d g / d a)^T \lambda; g(a)]
+        # \Delta [a, \lambda] = - (H + \epsilon I) \ G
+
+        l_scale = 1.0 / (S*S).sum()
+        g1_scale = 0.01
+        lambdam = torch.zeros((nc+1,), device=device)
+        for i in range(20):
+            E = (V @ a).reshape((3, 3))
+            F_E1, dFdE = F_with_jac(E)
+            g1 = g1_scale * ((a*a).sum() - 1.0)
+            g2 = F_E1
+            g = torch.concat((g1.flatten(), g2.flatten()))
+            dLda = l_scale * 2.0 * S * (a*S).sum()
+            d2Lda2 = l_scale * 2.0 * torch.tensordot(S, S, dims=0)
+            dg1da = g1_scale * 2.0 * a
+            # print(dFdE.reshape((nc, 9)))
+            dg2da = dFdE.reshape((nc, 9)) @ Vh
+            dgda = torch.concat((dg1da.view(-1, 9), dg2da.view(-1, 9)))
+            H = torch.zeros((9+nc+1, 9+nc+1))
+            H[:9, :9] = d2Lda2
+            H[:9, 9:] = dgda.T
+            H[9:, :9] = dgda
+            G = torch.zeros((9+nc+1,))
+            G[:9] = dLda + dgda.T @ lambdam
+            G[9:] = g
+            # print(torch.linalg.eigvalsh(H.double()))
+            # X = -torch.linalg.solve(H, G)
+
+            lr = 1.0 / torch.linalg.norm(H)
+            # da = dLda
+            # da = 2.0 * g @ dgda
+            da = dLda + dgda.T @ lambdam
+            # print(da)
+            dl = g
+
+            delta_l = dl / torch.sqrt((dgda**2).sum()/(nc+1))
+            delta_a = (da-dgda.T@delta_l) / torch.sqrt((d2Lda2**2).sum()/9)
+            delta_l = dl
+            delta_a = da
+
+            a = a - lr * delta_a
+            # a = a / torch.linalg.norm(a)
+            lambdam = lambdam - lr * delta_l
+            E = (V @ a).reshape((3, 3))
+            print("cons err:", F(E).norm().item(),
+                  "|a|:", torch.linalg.norm(a).item(),
+                  "proj err:", torch.linalg.norm(A @ E.flatten()).item())
+        print(lambdam)
+        print("a:", torch.linalg.norm(a).item(), a)
+        print("proj err:", torch.linalg.norm(A @ E.flatten()).item())
+        print("cons err:", F(E).norm().item(), F(E))
+
+
+        E1, _ = cv.findEssentialMat(
+            points1.reshape(2, -1).T.detach().cpu().numpy(),
+            points2.reshape(2, -1).T.detach().cpu().numpy(),
+            torch.sqrt(fx*fy).item(),
+            self.camera_c.detach().cpu().numpy(),
+            method=cv.FM_8POINT)
+        E = torch.tensor(E1).float().to(device)
+        print("E:", E, sep='\n')
+        print("proj err:", torch.linalg.norm(A @ E.flatten()).item())
+        print("cons err:", F(E).norm().item(), F(E))
+        __import__("sys").exit(0)
 
         # `EMEstimatorCallback` in
         # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/five-point.cpp
 
-        # TODO: iteratively find better E subject to essential matrix constraints
-        # Introduce \alpha, E_i = V[i], E = \sum_i \alpha_i E_i
-        # Minimize L = || \sum_i \alpha_i S_i ||^2
-        # s.t. g1 = || \alpha ||^2 - 1 = 0, g2 = F(\sum_i \alpha_i E_i) = 0
-        # F(E): https://en.wikipedia.org/wiki/Essential_matrix#Properties
-        # d L / d \alpha_i = 2 S_i (\sum_j \alpha_j S_j)
-        # d^2 L / d \alpha_i \alpha_j = 2 S_i S_j
-        # d g1 / d \alpha = 2 \alpha
-        # d g2 / d \alpha_i = E_i \cdot \nabla F(\sum_j \alpha_j E_j)
-        # H = [ d^2 L / d \alpha^2, (d g / d \alpha)^T; d g / d \alpha, 0 ]
-        # G = [d L / d \alpha + (d g / d \alpha)^T \lambda; g(alpha)]
-        # \Delta [\alpha, \lambda] = - (H + \epsilon I) \ G
-
         # Enforce the essential matrix constraint: E = U * diag(1, 1, 0) * V^T
         U, S, Vh = torch.linalg.svd(E)
         print("S:", S)
-        __import__('sys').exit(0)
+        # __import__('sys').exit(0)
         S = torch.tensor([1, 1, 0], dtype=E.dtype, device=E.device)
         E = U @ torch.diag(S) @ Vh
-        print("E:")
-        print(E)
+        print("E:", E, sep='\n')
         if torch.det(U @ Vh) < 0:
             U[:, -1] *= -1
-        print("U:")
-        print(U)
-        print("Vh:")
-        print(Vh)
-        print("U Vh:")
-        print(U @ Vh)
-        print(torch.det(U @ Vh))
+        print("U:", U, sep='\n')
+        print("Vh:", Vh, sep='\n')
+        print("U Vh:", U @ Vh, sep='\n')
 
         # Decompose E to get R and t
         Rz = torch.tensor([[0, -1, 0], [1, 0, 0], [0, 0, 1]],
@@ -303,12 +410,9 @@ class Model(torch.nn.Module):
         R1 = U @ Rz @ Vh
         R2 = U @ Rz.T @ Vh
         t = U[:, 2]
-        print("R1:")
-        print(R1)
-        print("R2:")
-        print(R2)
-        print("t:")
-        print(t)
+        print("R1:", R1, sep='\n')
+        print("R2:", R2, sep='\n')
+        print("t:", t)
 
         # __import__('sys').exit(0)
 
@@ -674,7 +778,7 @@ if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.append(parent_dir)
     import sfm_calibrated.img.videos
-    video_filename = sfm_calibrated.img.videos.videos[0]
+    video_filename = sfm_calibrated.img.videos.videos[4]
     # video_filename = "/home/harry7557558/adr.mp4"
     cap = cv.VideoCapture(video_filename)
     assert cap.isOpened(), "Fail to open video"
