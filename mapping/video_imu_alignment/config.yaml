@@ -1,0 +1,5 @@
+work_dir: "/home/harry7557558/video_imu/2024_08_07_16_29_05/"
+# work_dir: "/home/harry7557558/video_imu/2024_08_08_18_10_27/"
+video_skip: 20
+video_keep: 15
+traj_model: siren
