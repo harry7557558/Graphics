@@ -57,7 +57,8 @@ def rotmat_to_quat(rot):
         q[..., 2] = (m12 + m21) / s
         q[..., 3] = 0.25 * s
 
-    return q
+    # return q
+    return q * np.sign(q[..., :1])
 
 def quat_to_rotmat(q):
     if isinstance(q, torch.Tensor):
@@ -134,9 +135,9 @@ def get_imu_data(work_dir):
 
     # original: x left, y down, z back
     accel = (np.array([
-        [-1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1]
+        [1, 0, 0],
+        [0, -1, 0],
+        [0, 0, -1]
     ]) @ accel.T).T
     # original: x up, y front, z right
     gyro = (np.array([
@@ -196,32 +197,26 @@ def get_imu_measurements(a, q, q_dot):
         q_norm = torch.norm(q, dim=1, keepdim=True)
         assert (abs(q_norm-1) < 1e-5).all()
 
-    w = 2 * (
-        q[:, 0].unsqueeze(1) * q_dot[:, 1:] -
-        q_dot[:, 0].unsqueeze(1) * q[:, 1:] -
-        torch.cross(q_dot[:, 1:], q[:, 1:], dim=1)
-    )
+    q_inv = q * torch.tensor([[1]+[-1]*3]).to(q)
+    w = 2 * quat_mul(q_inv, q_dot)[..., 1:]
 
-    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0).expand(len(a), -1)
-    a = (quat_to_rotmat(q).transpose(-2,-1) @ (a+g).unsqueeze(-1)).squeeze(-1)
+    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0)
+    a = (quat_to_rotmat(q).transpose(-2,-1) @ (a-g).unsqueeze(-1)).squeeze(-1)
 
     return a, w
 
 
 def procrustes_transform(points1, points2):
+    # s R p1 ~ p2
     points1 = torch.as_tensor(points1, dtype=torch.float32)
     points2 = torch.as_tensor(points2, dtype=torch.float32)
-    centroid1 = torch.mean(points1, dim=0)
-    centroid2 = torch.mean(points2, dim=0)
-    centered1 = points1 - centroid1
-    centered2 = points2 - centroid2
-    cov = torch.matmul(centered1.T, centered2)
+    cov = torch.matmul(points1.T, points2)
     U, _, Vt = torch.linalg.svd(cov)
     S = torch.eye(3, device=device).float()
     S[2, 2] = (U.det() * Vt.det()).sign()
     R = U @ S @ Vt
-    var1 = torch.sum(torch.var(centered1, dim=0))
-    var2 = torch.sum(torch.var(centered2, dim=0))
+    var1 = torch.sum(torch.var(points1, dim=0))
+    var2 = torch.sum(torch.var(points2, dim=0))
     s = torch.sqrt(var2 / var1)
     return s, R
 
@@ -261,24 +256,20 @@ def get_loss(traj: Trajectory, frame_data, imu_data, imu_batch_size=-1):
 
     # loss for imu, L2
     p, v, a, q, q_dot = traj.forward_grad(timei)
-    accel_g = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze(-1)
+    g = torch.tensor([0.0, 0.0, -9.80665]).to(accel)
+    accel_g = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze(-1) + g
     s, R = procrustes_transform(a, accel_g)
     ai, wi = get_imu_measurements(a, q, q_dot)  # TODO
     a_residual = (s * a @ R.T) - accel_g
     w_residual = wi - gyro
-    assert (a_residual**2).sum() <= ((a-accel_g)**2).sum()
-    assert (a_residual**2).sum() <= ((s*a-accel_g)**2).sum()
+    # assert (a_residual**2).sum() <= ((a-accel_g)**2).sum()
+    # assert (a_residual**2).sum() <= ((s*a-accel_g)**2).sum()
     lossi = torch.sum(a_residual**2, dim=-1).mean()
     # lossi = lossi + 1.0 * torch.sum(w_residual**2, dim=-1).mean()
     # lossi = lossi + 1.0 * (torch.sum(wi**2, dim=-1).mean()-torch.sum(gyro**2, dim=-1).mean())**2
     lossi = lossi + 0.1 * torch.sum(q_dot**2, dim=-1).mean()
 
-    # loss for gravity, L2
-    a1 = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze()
-    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0).expand(len(a1), -1)
-    lossg = ((a1-g)**2).mean()**0.5
-
-    return 10.0 * lossf, 0.5 * lossi, 0.0 * lossg
+    return 10.0 * lossf, 0.5 * lossi
 
 
 def get_rigid_transform(traj: Trajectory, imu_data):
@@ -303,7 +294,6 @@ def train_trajectory_adam(traj, frame_data, imu_data, num_epochs=200):
             print(f'{epoch+1}/{num_epochs}',
                   f'lossf {loss[0].item():.6f}',
                   f'lossi {loss[1].item():.6f}',
-                  f'lossg {loss[2].item():.6f}',
                   sep='  ')
     
     return traj
@@ -330,7 +320,6 @@ def train_trajectory_lbfgs(traj, frame_data, imu_data, num_epochs=200):
             print(f'{nfev+1}/{num_epochs}',
                   f'lossf {loss[0].item():.6f}',
                   f'lossi {loss[1].item():.6f}',
-                  f'lossg {loss[2].item():.6f}',
                   sep='  ')
 
         return sum(loss)

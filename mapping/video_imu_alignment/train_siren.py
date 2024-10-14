@@ -57,7 +57,8 @@ def rotmat_to_quat(rot):
         q[..., 2] = (m12 + m21) / s
         q[..., 3] = 0.25 * s
 
-    return q
+    # return q
+    return q * np.sign(q[..., :1])
 
 def quat_to_rotmat(q):
     if isinstance(q, torch.Tensor):
@@ -67,6 +68,13 @@ def quat_to_rotmat(q):
             torch.stack([2*x*y + 2*z*w,     1 - 2*x**2 - 2*z**2, 2*y*z - 2*x*w]),
             torch.stack([2*x*z - 2*y*w,     2*y*z + 2*x*w,     1 - 2*x**2 - 2*y**2])
         ]).permute(2, 0, 1)
+    elif isinstance(q, (np.ndarray, np.generic)):
+        w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+        return np.stack([
+            1 - 2*y**2 - 2*z**2, 2*x*y - 2*z*w,     2*x*z + 2*y*w,
+            2*x*y + 2*z*w,     1 - 2*x**2 - 2*z**2, 2*y*z - 2*x*w,
+            2*x*z - 2*y*w,     2*y*z + 2*x*w,     1 - 2*x**2 - 2*y**2
+        ], axis=-1).reshape(*q.shape[:-1], 3, 3)
     else:
         q = q / np.linalg.norm(q)
         w, x, y, z = q
@@ -133,9 +141,9 @@ def get_imu_data(work_dir):
 
     # original: x left, y down, z back
     accel = (np.array([
-        [-1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1]
+        [1, 0, 0],
+        [0, -1, 0],
+        [0, 0, -1]
     ]) @ accel.T).T
     # original: x up, y front, z right
     gyro = (np.array([
@@ -147,12 +155,12 @@ def get_imu_data(work_dir):
 
     fig, ax = plt.subplots(2, 1, sharex='all', figsize=(12.0, 8.0))
 
-    params = { 'linewidth': 1, 'markersize': 1 }
+    params = { 'linewidth': 1, 'markersize': 0.5 }
     for i in range(3):
-        ax[0].plot(times, accel[:, i], "rgb"[i]+".-", **params)
-        ax[1].plot(times, gyro[:, i], "rgb"[i]+".-", **params)
-    ax[0].plot(times, np.linalg.norm(accel, axis=1), "k.-", **params)
-    ax[1].plot(times, np.linalg.norm(gyro, axis=1), "k.-", **params)
+        ax[0].plot(times, accel[:, i], "rgb"[i]+".", **params)
+        ax[1].plot(times, gyro[:, i], "rgb"[i]+".", **params)
+    ax[0].plot(times, np.linalg.norm(accel, axis=1), "k.", **params)
+    ax[1].plot(times, np.linalg.norm(gyro, axis=1), "k.", **params)
     for a in ax:
         a.grid()
         a.set_xlim([times[0], times[-1]])
@@ -231,14 +239,11 @@ def get_imu_measurements(a, q, q_dot):
         q_norm = torch.norm(q, dim=1, keepdim=True)
         assert (abs(q_norm-1) < 1e-5).all()
 
-    w = 2 * (
-        q[:, 0].unsqueeze(1) * q_dot[:, 1:] -
-        q_dot[:, 0].unsqueeze(1) * q[:, 1:] -
-        torch.cross(q_dot[:, 1:], q[:, 1:], dim=1)
-    )
+    q_inv = q * torch.tensor([[1]+[-1]*3]).to(q)
+    w = 2 * quat_mul(q_inv, q_dot)[..., 1:]
 
-    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0).expand(len(a), -1)
-    a = (quat_to_rotmat(q).transpose(-2,-1) @ (a+g).unsqueeze(-1)).squeeze(-1)
+    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0)
+    a = (quat_to_rotmat(q).transpose(-2,-1) @ (a-g).unsqueeze(-1)).squeeze(-1)
 
     return a, w
 
@@ -282,14 +287,9 @@ def get_loss(traj: Trajectory, frame_data, imu_data, imu_batch_size=-1):
     p, v, a0, q, q_dot = traj.forward_grad(timei)
     a, w = get_imu_measurements(a0, q, q_dot)
     lossi = torch.sum((a-accel)**2, dim=-1).mean() + \
-        10.0 * torch.sum((w-gyro)**2, dim=-1).mean()
+        50.0 * torch.sum((w-gyro)**2, dim=-1).mean()
 
-    # loss for gravity, L2
-    a1 = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze()
-    g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0).expand(len(a1), -1)
-    lossg = ((a1-g)**2).mean()**0.5
-
-    return 10.0 * lossf, 0.5 * lossi, 1.0 * lossg
+    return 10.0 * lossf, 1.0 * lossi
 
 
 def get_rigid_transform(traj: Trajectory, frame_data):
@@ -309,7 +309,7 @@ def train_trajectory_adam(traj, frame_data, imu_data, imu_batch_size=-1, num_epo
 
     for epoch in range(num_epochs):
         traj.train()
-        total_loss = np.array([0.0, 0.0, 0.0])
+        total_loss = np.array([0.0, 0.0])
         for i in range(num_batches):
             optimizer.zero_grad()
             loss = get_loss(traj, frame_data, imu_data, imu_batch_size)
@@ -322,7 +322,6 @@ def train_trajectory_adam(traj, frame_data, imu_data, imu_batch_size=-1, num_epo
             print(f'{epoch+1}/{num_epochs}',
                   f'lossf {total_loss[0]:.6f}',
                   f'lossi {total_loss[1]:.6f}',
-                  f'lossg {total_loss[2]:.6f}',
                   sep='  ')
     
     return traj
@@ -349,7 +348,6 @@ def train_trajectory_lbfgs(traj, frame_data, imu_data, num_epochs=200):
             print(f'{nfev+1}/{num_epochs}',
                   f'lossf {loss[0].item():.6f}',
                   f'lossi {loss[1].item():.6f}',
-                  f'lossg {loss[2].item():.6f}',
                   sep='  ')
 
         return sum(loss)
@@ -378,16 +376,16 @@ def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
     p, v, a, q, q_dot = traj.forward_grad(imu_data[0])
     a, w = [x.cpu().numpy() for x in get_imu_measurements(a, q, q_dot)]
 
-    params = { 'linewidth': 1, 'markersize': 1 }
+    params = { 'linewidth': 1, 'markersize': 0.5 }
     for i in range(3):
-        axs[0].plot(times, accel[:, i], "rgb"[i]+".-", **params)
-        axs[1].plot(times, gyro[:, i], "rgb"[i]+".-", **params)
-        axs[0].plot(times, a[:, i], "rgb"[i]+"--", **params)
-        axs[1].plot(times, w[:, i], "rgb"[i]+"--", **params)
-    axs[0].plot(times, np.linalg.norm(accel, axis=1), "k.-", **params)
-    axs[1].plot(times, np.linalg.norm(gyro, axis=1), "k.-", **params)
-    axs[0].plot(times, np.linalg.norm(a, axis=1), "k--", **params)
-    axs[1].plot(times, np.linalg.norm(w, axis=1), "k--", **params)
+        axs[0].plot(times, accel[:, i], "rgb"[i]+".", **params)
+        axs[1].plot(times, gyro[:, i], "rgb"[i]+".", **params)
+        axs[0].plot(times, a[:, i], "rgb"[i]+"-", **params)
+        axs[1].plot(times, w[:, i], "rgb"[i]+"-", **params)
+    axs[0].plot(times, np.linalg.norm(accel, axis=1), "k.", **params)
+    axs[1].plot(times, np.linalg.norm(gyro, axis=1), "k.", **params)
+    axs[0].plot(times, np.linalg.norm(a, axis=1), "k-", **params)
+    axs[1].plot(times, np.linalg.norm(w, axis=1), "k-", **params)
     for ax in axs:
         ax.grid()
         ax.set_xlim([times[0], times[-1]])
@@ -443,6 +441,9 @@ def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
     # p1 = p + 1.0*sc * np.einsum('nij,nj->ni',R,accel) / 9.8
     # p1 = p + 1.0*sc * accel / 9.8
     # axs.plot(p1.T[0], p1.T[1], p1.T[2], 'k-', linewidth=1)
+    a1 = np.einsum('nij,nj->ni', quat_to_rotmat(q), accel)
+    p = p + 0.05 * a1
+    # axs.plot(p.T[0], p.T[1], p.T[2], 'm-', linewidth=1)
 
     set_axes_equal(axs)
     axs.set_xlabel('x')
