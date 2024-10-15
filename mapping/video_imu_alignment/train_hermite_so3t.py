@@ -7,7 +7,7 @@ import yaml
 import matplotlib.pyplot as plt
 
 from traj import Trajectory
-from traj_hermite import HermiteTrajectory
+from traj_hermite import HermiteTrajectorySO3t
 from utils import *
 
 
@@ -26,51 +26,31 @@ def get_imu_measurements(a, q, q_dot):
     return a, w
 
 
-def procrustes_transform(points1, points2):
-    weight = torch.ones((len(points1), 1)).to(points1) / len(points1)
-    cov = (points2 * weight).transpose(-1, -2) @ points1
-    U, S, Vh = torch.linalg.svd(cov)
-    s = torch.sum(S) / torch.sum(torch.square(points2))
-    S = torch.eye(3, device=device).float()
-    S[2, 2] = (U.det() * Vh.det()).sign()
-    R = U @ S @ Vh
-    return (s, R)
+def get_rigid_transform(traj: Trajectory):
+    return traj.s, traj.R, traj.t
 
 def get_loss(traj: Trajectory, frame_data, imu_data, imu_batch_size=-1):
 
+    # loss for frames, L1
     timef, pos, quat = frame_data
-    timei, accel, gyro = imu_data
-
-    # loss for frame, L1
     p, v, a, q, q_dot = traj.forward_grad(timef)
-    p_residual = p - pos
-    q_residual = q - quat
+    s, R, t = get_rigid_transform(traj)
+    p_residual = (s * pos @ R.T + t) - p
+    R_residual = R.unsqueeze(0) @ quat_to_rotmat(quat) - quat_to_rotmat(q)
     lossf = torch.norm(p_residual, dim=-1).mean() + \
-        0.4 * torch.norm(q_residual, dim=1).mean()
+        0.4 * torch.norm(R_residual, dim=(-2, -1)).mean()
 
     # loss for imu, L2
-    p, v, a, q, q_dot = traj.forward_grad(timei)
-    g = torch.tensor([0.0, 0.0, -9.80665]).to(accel)
-    accel_g = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze(-1) + g
-    s, R = procrustes_transform(a, accel_g)
-    # ai, wi = get_imu_measurements(a, q, q_dot)  # TODO
-    a_residual = (s * a @ R.T) - accel_g
-    # w_residual = wi - gyro
-    assert (a_residual**2).sum() <= 1.0001*((a-accel_g)**2).sum()
-    assert (a_residual**2).sum() <= 1.0001*((s*a-accel_g)**2).sum()
-    lossi = torch.sum(a_residual**2, dim=-1).mean()
-    # lossi = lossi + 1.0 * s * torch.sum(w_residual**2, dim=-1).mean()
-    # lossi = lossi + 1.0 * s * (torch.sum(wi**2, dim=-1).mean()-torch.sum(gyro**2, dim=-1).mean())**2
-    # lossi = lossi + 0.1 * torch.sum(q_dot**2, dim=-1).mean()
-
-    return 10.0 * lossf, 0.5 * lossi
-
-
-def get_rigid_transform(traj: Trajectory, imu_data):
     timei, accel, gyro = imu_data
-    p, v, a, q, q_dot = traj.forward_grad(timei)
-    accel_g = (quat_to_rotmat(q) @ accel.unsqueeze(-1)).squeeze(-1)
-    return procrustes_transform(a, accel_g)
+    if imu_batch_size > 0:
+        batch = torch.randint(len(timei), (imu_batch_size,)).to(device)
+        timei, accel, gyro = timei[batch], accel[batch], gyro[batch]
+    p, v, a0, q, q_dot = traj.forward_grad(timei)
+    a, w = get_imu_measurements(a0, q, q_dot)
+    lossi = torch.sum((a-accel)**2, dim=-1).mean() + \
+        50.0 * torch.sum((w-gyro)**2, dim=-1).mean()
+
+    return 10.0 * lossf, 1.0 * lossi
 
 
 def train_trajectory_adam(traj, frame_data, imu_data, num_epochs=200):
@@ -127,9 +107,9 @@ def train_trajectory_lbfgs(traj, frame_data, imu_data, num_epochs=200):
 def train_trajectory(traj, frame_data, imu_data):
     torch.autograd.set_detect_anomaly(True)
     # return train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
-    traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=200)
+    # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=50)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=500)
-    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
+    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 100)
     return traj
 
 
@@ -137,19 +117,11 @@ def train_trajectory(traj, frame_data, imu_data):
 @torch.no_grad()
 def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
 
-    ts, tR = get_rigid_transform(traj, imu_data)
-    ts = ts.cpu().numpy()
-    tR = tR.cpu().numpy()
-    print('s:', ts, sep='\n')
-    print('R:', tR, sep='\n')
-
     fig, axs = plt.subplots(2, 1, sharex='all', figsize=(12.0, 8.0))
     times, accel, gyro = [x.cpu().numpy() for x in imu_data]
 
     p, v, a, q, q_dot = traj.forward_grad(imu_data[0])
     a, w = [x.cpu().numpy() for x in get_imu_measurements(a, q, q_dot)]
-    a = ts * a @ tR.T
-    w = ts * a @ tR.T
 
     params = { 'linewidth': 1, 'markersize': 0.5 }
     for i in range(3):
@@ -172,6 +144,13 @@ def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
     # plt.show()
     plt.close(fig)
 
+    ts, tR, tt = get_rigid_transform(traj)
+    ts = ts.cpu().numpy()
+    tR = tR.cpu().numpy()
+    tt = tt.cpu().numpy()
+    print('s:', ts, sep='\n')
+    print('R:', tR, sep='\n')
+    print('t:', tt, sep='\n')
 
     axs = plt.axes(projection='3d')
     axs.computed_zorder = False
@@ -182,7 +161,7 @@ def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
         np.random.shuffle(idx)
         idx = idx[:2000]
         xyz, rgb = xyz[idx], rgb[idx]
-        xyz = ts * xyz @ tR.T
+        xyz = ts * xyz @ tR.T + tt
         axs.scatter(xyz.T[0], xyz.T[1], xyz.T[2], c=rgb/255.0, s=1)
 
     sc = (torch.linalg.det(torch.cov(frame_data[1].T))**(1/6)).item() / len(frame_data[0])**(1/3)
@@ -190,16 +169,27 @@ def plot_trajectory(traj, frame_data, imu_data, point_cloud=None):
     _, ps, qs = [x.cpu().numpy() for x in frame_data]
     p1s, q1s = [x.cpu().numpy() for x in traj.forward(frame_data[0])]
     for p, q, p1, q1 in zip(ps, qs, p1s, q1s):
-        p = ts * tR @ p
+        p = ts * tR @ p + tt
         R = ts * tR @ quat_to_rotmat(q)
+        R1 = ts * quat_to_rotmat(q1)
+        axs.plot([p[0], p1[0]], [p[1], p1[1]], [p[2], p1[2]], 'm')
+        for i in range(3):
+            a = p1 + sc * R1.T[i] #* (-1 if i > 0 else 1)
+            axs.plot([p1[0], a[0]], [p1[1], a[1]], [p1[2], a[2]], 'rgb'[i])
         for i in range(3):
             a = p + sc * R.T[i] #* (-1 if i > 0 else 1)
             axs.plot([p[0], a[0]], [p[1], a[1]], [p[2], a[2]], 'rgb'[i])
         axs.plot(p[0], p[1], p[2], 'k.')
 
     p, q = [x.cpu().numpy() for x in traj.forward(imu_data[0])]
-    p = ts * p @ tR.T
     axs.plot(p.T[0], p.T[1], p.T[2], 'k-', linewidth=1)
+    # R = np.array([quat_to_rotmat(qi).T for qi in q])
+    # p1 = p + 1.0*sc * np.einsum('nij,nj->ni',R,accel) / 9.8
+    # p1 = p + 1.0*sc * accel / 9.8
+    # axs.plot(p1.T[0], p1.T[1], p1.T[2], 'k-', linewidth=1)
+    a1 = np.einsum('nij,nj->ni', quat_to_rotmat(q), accel)
+    p = p + 0.05 * a1
+    # axs.plot(p.T[0], p.T[1], p.T[2], 'm-', linewidth=1)
 
     set_axes_equal(axs)
     axs.set_xlabel('x')
@@ -221,7 +211,7 @@ if __name__ == "__main__":
     mask = torch.where((imu_data[0] > frame_data[0][0]) & (imu_data[0] < frame_data[0][-1]))
     imu_data = [i[mask] for i in imu_data]
 
-    traj = HermiteTrajectory(*frame_data).to(device)
+    traj = HermiteTrajectorySO3t(*frame_data).to(device)
     traj = train_trajectory(traj, frame_data, imu_data)
     plot_trajectory(traj, frame_data, imu_data, point_cloud)
 

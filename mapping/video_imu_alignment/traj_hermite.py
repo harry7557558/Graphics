@@ -6,7 +6,7 @@ from torch import Tensor
 
 from traj import Trajectory
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+from utils import *
 
 
 class HermiteSpline(torch.nn.Module):
@@ -168,6 +168,61 @@ class HermiteTrajectory(Trajectory):
         return p, dpdt, dpdt2, q, dqdt
 
 
+class HermiteTrajectorySO3t(HermiteTrajectory):
+    def __init__(self,
+                 times: Float[Tensor, "n"],
+                 positions: Float[Tensor, "n 3"],
+                 quats: Float[Tensor, "n 4"],
+                 r: Float[Tensor, "3"] = torch.zeros(3),
+                 t: Float[Tensor, "3"] = torch.zeros(3),
+                 s0: Float[Tensor, ""] = torch.zeros(tuple())
+                ):
+        super().__init__(times, positions, quats)
+        self.r = torch.nn.Parameter(r.float().to(device))
+        self.t = torch.nn.Parameter(t.float().to(device))
+        self.s0 = torch.nn.Parameter(s0.float().to(device))
+
+    @property
+    def R(self):
+        return exp_so3(self.r)
+
+    @property
+    def s(self):
+        return torch.exp(self.s0)
+
+    def forward(self, t):
+        y = self.model.forward(t.flatten(), 0)
+        # pos
+        R, t = self.R, self.t.unsqueeze(0)
+        pos = self.s * y[:, :3] @ R.T + t
+        # quat
+        Rq = rotmat_to_quat_torch(R).unsqueeze(0)
+        quat = y[:, 3:] / torch.norm(y[:, 3:], dim=1, keepdim=True)
+        quat = quat_mul(Rq, quat)
+        # return pos
+        # return quat
+        return pos, quat
+
+    def forward_grad(self, t):
+        y, dydt, dydt2 = self.model.forward(t.flatten(), 2)
+        p, dpdt, dpdt2 = y[:, :3], dydt[:, :3], dydt2[:, :3]
+        # pos
+        R, t = self.R, self.t.unsqueeze(0)
+        sR = self.s * self.R
+        p, dpdt, dpdt2 = p @ sR.T + t, dpdt @ sR.T, dpdt2 @ sR.T
+        # quat
+        Rq = rotmat_to_quat_torch(R).unsqueeze(0)
+        q, dqdt = y[:, 3:], dydt[:, 3:]
+        q_invnorm = 1.0 / torch.norm(q, dim=1, keepdim=True)
+        q = q * q_invnorm
+        dqdt = (((torch.eye(4, device=device).unsqueeze(0) - torch.einsum('ni,nj->nij', q, q)) \
+                 * q_invnorm.unsqueeze(-1)) @ dqdt.unsqueeze(2)).squeeze(2)
+        q, dqdt = quat_mul(Rq, q), quat_mul(Rq, dqdt)
+        # return p, dpdt, dpdt2
+        # return q, dqdt
+        return p, dpdt, dpdt2, q, dqdt
+
+
 def check_close(msg, a, b):
     err = abs(b-a).mean().item()
     mag = abs(a).mean().item()
@@ -201,11 +256,16 @@ if __name__ == "__main__":
     pnts3 = torch.tensor([[-1, -1, -1], [2, -2, 2], [3, 3, -3], [0, 2, 1]])
     quats = torch.randn(4, 4)
     quats /= torch.norm(quats, dim=1)
-    t = torch.linspace(0, 8, 100).to(device)
+    t = torch.linspace(0+0.1, 8-0.1, 100).to(device)
 
-    # traj = HermiteTrajectory(times, pnts3, quats)
+    traj = HermiteTrajectorySO3t(
+        times, pnts3, quats,
+        torch.tensor([0.1,0.2,0.3]).to(device),
+        torch.tensor([1,2,3]).to(device),
+        torch.tensor(0.5)
+    )
     # test_pos_grad(traj, t)
-    # test_quat_grad(traj, t)
+    test_quat_grad(traj, t)
 
     traj = HermiteSpline(times, pnts2)
     p = traj(t, 2)[0]
