@@ -18,6 +18,7 @@ def get_imu_measurements(a, q, q_dot):
         assert (abs(q_norm-1) < 1e-5).all()
 
     q_inv = q * torch.tensor([[1]+[-1]*3]).to(q)
+    # print(quat_mul(q_inv, q_dot)[...,0].abs().mean())
     w = 2 * quat_mul(q_inv, q_dot)[..., 1:]
 
     g = torch.tensor([0.0, 0.0, -9.80665], device=a.device).unsqueeze(0)
@@ -66,8 +67,9 @@ def train_trajectory_adam(traj, frame_data, imu_data, num_epochs=200):
 
         if epoch == 0 or (epoch+1) % 10 == 0:
             print(f'{epoch+1}/{num_epochs}',
-                  f'lossf {loss[0].item():.6f}',
-                  f'lossi {loss[1].item():.6f}',
+                #   f'lossf {loss[0].item():.6f}',
+                  f'lossi {loss[1].item():.4f}',
+                  f's {traj.s.item():.4g}',
                   sep='  ')
     
     return traj
@@ -78,7 +80,8 @@ def train_trajectory_lbfgs(traj, frame_data, imu_data, num_epochs=200):
     optimizer = torch.optim.LBFGS(
         traj.parameters(), max_iter=num_epochs,
         line_search_fn="strong_wolfe",
-        history_size=40
+        history_size=40,
+        tolerance_grad=1e-10, tolerance_change=1e-12
     )
 
     loss = 0.0
@@ -92,8 +95,9 @@ def train_trajectory_lbfgs(traj, frame_data, imu_data, num_epochs=200):
 
         if (nfev+1) % 10 == 0:
             print(f'{nfev+1}/{num_epochs}',
-                  f'lossf {loss[0].item():.6f}',
-                  f'lossi {loss[1].item():.6f}',
+                #   f'lossf {loss[0].item():.6f}',
+                  f'lossi {loss[1].item():.4f}',
+                  f's {traj.s.item():.4g}',
                   sep='  ')
 
         return sum(loss)
@@ -109,7 +113,8 @@ def train_trajectory(traj, frame_data, imu_data):
     # return train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=50)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=500)
-    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 100)
+    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
+    # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=50)
     return traj
 
 
@@ -211,7 +216,10 @@ if __name__ == "__main__":
     mask = torch.where((imu_data[0] > frame_data[0][0]) & (imu_data[0] < frame_data[0][-1]))
     imu_data = [i[mask] for i in imu_data]
 
-    traj = HermiteTrajectorySO3t(*frame_data).to(device)
+    traj = HermiteTrajectorySO3t(
+        *frame_data,
+        degree=5, continuity_order=2, mie_init_order=2
+    ).to(device)
     traj = train_trajectory(traj, frame_data, imu_data)
     plot_trajectory(traj, frame_data, imu_data, point_cloud)
 

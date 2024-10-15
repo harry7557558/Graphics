@@ -89,7 +89,7 @@ def quat_mul(q: torch.Tensor, r: torch.Tensor):
     return torch.cat((t0.unsqueeze(1), t1), dim=1)
 
 
-def rotmat_to_quat_torch(R: torch.Tensor):
+def rotmat_to_quat_torch_(R: torch.Tensor):
     assert R.shape == (3, 3)
     q_w = torch.sqrt(1.0 + R[0, 0] + R[1, 1] + R[2, 2]) / 2.0
     q_x = (R[2, 1] - R[1, 2]) / (4.0 * q_w)
@@ -98,7 +98,7 @@ def rotmat_to_quat_torch(R: torch.Tensor):
     q = torch.stack([q_w, q_x, q_y, q_z])
     return q / torch.norm(q)
 
-def rotmat_to_quat_torch_(rot: torch.Tensor):
+def rotmat_to_quat_torch(rot: torch.Tensor):
     m00, m01, m02 = rot[..., 0, 0], rot[..., 0, 1], rot[..., 0, 2]
     m10, m11, m12 = rot[..., 1, 0], rot[..., 1, 1], rot[..., 1, 2]
     m20, m21, m22 = rot[..., 2, 0], rot[..., 2, 1], rot[..., 2, 2]
