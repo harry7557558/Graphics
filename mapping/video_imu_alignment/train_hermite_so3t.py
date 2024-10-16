@@ -113,7 +113,7 @@ def train_trajectory(traj, frame_data, imu_data):
     # return train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=50)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=500)
-    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 200)
+    traj = train_trajectory_lbfgs(traj, frame_data, imu_data, 300)
     # traj = train_trajectory_adam(traj, frame_data, imu_data, num_epochs=50)
     return traj
 
@@ -218,8 +218,9 @@ if __name__ == "__main__":
 
     traj = HermiteTrajectorySO3t(
         *frame_data,
-        degree=5, continuity_order=2, mie_init_order=2
+        degree=7, continuity_order=2, mie_init_order=3
     ).to(device)
     traj = train_trajectory(traj, frame_data, imu_data)
+    # print(traj.model.additional_coeffs)
     plot_trajectory(traj, frame_data, imu_data, point_cloud)
 

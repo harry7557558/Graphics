@@ -27,14 +27,16 @@ class HermiteSpline(torch.nn.Module):
         assert degree >= 1 and degree >= 2*continuity_order+1, "unsupported degree and continuity order"
         self.degree = degree
         self.continuity_order = continuity_order
-        self.coeffs = {}  # derivatives
-        for i in range(1, self.continuity_order+1):
-            self.coeffs[i] = torch.nn.Parameter(torch.zeros_like(self.c0))
+        self.diff_coeffs = torch.nn.Parameter(
+            torch.zeros(continuity_order, self.n, self.dim).to(self.c0))
+        n_additional_coeffs = degree+1 - 2*(continuity_order+1)
+        self.additional_coeffs = torch.nn.Parameter(
+            torch.zeros(n_additional_coeffs, self.n-1, self.dim).to(self.c0))
 
         # Hermite weight matrix
         dt = (self.t[1:] - self.t[:-1]).reshape(-1, 1, 1)  # (n-1, 1, 1)
-        cmat = torch.zeros((2*(continuity_order+1), degree+1)).double()
-        emat = torch.zeros((2*(continuity_order+1), degree+1)).double()
+        cmat = torch.zeros((degree+1, degree+1)).double()
+        emat = torch.zeros((degree+1, degree+1)).double()
         for diff_order in range(continuity_order+1):
             cmat[diff_order, diff_order] = math.factorial(diff_order)
         cs = torch.ones(self.degree+1).double()
@@ -45,10 +47,14 @@ class HermiteSpline(torch.nn.Module):
             emat[row_id] = es
             cs *= es
             es = torch.concat((torch.zeros(1), es))[:-1]
-        wmat = cmat.to(device) * dt.double() ** emat.to(device)  # (n-1, 2co+2, deg+1)
+        for i in range(2*(continuity_order+1), degree+1):
+            cmat[i, i] = 1.0
+            emat[i, i] = i
+        wmat = cmat.to(device) * dt.double() ** emat.to(device)  # (n-1, deg+1, deg+1)
         hmat = wmat.transpose(-1,-2) @ torch.linalg.inv(
-            wmat @ wmat.transpose(-1,-2))  # (n-1, deg+1, 2co+2)
-        self.hmat = hmat.float()  # (n-1, deg+1, 2co+2)
+            wmat @ wmat.transpose(-1,-2))  # (n-1, deg+1, deg+1)
+        self.hmat = hmat.float()  # (n-1, deg+1, deg+1)
+        # print(torch.mean(self.hmat**2)**0.5)
 
         # Minimum jerk/snap initialization
         if mie_init_order == -1 or continuity_order < 1:
@@ -65,45 +71,51 @@ class HermiteSpline(torch.nn.Module):
         cmat = cmat.unsqueeze(0) / emat  # (1, deg+1, deg+1)
         tmat = cmat * dt.double() ** emat  # (n-1, deg+1, deg+1)
         # compute matrix W = H^T T H
-        wmat = hmat.transpose(-1,-2) @ tmat @ hmat  # (n-1, 2co+2, 2co+2)
+        wmat = hmat.transpose(-1,-2) @ tmat @ hmat  # (n-1, deg+1, deg+1)
         # minimize[c] c^T W c
         max_iter = 200
         optimizer = torch.optim.LBFGS(
-            [self.coeffs[i+1] for i in range(continuity_order)], max_iter=max_iter,
+            self.parameters(), max_iter=max_iter,
             line_search_fn=None, history_size=40,
             tolerance_grad=1e-1, tolerance_change=1e-2
+            # tolerance_grad=1e-3, tolerance_change=1e-4
         )
         loss = 0.0
         nfev = 0
         def closure():
             nonlocal nfev, loss
             optimizer.zero_grad()
-            c = self.coeff_matrix.double()  # (n-1, 2co+2, dim)
+            c = self.coeff_matrix.double()  # (n-1, deg+1, dim)
             # l = (c.transpose(-1,-2) @ wmat @ c).sum()
             # l = (c.transpose(-1,-2) @ wmat @ c).diagonal(offset=0, dim1=-1, dim2=-2).sum()
             l = ((c.transpose(-1,-2) @ wmat @ c)**2).sum()**0.5
             l.backward()
             nfev += 1
-            if (nfev+1) % 20 == 0:
-                print(f'{nfev+1}/{max_iter}',
+            if (nfev) % (1 if __name__ == "__main__" else 20) == 0:
+                print(f'{nfev}/{max_iter}',
                     f'loss {l.item():.6f}',
                     sep='  ')
+            # print(self.additional_coeffs.grad)
             return l
         optimizer.step(closure)
         optimizer.zero_grad()
         print(f"Trajectory initialized in {nfev} iterations")
+        # print(self.diff_coeffs)
+        # print(self.additional_coeffs)
 
     def parameters(self):
-        return [self.coeffs[i+1] for i in range(self.continuity_order)]
+        # return [self.diff_coeffs]
+        return [self.diff_coeffs, self.additional_coeffs]
 
     @property
     def coeff_matrix(self):
-        return torch.stack([
-            self.c0[:-1],
-            *[self.coeffs[i+1][:-1] for i in range(self.continuity_order)],
-            self.c0[1:],
-            *[self.coeffs[i+1][1:] for i in range(self.continuity_order)]
-        ]).transpose(0, 1)  # (n-1, 2co+2, dim)
+        return torch.vstack([
+            self.c0[:-1].unsqueeze(0),
+            self.diff_coeffs[:, :-1],
+            self.c0[1:].unsqueeze(0),
+            self.diff_coeffs[:, 1:],
+            self.additional_coeffs
+        ]).transpose(0, 1)  # (n-1, deg+1, dim)
 
     def forward(self, x: Float[Tensor, "batch"], derivative_order: int=0) \
           -> Union[Float[Tensor, "batch dim"], Tuple[Float[Tensor, "batch dim"]]]:
@@ -202,23 +214,23 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         U, S, Vt = torch.linalg.svd(self.model.hmat)
         # self.scale = S.mean().item()
         # self.scale = torch.exp(torch.log(S).mean()).item()
-        self.scale = 1.0
-        print('scale:', self.scale)
+        self.rel_scale = 1.0
+        print('scale:', self.rel_scale)
 
     def parameters(self):
         return self.model.parameters() + [self.r0, self.t0, self.s0]
 
     @property
     def R(self):
-        return exp_so3(self.scale * self.r0)
+        return exp_so3(self.rel_scale * self.r0)
 
     @property
     def s(self):
-        return torch.exp(self.s0)
+        return self.rel_scale * torch.exp(self.s0)
 
     @property
     def t(self):
-        return self.scale * self.t0
+        return self.rel_scale * self.t0
 
     def forward(self, t):
         y = self.model.forward(t.flatten(), 0)
@@ -293,14 +305,14 @@ if __name__ == "__main__":
         torch.tensor([0.1,0.2,0.3]).to(device),
         torch.tensor([1,2,3]).to(device),
         torch.tensor(0.5),
-        degree=10, continuity_order=4
+        degree=5, continuity_order=1, mie_init_order=1
     )
     # test_pos_grad(traj, t)
     # test_quat_grad(traj, t)
 
     traj = HermiteSpline(
         times, pnts2,
-        degree=10, continuity_order=4
+        degree=9, continuity_order=2, mie_init_order=2
     )
     p = traj(t, 2)[0]
 
