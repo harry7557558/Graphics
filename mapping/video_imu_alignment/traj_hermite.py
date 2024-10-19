@@ -225,6 +225,10 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         return exp_so3(self.rel_scale * self.r0)
 
     @property
+    def q(self):
+        return so3_to_quat(self.rel_scale * self.r0)
+
+    @property
     def s(self):
         return self.rel_scale * torch.exp(self.s0)
 
@@ -238,9 +242,8 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         R, t = self.R, self.t.unsqueeze(0)
         pos = self.s * y[:, :3] @ R.T + t
         # quat
-        Rq = rotmat_to_quat_torch(R).unsqueeze(0)
         quat = y[:, 3:] / torch.norm(y[:, 3:], dim=1, keepdim=True)
-        quat = quat_mul(Rq, quat)
+        quat = quat_mul(self.q.unsqueeze(0), quat)
         # return pos
         # return quat
         return pos, quat
@@ -253,12 +256,12 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         sR = self.s * self.R
         p, dpdt, dpdt2 = p @ sR.T + t, dpdt @ sR.T, dpdt2 @ sR.T
         # quat
-        Rq = rotmat_to_quat_torch(R).unsqueeze(0)
         q, dqdt = y[:, 3:], dydt[:, 3:]
         q_invnorm = 1.0 / torch.norm(q, dim=1, keepdim=True)
         q = q * q_invnorm
         dqdt = (((torch.eye(4, device=device).unsqueeze(0) - torch.einsum('ni,nj->nij', q, q)) \
                  * q_invnorm.unsqueeze(-1)) @ dqdt.unsqueeze(2)).squeeze(2)
+        Rq = self.q.unsqueeze(0)
         q, dqdt = quat_mul(Rq, q), quat_mul(Rq, dqdt)
         # return p, dpdt, dpdt2
         # return q, dqdt

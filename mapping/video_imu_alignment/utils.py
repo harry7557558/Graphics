@@ -167,6 +167,24 @@ def exp_so3(phi: torch.Tensor):
     return R.contiguous()
 
 
+def so3_to_quat(phi: torch.Tensor):
+    """so3 to quaternion, with careful consideration for small angles"""
+
+    theta = torch.norm(phi, dim=-1, keepdim=True)
+    eps = 1e-6
+    mask = theta < eps
+    theta = torch.where(mask, torch.ones_like(theta), theta)
+
+    xyz = phi / theta
+    w = torch.cos(theta / 2)
+    xyz = torch.sin(theta / 2) * xyz
+
+    w = torch.where(mask, torch.ones_like(w), w)
+    xyz = torch.where(mask, phi / 2, xyz)
+    
+    quats = torch.cat([w, xyz], dim=-1)
+    return quats / torch.norm(quats, dim=-1, keepdim=True)
+
 
 def get_frame_data(work_dir):
     import os
