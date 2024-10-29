@@ -123,7 +123,7 @@ class HermiteSpline(torch.nn.Module):
             If derivative order is 0, return value;
             otherwise, return a tuple of all derivatives up to the order.
         """
-        assert (x[1:] > x[:-1]).all(), "x must be monotonically increasing"
+        assert (x[1:] >= x[:-1]).all(), "x must be monotonically increasing"
         assert x[0] >= self.t[0] and x[-1] <= self.t[-1], "parameter out of range"
         i = torch.searchsorted(self.t, x, right=True) - 1
         i = torch.clip(i, 0, self.n-2)
@@ -218,7 +218,8 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         print('scale:', self.rel_scale)
 
     def parameters(self):
-        return self.model.parameters() + [self.r0, self.t0, self.s0]
+        params = [self.r0, self.t0, self.s0]
+        return self.model.parameters() + params
 
     @property
     def R(self):
@@ -237,6 +238,7 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         return self.rel_scale * self.t0
 
     def forward(self, t):
+        t = torch.clamp(t, self.model.t[0], self.model.t[-1])
         y = self.model.forward(t.flatten(), 0)
         # pos
         R, t = self.R, self.t.unsqueeze(0)
@@ -249,6 +251,7 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         return pos, quat
 
     def forward_grad(self, t):
+        t = torch.clamp(t, self.model.t[0], self.model.t[-1])
         y, dydt, dydt2 = self.model.forward(t.flatten(), 2)
         p, dpdt, dpdt2 = y[:, :3], dydt[:, :3], dydt2[:, :3]
         # pos
@@ -256,16 +259,20 @@ class HermiteTrajectorySO3t(HermiteTrajectory):
         sR = self.s * self.R
         p, dpdt, dpdt2 = p @ sR.T + t, dpdt @ sR.T, dpdt2 @ sR.T
         # quat
-        q, dqdt = y[:, 3:], dydt[:, 3:]
+        q, dqdt, dqdt2 = y[:, 3:], dydt[:, 3:], dydt2[:, 3:]
         q_invnorm = 1.0 / torch.norm(q, dim=1, keepdim=True)
+        q0 = q
+        q_dot_q = (q*q).sum(-1,True)
         q = q * q_invnorm
-        dqdt = (((torch.eye(4, device=device).unsqueeze(0) - torch.einsum('ni,nj->nij', q, q)) \
-                 * q_invnorm.unsqueeze(-1)) @ dqdt.unsqueeze(2)).squeeze(2)
+        q_dot_dqdt = (q*dqdt).sum(-1,True)
+        dqdt2 = dqdt2 * q_invnorm - dqdt * q_dot_dqdt / q_dot_q - \
+            ((dqdt * q_dot_dqdt + q*((dqdt*dqdt+q0*dqdt2).sum(-1,True))) - 3.0*q*q_dot_dqdt**2) / q_dot_q
+        dqdt = dqdt * q_invnorm - q0 * q_dot_dqdt / q_dot_q
         Rq = self.q.unsqueeze(0)
-        q, dqdt = quat_mul(Rq, q), quat_mul(Rq, dqdt)
+        q, dqdt, dqdt2 = quat_mul(Rq, q), quat_mul(Rq, dqdt), quat_mul(Rq, dqdt2)
         # return p, dpdt, dpdt2
-        # return q, dqdt
-        return p, dpdt, dpdt2, q, dqdt
+        # return q, dqdt, dqdt2
+        return p, dpdt, dpdt2, q, dqdt, dqdt2
 
 
 def check_close(msg, a, b):
@@ -273,25 +280,16 @@ def check_close(msg, a, b):
     mag = abs(a).mean().item()
     print(msg, "{:.4f}".format(err/(mag+1e-12)), '\t', err, mag)
 
-def test_pos_grad(traj, t):
+def test_grad(traj, t):
     h = 0.01
     x0 = traj(t)
     xt0 = (traj(t+h)-traj(t-h)) / (2.0*h)
     xtt0 = (traj(t+h)+traj(t-h)-2.0*x0) / (h*h)
     x2, xt2, xtt2 = traj.forward_grad(t)
+    xtt1 = (traj.forward_grad(t+h)[1]-traj.forward_grad(t-h)[1]) / (2.0*h)
     check_close("x1|x2:", x0, x2)
     check_close("xt0|xt1:", xt0, xt2)
-    check_close("xtt0|xtt2:", xtt0, xtt2)
-    __import__('sys').exit(0)
-
-def test_quat_grad(traj, t):
-    h = 0.01
-    x0 = traj(t)
-    xt0 = (traj(t+h)-traj(t-h)) / (2.0*h)
-    xtt0 = (traj(t+h)+traj(t-h)-2.0*x0) / (h*h)
-    x1, xt1 = traj.forward_grad(t)
-    check_close("x0|x1:", x0, x1)
-    check_close("xt0|xt1:", xt0, xt1)
+    check_close("xtt1|xtt2:", xtt1, xtt2)
     __import__('sys').exit(0)
 
 if __name__ == "__main__":
@@ -310,8 +308,7 @@ if __name__ == "__main__":
         torch.tensor(0.5),
         degree=5, continuity_order=1, mie_init_order=1
     )
-    # test_pos_grad(traj, t)
-    # test_quat_grad(traj, t)
+    test_grad(traj, t)
 
     traj = HermiteSpline(
         times, pnts2,

@@ -160,7 +160,7 @@ def exp_so3(phi: torch.Tensor):
     R = torch.cos(theta) * I + \
         (1.0 - torch.cos(theta)) * nnT + \
         torch.sin(theta) * n_star
-    if True:
+    if False:
         residual = torch.einsum('...ij,...kj->...ik', R, R) - I
         residual = torch.norm(residual, dim=(-2,-1))
         assert (residual < 1e-6).all()
@@ -184,6 +184,50 @@ def so3_to_quat(phi: torch.Tensor):
     
     quats = torch.cat([w, xyz], dim=-1)
     return quats / torch.norm(quats, dim=-1, keepdim=True)
+
+
+def log_so3_(R):
+    assert np.linalg.norm(R@R.T-np.eye(3)) < 1e-6
+    tr = np.trace(R)
+    cos = 0.5 * (tr - 1)
+    sin = 0.5 * np.sqrt(max(0, (3 - tr) * (1 + tr)))
+    theta = np.arctan2(sin, cos)
+    w_ = np.array([R[2,1]-R[1,2], R[0,2]-R[2,0], R[1,0]-R[0,1]])
+    if abs(sin) < 1e-6:
+        c = 0.5 * (1 + 1/6 * theta**2 + 7/360 * theta**4)
+        return c * w_
+    return theta / (2 * sin) * w_
+
+def log_so3(R):
+    """https://github.com/nurlanov-zh/so3_log_map"""
+    trR = R[0, 0] + R[1, 1] + R[2, 2]
+    cos_theta = max(min(0.5 * (trR - 1), 1), -1)
+    sin_theta = 0.5 * np.sqrt(max(0, (3 - trR) * (1 + trR)))
+    theta = np.arctan2(sin_theta, cos_theta)
+    R_minus_R_T_vee = np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
+    
+    if abs(3 - trR) < 1e-8:
+        # return log map at Theta = 0
+        c = 0.5 * (1 + theta*theta / 6 + 7 / 360 * (theta**4))
+        return c * R_minus_R_T_vee
+
+    S = R + R.transpose() + (1 - trR) * np.eye(3)
+    rest_tr = 3 - trR
+    n = np.ones(3)
+    # Fix modules of n_i
+    for i in range(3):
+        n[i] = np.sqrt(max(0, S[i, i] / rest_tr))
+    max_i = np.argmax(n)
+    
+    # Fix signs according to the sign of max element
+    for i in range(3):
+        if i != max_i:
+            n[i] *= np.sign(S[max_i, i])
+
+    # Fix an overall sign
+    if any(np.sign(n) * np.sign(R_minus_R_T_vee) < 0):
+        n = -n
+    return theta * n
 
 
 def get_frame_data(work_dir):
@@ -237,20 +281,6 @@ def get_imu_data(work_dir):
     times = 1e-9 * (np.array(times)-times[0])
     accel = np.array(accel)   # (n, 3)
     gyro = np.array(gyro)  # (n, 3)
-
-    # original: x left, y down, z back
-    accel = (np.array([
-        [1, 0, 0],
-        [0, -1, 0],
-        [0, 0, -1]
-    ]) @ accel.T).T
-    # original: x up, y front, z right
-    gyro = (np.array([
-        [0, 0, 1],
-        [-1, 0, 0],
-        [0, -1, 0]
-    ]) @ gyro.T).T
-    # normalize to: x right, y down, z back
 
     fig, ax = plt.subplots(2, 1, sharex='all', figsize=(12.0, 8.0))
 
