@@ -19,36 +19,7 @@ del path
 
 # from sfm_calibrated.ba_solver import ba_solver
 # from sfm_calibrated.lc_solver import lc_solver
-
-
-
-# Helper functions
-
-class DisjointSet:
-    """https://www.geeksforgeeks.org/introduction-to-disjoint-set-data-structure-or-union-find-algorithm/"""
-
-    def __init__(self, n):
-        self.parent = list(range(n))
-        self.size = [1] * n
-
-    def find(self, i):
-        if self.parent[i] != i:
-            self.parent[i] = self.find(self.parent[i])
-        return self.parent[i]
-
-    def union(self, i, j):
-        irep = self.find(i)
-        jrep = self.find(j)
-        if irep == jrep:
-            return
-        isize = self.size[irep]
-        jsize = self.size[jrep]
-        if isize < jsize:
-            self.parent[irep] = jrep
-            self.size[jrep] += self.size[irep]
-        else:
-            self.parent[jrep] = irep
-            self.size[irep] += self.size[jrep]
+from ba_solver import ba_solver
 
 
 
@@ -120,7 +91,7 @@ def extract_features(img, num_features=8192, filter=False, detector=[]):
 class Frame:
     def __init__(self, image):
         self.img = image
-        _, self.keypoints, self.descriptors = extract_features(image, 1024, False)
+        _, self.keypoints, self.descriptors = extract_features(image, 4096, False)
         # print(self.keypoints.shape, self.keypoints.dtype, self.descriptors.shape, self.descriptors.dtype)
 
     @property
@@ -247,7 +218,6 @@ def draw_matches_flow(frame1: Frame, frame2: Frame, matches, inliner_mask=None):
     cv.waitKey(0)
     cv.destroyAllWindows()
 
-
 class FramePair:
     matcher = cv.BFMatcher(cv.NORM_HAMMING)
 
@@ -317,6 +287,71 @@ class FramePair:
         self.idx1s = self.idx1[inliners]
 
 
+
+# Structure from motion
+
+class DisjointSet:
+
+    def __init__(self, n):
+        self.parent = list(range(n))
+        self.size = [1] * n
+        self._union_queue = []
+
+    def find(self, i):
+        if self.parent[i] != i:
+            self.parent[i] = self.find(self.parent[i])
+        return self.parent[i]
+
+    def union(self, i, j):
+        irep = self.find(i)
+        jrep = self.find(j)
+        if irep == jrep:
+            return
+        isize = self.size[irep]
+        jsize = self.size[jrep]
+        if isize < jsize:
+            self.parent[irep] = jrep
+            self.size[jrep] += self.size[irep]
+        else:
+            self.parent[jrep] = irep
+            self.size[irep] += self.size[jrep]
+
+    def queue_union(self, i, j):
+        self._union_queue.append((i, j))
+
+    def union_queue(self):
+        for i, j in self._union_queue:
+            self.union(i, j)
+        self._union_queue.clear()
+
+    def union_queue_clique3(self):
+        """Union that is slightly more robust to outliers"""
+        adj_list = [[] for _ in self.size]
+        for i, j in self._union_queue:
+            adj_list[i].append(j)
+            adj_list[j].append(i)
+        adj_set = [set(l) for l in adj_list]
+        for i in range(len(adj_list)):
+            if len(adj_list[i]) == 0:
+                continue
+            # no need to worry about outliers in this case
+            if len(adj_list[i]) == 1:
+                j = adj_list[i][0]
+                if len(adj_list[j]) == 1 or True:
+                    # assert adjacency[j][0] == i
+                    self.union(i, j)
+                continue
+            # union cliques with size 3
+            for j in adj_list[i]:
+                if self.find(i) == self.find(j):
+                    continue
+                for k in adj_list[j]:
+                    if k != i and k in adj_set[i]:
+                        self.union(i, j)
+                        self.union(i, k)
+        self._union_queue.clear()
+
+
 class MatchedFrameSequence:
     match_cache_path = "cache/matches.npy"
 
@@ -338,12 +373,13 @@ class MatchedFrameSequence:
         print()
 
         print("==== Bundle Adjustment ====")
-        intrins, poses, points, _ = bundle_adjustment_3(self.intrins[1:], [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
+        # intrins, poses, points, _ = bundle_adjustment_3(self.intrins[1:], [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
+        # intrins, poses, points, _ = bundle_adjustment_ceres_3(intrins, poses, points, self.observations)
+        intrins, poses, points = bundle_adjustment_ceres_3(self.intrins[1:], [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
 
         if True:
             ax = plt.subplot(projection="3d")
-            for R, t in poses:
-                plot_camera(ax, R, t, 0.1)
+            plot_cameras(ax, [_[0] for _ in poses], [_[1] for _ in poses])
             ax.plot(points[:,0], points[:,2], points[:,1], '.', alpha=0.5)
             set_axes_equal(ax)
             plt.show()
@@ -441,13 +477,12 @@ class MatchedFrameSequence:
         # Do this for translations btw
         translations = np.array(translations)
         translations -= translations.mean(0)
-        translations /= np.linalg.norm(translations)
+        translations /= 2.0*np.std(translations)
         self.poses_t = translations
 
         if False:
             ax = plt.subplot(projection="3d")
-            for R, t in zip(rotations, translations):
-                plot_camera(ax, R, t, 0.1)
+            plot_cameras(ax, rotations, translations)
             set_axes_equal(ax)
             plt.show()
 
@@ -513,13 +548,12 @@ class MatchedFrameSequence:
             translations[i] = x_opt[3*i:3*i+3]
         translations = np.array(translations)
         translations -= translations.mean(0)
-        translations /= np.linalg.norm(translations)
+        translations /= 2.0*np.std(translations)
         self.poses_t = np.array(translations)
 
         if True:
             ax = plt.subplot(projection="3d")
-            for R, t in zip(rotations, translations):
-                plot_camera(ax, R, t, 0.1)
+            plot_cameras(ax, rotations, translations)
             set_axes_equal(ax)
             plt.show()
 
@@ -536,16 +570,19 @@ class MatchedFrameSequence:
             idx0 = points_psa[i] + m.idx0s
             idx1 = points_psa[j] + m.idx1s
             for i0, i1 in zip(idx0, idx1):
-                points_dsj.union(i0, i1)
+                points_dsj.queue_union(i0, i1)
                 points_count[i0] += 1
                 points_count[i1] += 1
+        points_dsj.union_queue_clique3()
+        # points_dsj.union_queue()
         for i in range(num_points):
             points_dsj.find(i)
-        # print(points_dsj.size)
+        # print([_ for _  in points_dsj.size if _ > 1])
         # print(sorted(points_dsj.size, reverse=True))
+        # assert False
 
         is_remain = np.array([int(
-            points_dsj.find(i) == i and points_count[i] >= 2)
+            points_dsj.find(i) == i and points_count[i] >= 3)
               for i in range(num_points)])
         remain_idx = np.arange(num_points)[np.where(is_remain)]
         remain_map = -np.ones(num_points, dtype=np.int32)
@@ -580,7 +617,7 @@ def log_so3t(R, t):
     phi, _ = cv.Rodrigues(R)
     return np.concatenate((phi.flatten(), t.flatten()))
 
-BA_OUTLIER_Z = 8
+BA_OUTLIER_Z = 3
 
 def bundle_adjustment_3(camera_params, poses, points, observations):
     """points + poses + camera intrinsics (f,cx,cy)"""
@@ -642,7 +679,7 @@ def bundle_adjustment_3(camera_params, poses, points, observations):
     # optimization
     res = scipy.optimize.least_squares(
         fun, params_init, jac_sparsity=sp,
-        verbose=2, x_scale='jac', ftol=1e-3, method='trf')
+        verbose=2, x_scale='jac', ftol=1e-2, method='trf')
     print('(nfev, njev):', res.nfev, res.njev)
     print('rmse after:', np.mean(res.fun**2)**0.5)
     # print(res)
@@ -661,6 +698,63 @@ def bundle_adjustment_3(camera_params, poses, points, observations):
     dist_scales = params[3+6*n_poses+3*n_points:]
     print(intrins)
     return intrins, poses, points_3d, outliers
+
+def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
+    """points + poses + camera intrinsics (fx,fy,cx,cy,*dist_coeffs)"""
+
+    camera_params = np.array(camera_params)
+    poses = np.array([log_so3t(*pose) for pose in poses])
+    points2d = np.array([uv for (pose_i, point_i, uv) in observations])
+    poses_i = np.array([o[0] for o in observations])
+    points_i = np.array([o[1] for o in observations])
+    dist_scales = np.zeros(len(observations), dtype=np.float64)
+
+    for iter in range(10):
+        n_pose = len(poses)
+        n_point = len(points)
+        n_obs = len(points2d)
+        print("iter", iter, '-', n_pose, 'poses,', n_point, 'points,', n_obs, 'obs')
+
+        # optimization
+        poses = np.asfortranarray(poses.astype(np.float64))
+        points = np.array(points, dtype=np.float64, order='F')
+        fixed_intrinsic = iter < 3 #or True
+        residuals = ba_solver.solve_ba_3(
+            camera_params, poses, points, dist_scales,
+            poses_i, points_i, points2d,
+            fixed_intrinsic, True
+        )
+        print('intrins:', camera_params)
+
+        # identify outliers
+        residuals = np.abs(residuals)
+        mask = residuals < BA_OUTLIER_Z * np.mean(residuals, axis=0, keepdims=True)
+        mask = mask[:,0] & mask[:,1] & mask[:,2]
+        inliners = np.array(np.where(mask)).flatten()
+
+        # filter outliers
+        points2d = points2d[inliners]
+        poses_i = poses_i[inliners]
+        points_i = points_i[inliners]
+        dist_scales = dist_scales[inliners]
+        # remove points with fewer than 3 observations
+        point_idx = np.zeros(len(points))
+        for i in points_i:
+            point_idx[i] += 1
+        mask_p = point_idx >= 3
+        inliners_p = np.array(np.where(mask_p)).flatten()
+        points = points[inliners_p]
+        # clean up observations after point removal
+        mask_e = mask_p[points_i]
+        inliners_e = np.array(np.where(mask_e)).flatten()
+        points2d = points2d[inliners_e]
+        poses_i = poses_i[inliners_e]
+        points_i = np.cumsum(mask_p)[points_i[inliners_e]]-1
+        dist_scales = dist_scales[inliners_e]
+
+
+    poses = [exp_so3t(so3t) for so3t in poses]
+    return camera_params, poses, points
 
 
 
@@ -687,6 +781,12 @@ def plot_camera(ax, R, t, sc=1.0):
     vertices = points_3d[:,idx]
     ax.plot(vertices[0], vertices[2], vertices[1], '-')
 
+def plot_cameras(ax, rotations, translations, sc=1.0):
+    sc *= np.linalg.det(np.cov(np.array(translations).reshape(-1, 3).T))**(1/6)
+    sc /= len(translations)**0.5
+    for R, t in zip(rotations, translations):
+        plot_camera(ax, R, t, sc)
+
 def set_axes_equal(ax):
     # https://stackoverflow.com/a/31364297
     x_limits = ax.get_xlim3d()
@@ -702,6 +802,7 @@ def set_axes_equal(ax):
     ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
     ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
     ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+    ax.invert_zaxis()
 
 
 
