@@ -35,7 +35,9 @@ struct ReprojectionCost3 {
         const T* X = point_params;
 
         // Transform point to camera frame
-        T dist_scale = ceres::exp(dist_scale_params[0]);
+        T dist_scale = dist_scale_params[0];
+        // dist_scale = ceres::exp(dist_scale);
+        dist_scale = dist_scale > 0.0 ? dist_scale+1.0 : ceres::exp(dist_scale);  // TODO
         T X_cam[3];
         ceres::AngleAxisRotatePoint(r, X, X_cam);
         for (int i = 0; i < 3; ++i) {
@@ -44,9 +46,12 @@ struct ReprojectionCost3 {
         }
 
         // Compute residuals
-        residuals[0] = X_cam[0] - (u-cx)/f;
-        residuals[1] = X_cam[1] - (v-cy)/f;
-        residuals[2] = X_cam[2] - 1.0;
+        T vdir[2] = { (u-cx)/f, (v-cy)/f };
+        T inv_vdir_norm = 1.0 / ceres::sqrt(vdir[0]*vdir[0] + vdir[1]*vdir[1] + 1.0);
+        // double inv_vdir_norm = 1.0;
+        residuals[0] = X_cam[0] - inv_vdir_norm * vdir[0];
+        residuals[1] = X_cam[1] - inv_vdir_norm * vdir[1];
+        residuals[2] = X_cam[2] - inv_vdir_norm;
 
         return true;
     }
@@ -93,8 +98,11 @@ Eigen::MatrixXd solve_ba_3(
 
     // Distance scales
     std::vector<double> dist_scales_v(n_obs, 0.0);
-    for (size_t i = 0; i < n_obs; ++i)
+    for (size_t i = 0; i < n_obs; ++i) {
         dist_scales_v[i] = dist_scales(i);
+        // problem.AddParameterBlock(&dist_scales_v[i], 1);
+        // problem.SetParameterLowerBound(&dist_scales_v[i], 0, 0.0);
+    }
 
     // Residuals
     std::vector<ceres::ResidualBlockId> residual_blocks;
@@ -126,6 +134,7 @@ Eigen::MatrixXd solve_ba_3(
     // Set solver options
     ceres::Solver::Options options;
     options.minimizer_progress_to_stdout = verbose;
+    options.max_num_iterations = 200;
     options.function_tolerance = 1e-4;
     options.gradient_tolerance = 1e-6;
     options.parameter_tolerance = 1e-5;

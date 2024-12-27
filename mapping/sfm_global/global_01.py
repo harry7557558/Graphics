@@ -2,8 +2,11 @@ import cv2 as cv
 import numpy as np
 import scipy.sparse
 import scipy.optimize
+import scipy.sparse.linalg
 from scipy.spatial.transform import Rotation
 from scipy.spatial import KDTree
+
+import networkx as nx
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -21,6 +24,8 @@ del path
 # from sfm_calibrated.lc_solver import lc_solver
 from ba_solver import ba_solver
 
+import warnings
+warnings.filterwarnings('ignore')
 
 
 # Feature extraction
@@ -91,7 +96,7 @@ def extract_features(img, num_features=8192, filter=False, detector=[]):
 class Frame:
     def __init__(self, image):
         self.img = image
-        _, self.keypoints, self.descriptors = extract_features(image, 4096, False)
+        _, self.keypoints, self.descriptors = extract_features(image, 1536, False)
         # print(self.keypoints.shape, self.keypoints.dtype, self.descriptors.shape, self.descriptors.dtype)
 
     @property
@@ -293,6 +298,7 @@ class FramePair:
 class DisjointSet:
 
     def __init__(self, n):
+        self.n = n
         self.parent = list(range(n))
         self.size = [1] * n
         self._union_queue = []
@@ -352,6 +358,179 @@ class DisjointSet:
         self._union_queue.clear()
 
 
+class FilteredDisjointSet:
+
+    def __init__(self, n: int, edges: List[Tuple[int, int]]):
+
+        # perform usual union find
+        djs = DisjointSet(n)
+        for i, j in edges:
+            djs.queue_union(i, j)
+        # djs.union_queue()
+        djs.union_queue_clique3()
+
+        # find disjoint sets
+        groups = {}
+        for i, j in edges:
+            repi = djs.find(i)
+            repj = djs.find(j)
+            if repi != repj:
+                continue
+            if repi not in groups:
+                groups[repi] = []
+            groups[repi].append((i, j))
+        groups = groups.values()
+        groups = sorted(groups, key=lambda s: -len(s))
+
+        # clean up each disjoint set
+        self.edges = []
+        for group in groups:
+            group = self.filter_djs_group(group)
+            self.edges.extend(group)
+
+        # create final disjoint set
+        djs = DisjointSet(n)
+        for i, j in self.edges:
+            djs.queue_union(i, j)
+        djs.union_queue()
+        self.djs = djs
+
+    @staticmethod
+    def filter_djs_group(edges: List[Tuple[int, int]]):
+        if len(edges) <= 5:
+            return edges
+        print(len(edges))
+        # if len(edges) > 100:
+        #     return edges
+        # print(edges)
+
+        G = nx.Graph()
+        G.add_edges_from(edges)
+        G = FilteredDisjointSet.hcs(G)
+        # G, _ = FilteredDisjointSet.remove_branch_edges(G)
+        # nx.draw_networkx(G)
+        # plt.show()
+
+        return G.edges
+
+    @staticmethod
+    def hcs(graph: nx.Graph) -> nx.Graph:
+        """https://en.wikipedia.org/wiki/HCS_clustering_algorithm"""
+
+        if len(graph.nodes) <= 5:
+            return graph
+
+        graph, branches = FilteredDisjointSet.remove_branch_edges(graph)
+
+        if len(graph.nodes) <= 5:
+            graph.add_edges_from(branches)
+            return graph
+
+        # assert nx.is_connected(graph)
+
+        if False:
+            edges = nx.algorithms.connectivity.cuts.minimum_edge_cut(graph)
+        else:
+            # fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True)
+            fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True, method="lobpcg", tol=1e-4)
+
+            # sorted_nodes = sorted(graph.nodes, key=lambda node: fiedler_vector[node])
+            sorted_nodes = np.array(graph.nodes)[np.argsort(fiedler_vector)].tolist()
+
+            if False:
+                best_cut = None
+                best_cut_weight = float('inf')
+                for i in range(1, len(sorted_nodes)):
+                    S = set(sorted_nodes[:i])
+                    T = set(sorted_nodes[i:])
+                    cut_weight = sum(1 for u, v in nx.edge_boundary(graph, S, T))
+                    if cut_weight < best_cut_weight:
+                        best_cut_weight = cut_weight
+                        best_cut = nx.edge_boundary(graph, S, T)
+
+            else:
+                boundary_edges = set()
+                best_cut_weight = float('inf')
+                best_cut = None
+                S = set()
+                T = set(graph.nodes)
+                for u in sorted_nodes:
+                    T.remove(u)
+                    S.add(u)
+                    for v in graph.neighbors(u):
+                        edge = (u, v) if u < v else (v, u)
+                        if v in T:
+                            boundary_edges.add(edge)
+                        else:
+                            boundary_edges.discard(edge)
+                    # assert set(map(frozenset, boundary_edges)) == set(map(frozenset, nx.edge_boundary(graph, S, T)))
+                    cut_weight = len(boundary_edges)
+                    if 0 < cut_weight < best_cut_weight:
+                        best_cut_weight = cut_weight
+                        best_cut = boundary_edges.copy()
+
+            edges = set(best_cut)
+
+        is_highly_connected = len(edges) > len(graph.nodes) / 2
+
+        if not is_highly_connected:
+            for e in edges:
+                graph.remove_edge(*e)
+
+            subgraphs = [graph.subgraph(sg).copy() for sg in nx.connected_components(graph)]
+            # print([len(g.nodes) for g in subgraphs])
+
+            if len(subgraphs) == 2:
+                g0, g1 = subgraphs
+                if len(g0.nodes) > 1:
+                    g0 = FilteredDisjointSet.hcs(g0)
+                if len(g1.nodes) > 1:
+                    g1 = FilteredDisjointSet.hcs(g1)
+                graph = nx.compose(g0, g1)
+
+                if len(g0.nodes) == 1 or len(g1.nodes) == 1:
+                    nodes0 = set(g0.nodes)
+                    nodes1 = set(g1.nodes)
+                    for i, j in edges:
+                        if i in nodes0 and j in nodes1:
+                            graph.add_edge(i, j)
+                        if i in nodes1 and j in nodes0:
+                            graph.add_edge(i, j)
+
+        graph.add_edges_from(branches)
+        return graph
+
+    @staticmethod
+    def remove_branch_edges(graph: nx.Graph):
+        pruned_graph = graph.copy()
+        removed_edges = []
+
+        while True:
+            branch_edges = []
+
+            # Identify branch edges
+            for edge in pruned_graph.edges():
+                u, v = edge
+
+                # Check if either node is a leaf or part of a branch structure
+                if pruned_graph.degree[u] == 1 or pruned_graph.degree[v] == 1:
+                    branch_edges.append(edge)
+
+            # If no branch edges are found, break the loop
+            if not branch_edges:
+                break
+
+            # Remove branch edges from the graph
+            pruned_graph.remove_edges_from(branch_edges)
+            removed_edges.extend(branch_edges)
+
+        # Remove isolated nodes
+        isolated_nodes = list(nx.isolates(pruned_graph))
+        pruned_graph.remove_nodes_from(isolated_nodes)
+
+        return pruned_graph, removed_edges
+
+
 class MatchedFrameSequence:
     match_cache_path = "cache/matches.npy"
 
@@ -401,13 +580,16 @@ class MatchedFrameSequence:
 
         print("==== Feature Matching ====")
         for i in range(len(self.frames)):
+            num_matches = 0
             for j in range(i+1, min(i+max_sw+1, len(frames))):
                 match = FramePair(self.frames[i], self.frames[j], self.intrins)
-                print(i, j,  match.confidence)
+                # print(i, j,  match.confidence)
                 if match.confidence > 0.2 or j <= i+2:
                     self.matches[(i, j)] = match
+                    num_matches += 1
                 else:
                     break
+            print(f"{i+1}/{len(frames)} - {num_matches} image matches")
         np.save(self.match_cache_path, self.matches)
 
     def rotation_averaging(self):
@@ -562,27 +744,32 @@ class MatchedFrameSequence:
 
         num_points = np.cumsum([len(frame.keypoints) for frame in self.frames])
         num_points, points_psa = num_points[-1], num_points-num_points[0]
-        points_dsj = DisjointSet(num_points)
+        points_djs = DisjointSet(num_points)
         points_count = [0]*num_points
         # print(num_points, points_psa)
         
+        edges = []
         for (i, j), m in self.matches.items():
             idx0 = points_psa[i] + m.idx0s
             idx1 = points_psa[j] + m.idx1s
             for i0, i1 in zip(idx0, idx1):
-                points_dsj.queue_union(i0, i1)
+                points_djs.queue_union(i0, i1)
+                edges.append((i0, i1))
                 points_count[i0] += 1
                 points_count[i1] += 1
-        points_dsj.union_queue_clique3()
-        # points_dsj.union_queue()
+        if True:
+            # points_djs.union_queue()
+            points_djs.union_queue_clique3()
+        else:
+            points_djs = FilteredDisjointSet(num_points, edges).djs
         for i in range(num_points):
-            points_dsj.find(i)
-        # print([_ for _  in points_dsj.size if _ > 1])
-        # print(sorted(points_dsj.size, reverse=True))
+            points_djs.find(i)
+        # print([_ for _  in points_djs.size if _ > 1])
+        # print(sorted(points_djs.size, reverse=True))
         # assert False
 
         is_remain = np.array([int(
-            points_dsj.find(i) == i and points_count[i] >= 3)
+            points_djs.find(i) == i and points_count[i] >= 3)
               for i in range(num_points)])
         remain_idx = np.arange(num_points)[np.where(is_remain)]
         remain_map = -np.ones(num_points, dtype=np.int32)
@@ -592,7 +779,7 @@ class MatchedFrameSequence:
         observations = []
         for i, frame in enumerate(self.frames):
             for j, kp in enumerate(frame.keypoints):
-                pi = remain_map[points_dsj.find(points_psa[i]+j)]
+                pi = remain_map[points_djs.find(points_psa[i]+j)]
                 if pi < 0:
                     continue
                 observations.append((i, pi, kp[:2]))
@@ -600,7 +787,7 @@ class MatchedFrameSequence:
 
         self.points = -1.0+2.0*np.random.random((len(remain_idx), 3))
         self.observations = observations
-        self.poses_t = -1.0+2.0*np.random.random(self.poses_t.shape)
+        # self.poses_t = -1.0+2.0*np.random.random(self.poses_t.shape)
 
 
 
@@ -709,7 +896,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
     points_i = np.array([o[1] for o in observations])
     dist_scales = np.zeros(len(observations), dtype=np.float64)
 
-    for iter in range(10):
+    for iter in range(5):
         n_pose = len(poses)
         n_point = len(points)
         n_obs = len(points2d)
@@ -718,7 +905,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
         # optimization
         poses = np.asfortranarray(poses.astype(np.float64))
         points = np.array(points, dtype=np.float64, order='F')
-        fixed_intrinsic = iter < 3 #or True
+        fixed_intrinsic = iter < 3 or True
         residuals = ba_solver.solve_ba_3(
             camera_params, poses, points, dist_scales,
             poses_i, points_i, points2d,
@@ -816,7 +1003,7 @@ if __name__ == "__main__":
 
     import sfm_calibrated.img.videos as videos
     video_filename = videos.videos[4]
-    frames = FrameSequence(video_filename, max_frames=50, skip=5)
+    frames = FrameSequence(video_filename, max_frames=200, skip=5)
 
     MatchedFrameSequence(frames)
 
