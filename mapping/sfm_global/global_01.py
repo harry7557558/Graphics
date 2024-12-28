@@ -5,6 +5,8 @@ import scipy.optimize
 import scipy.sparse.linalg
 from scipy.spatial.transform import Rotation
 from scipy.spatial import KDTree
+from scipy.ndimage import gaussian_filter
+from scipy.signal import argrelextrema
 
 import networkx as nx
 
@@ -118,7 +120,7 @@ class FrameSequence(list):
 
         try:
             self.load_cache()
-            print(len(self), "frames loaded")
+            print(len(self), "frames loaded", end='\n\n')
             if False:
                 for f in self:
                     f.plot()
@@ -130,6 +132,8 @@ class FrameSequence(list):
             print(e)
         if len(self) > 0:
             return
+
+        print("==== Feature Extraction ====")
 
         cap = cv.VideoCapture(video_filename)
         assert cap.isOpened()
@@ -167,12 +171,12 @@ class FrameSequence(list):
         cv.destroyAllWindows()
 
         print(len(self), "frames loaded")
+        print()
 
         self.save_cache()
     
     def save_cache(self):
         frames = np.array([f for f in self])
-        print(len(frames))
         np.save(self.cache_path, frames)
     
     def load_cache(self):
@@ -275,8 +279,8 @@ class FramePair:
         self.idx1 = np.array(idx1)[inliners]
 
         # essential matrix
-        fx, fy, cx, cy = intrins[:4]
-        K = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]])
+        f, cx, cy = intrins[:4]
+        K = np.array([[f, 0.0, cx], [0.0, f, cy], [0.0, 0.0, 1.0]])
         mat_e, inliner_mask_e = cv.findEssentialMat(fpoints0, fpoints1, cameraMatrix=K, method=0)
         # print(inliner_mask_e.sum(), '/', len(inliner_mask_e))
         n, R, t, _ = cv.recoverPose(mat_e, fpoints0, fpoints1, cameraMatrix=K)
@@ -533,6 +537,7 @@ class FilteredDisjointSet:
 
 class MatchedFrameSequence:
     match_cache_path = "cache/matches.npy"
+    ba_initial_cache_path = "cache/ba_initial.npy"
 
     def __init__(self, frames: FrameSequence, max_sw=10):
         self.frames = frames
@@ -540,39 +545,54 @@ class MatchedFrameSequence:
         self.intrins = self._intrins_init()
 
         self.match_features(max_sw)
-        print()
 
-        # All rotations and translations are world to camera
-        self.rotation_averaging()
-        # self.translation_averaging()
-        print()
+        self.run_initial_ba()
+        self.plot()
 
-        # Bundle adjustment
-        self.setup_ba()
-        print()
+        self.close_loop()
+        self.plot()
 
-        print("==== Bundle Adjustment ====")
-        # intrins, poses, points, _ = bundle_adjustment_3(self.intrins[1:], [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
-        # intrins, poses, points, _ = bundle_adjustment_ceres_3(intrins, poses, points, self.observations)
-        intrins, poses, points = bundle_adjustment_ceres_3(self.intrins[1:], [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
+        self.run_final_ba()
+        self.plot()
 
-        if True:
-            ax = plt.subplot(projection="3d")
-            plot_cameras(ax, [_[0] for _ in poses], [_[1] for _ in poses])
-            ax.plot(points[:,0], points[:,2], points[:,1], '.', alpha=0.5)
-            set_axes_equal(ax)
-            plt.show()
+    def plot(self):
+        ax = plt.subplot(projection="3d")
+        if hasattr(self, 'lc_list'):
+            for i, j in self.lc_list:
+                ti = -self.poses[i][0].T @ self.poses[i][1]
+                tj = -self.poses[j][0].T @ self.poses[j][1]
+                ti, tj = ti[[0, 2, 1]], tj[[0, 2, 1]]
+                plt.plot(*zip(ti, tj), 'k-', zorder=5)
+        plot_cameras(ax, [_[0] for _ in self.poses], [_[1] for _ in self.poses])
+        set_axes_equal(ax)
+        c, s = self.get_point_appearance()
+        ax.scatter(self.points[:,0], self.points[:,2], self.points[:,1],
+                alpha=0.5, s=s, c=c, zorder=0)
+        plt.show()
+
+    def get_point_appearance(self):
+        colors = np.zeros((len(self.points), 3), dtype=np.float32)
+        counts = np.zeros(len(self.points))
+        for fi, pi, uv in self.observations:
+            i, j = np.round(uv).astype(np.int32)
+            color = self.frames[fi].img[j, i]
+            colors[pi] += color
+            counts[pi] += 1
+        assert (counts > 0).all()
+        colors = colors / counts[:, None]
+        colors = np.flip(colors, -1)
+        return colors / 255.0, np.cbrt(counts/3)
 
     def _intrins_init(self):
         frame = self.frames[0]
         h, w = frame.shape[:2]
         f = 0.4 * np.hypot(h, w)
-        return [f, f, w/2, h/2]
+        return np.array([f, w/2, h/2])
 
     def match_features(self, max_sw: int):
         try:
-            self.matches = np.load(self.match_cache_path, allow_pickle=True)
-            self.matches = self.matches.tolist()
+            self.matches = np.load(self.match_cache_path, allow_pickle=True).tolist()
+            print(len(self.matches), 'matches loaded', end='\n\n')
         except FileNotFoundError:
             pass
         if len(self.matches.keys()) > 0:
@@ -591,6 +611,8 @@ class MatchedFrameSequence:
                     break
             print(f"{i+1}/{len(frames)} - {num_matches} image matches")
         np.save(self.match_cache_path, self.matches)
+
+        print()
 
     def rotation_averaging(self):
         print("==== Rotation Averaging ====")
@@ -739,8 +761,15 @@ class MatchedFrameSequence:
             set_axes_equal(ax)
             plt.show()
 
-    def setup_ba(self):
+    def setup_initial_ba(self):
         """Create list of points and observations"""
+        if not hasattr(self, 'poses_R'):
+            # All rotations and translations are world to camera
+            self.rotation_averaging()
+            # self.translation_averaging()
+            print()
+
+        print("==== BA Setup ====")
 
         num_points = np.cumsum([len(frame.keypoints) for frame in self.frames])
         num_points, points_psa = num_points[-1], num_points-num_points[0]
@@ -789,6 +818,115 @@ class MatchedFrameSequence:
         self.observations = observations
         # self.poses_t = -1.0+2.0*np.random.random(self.poses_t.shape)
 
+        print()
+
+    def run_initial_ba(self):
+        try:
+            self.intrins, self.poses, self.points, self.observations \
+                  = np.load(self.ba_initial_cache_path, allow_pickle=True).tolist()
+            print("BA results loaded -", len(self.poses), 'poses,', len(self.points), 'points,', len(self.observations), 'observations')
+            print("Camera intrinsics:", self.intrins.tolist())
+            print()
+        except FileNotFoundError:
+            pass
+        else:
+            return
+
+        self.setup_initial_ba()
+
+        print("==== Bundle Adjustment ====")
+
+        # intrins, poses, points, _ = bundle_adjustment_3(self.intrins, [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
+        # intrins, poses, points, _ = bundle_adjustment_ceres_3(intrins, poses, points, self.observations)
+        intrins, poses, points, observations = bundle_adjustment_ceres_3(
+            self.intrins, [*zip(self.poses_R, self.poses_t)], self.points, self.observations,
+            fixed_intrinsic=True, num_iter=2)
+
+        self.intrins, self.poses, self.points, self.observations = \
+              intrins, poses, points, observations
+        np.save(self.ba_initial_cache_path, np.array(
+            (intrins, poses, points, observations), dtype=object))
+
+        print()
+
+    def close_loop(self):
+
+        print("==== Loop Closure ====")
+
+        self.poses_R = np.array([R for (R, t) in self.poses])
+        self.poses_t = np.array([t for (R, t) in self.poses])
+
+        # compute pairwise distance
+        dist_mode = ["rotation", "ray_dir", "ray_dist"][1]
+        if dist_mode == "rotation":
+            dists = self.poses_R.reshape((-1, 1, 3, 3)) - self.poses_R.reshape((1, -1, 3, 3))
+            dists = (dists**2).sum(axis=(-1, -2))
+            dists -= 1.0
+        elif dist_mode == "ray_dir":
+            dir1 = self.poses_R[:, 2].reshape((-1, 1, 3))
+            dir2 = dir1.reshape((1, -1, 3))
+            dists = ((dir2-dir1)**2).sum(axis=(-1))
+            dists -= 1.0/3.0
+        elif dist_mode == "ray_dist":
+            dir1 = self.poses_R[:, 2].reshape((-1, 1, 3))
+            dir2 = dir1.reshape((1, -1, 3))
+            n = np.cross(dir1, dir2, axisa=-1, axisb=-1)
+            pos1 = -np.einsum('kij,ki->kj', self.poses_R, self.poses_t).reshape((-1, 1, 3))
+            pos2 = pos1.reshape((1, -1, 3))
+            dp = pos2 - pos1
+            t1 = (np.cross(dir2, n, -1, -1) * dp).sum(-1) / (n*n).sum(-1)
+            t2 = (np.cross(dir1, n, -1, -1) * dp).sum(-1) / (n*n).sum(-1)
+            p1 = pos1 + dir1 * np.fmax(t1, 0.0)[..., None]
+            p2 = pos2 + dir2 * np.fmax(t2, 0.0)[..., None]
+            dists = np.linalg.norm(p2-p1, axis=-1)
+        # dists = gaussian_filter(dists, sigma=10)
+        # plt.imshow(dists); plt.show()
+
+        # find potential matches
+        lc_list = []
+        for i, dist_i in enumerate(dists):
+            minima = argrelextrema(dist_i, np.less)[0]
+            minima = minima[np.where(dist_i[minima] < 0)]
+            # plt.plot(dist_i); plt.show()
+            lc_list.extend([(*sorted([i, j]),) for j in minima if i != j])
+        lc_list = sorted(set(lc_list))
+        lc_list = [ij for ij in lc_list if ij not in self.matches]
+        # print(lc_list)
+        self.lc_list = lc_list
+        # self.plot()
+
+        # match images
+        lc_list = []
+        for i, j in self.lc_list:
+            match = FramePair(self.frames[i], self.frames[j], self.intrins)
+            status = ''
+            if match.confidence > 0.2:
+                self.matches[(i, j)] = match
+                lc_list.append((i, j))
+                status = '- accept'
+            print(i, j, match.confidence, status)
+        print(f"{len(lc_list)}/{len(self.lc_list)} image matches")
+        self.lc_list = lc_list
+        # self.plot()
+
+        print()
+
+    def run_final_ba(self):
+
+        self.setup_initial_ba()
+
+        print("==== Bundle Adjustment ====")
+
+        # intrins, poses, points, _ = bundle_adjustment_3(self.intrins, [*zip(self.poses_R, self.poses_t)], self.points, self.observations)
+        # intrins, poses, points, _ = bundle_adjustment_ceres_3(intrins, poses, points, self.observations)
+        intrins, poses, points, observations = bundle_adjustment_ceres_3(
+            self.intrins, [*zip(self.poses_R, self.poses_t)], self.points, self.observations,
+            fixed_intrinsic=True, num_iter=5)
+
+        self.intrins, self.poses, self.points, self.observations = \
+              intrins, poses, points, observations
+
+        print()
 
 
 # Bundle adjustment
@@ -886,8 +1024,10 @@ def bundle_adjustment_3(camera_params, poses, points, observations):
     print(intrins)
     return intrins, poses, points_3d, outliers
 
-def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
-    """points + poses + camera intrinsics (fx,fy,cx,cy,*dist_coeffs)"""
+def bundle_adjustment_ceres_3(
+        camera_params, poses, points, observations,
+        fixed_intrinsic: bool, num_iter: int):
+    """points + poses + camera intrinsics (f,cx,cy)"""
 
     camera_params = np.array(camera_params)
     poses = np.array([log_so3t(*pose) for pose in poses])
@@ -895,21 +1035,23 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
     poses_i = np.array([o[0] for o in observations])
     points_i = np.array([o[1] for o in observations])
     dist_scales = np.zeros(len(observations), dtype=np.float64)
+    points_map = np.arange(len(points))
+    obs_map = np.arange(len(observations))
 
-    for iter in range(5):
+    for iter in range(num_iter):
+        print()
         n_pose = len(poses)
         n_point = len(points)
         n_obs = len(points2d)
-        print("iter", iter, '-', n_pose, 'poses,', n_point, 'points,', n_obs, 'obs')
+        print(f"iter {iter+1}/{num_iter}", '-', n_pose, 'poses,', n_point, 'points,', n_obs, 'obs')
 
         # optimization
         poses = np.asfortranarray(poses.astype(np.float64))
         points = np.array(points, dtype=np.float64, order='F')
-        fixed_intrinsic = iter < 3 or True
         residuals = ba_solver.solve_ba_3(
             camera_params, poses, points, dist_scales,
             poses_i, points_i, points2d,
-            fixed_intrinsic, True
+            fixed_intrinsic or iter < 1, True
         )
         print('intrins:', camera_params)
 
@@ -923,6 +1065,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
         points2d = points2d[inliners]
         poses_i = poses_i[inliners]
         points_i = points_i[inliners]
+        obs_map = obs_map[inliners]
         dist_scales = dist_scales[inliners]
         # remove points with fewer than 3 observations
         point_idx = np.zeros(len(points))
@@ -931,6 +1074,7 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
         mask_p = point_idx >= 3
         inliners_p = np.array(np.where(mask_p)).flatten()
         points = points[inliners_p]
+        points_map = points_map[inliners_p]
         # clean up observations after point removal
         mask_e = mask_p[points_i]
         inliners_e = np.array(np.where(mask_e)).flatten()
@@ -938,10 +1082,11 @@ def bundle_adjustment_ceres_3(camera_params, poses, points, observations):
         poses_i = poses_i[inliners_e]
         points_i = np.cumsum(mask_p)[points_i[inliners_e]]-1
         dist_scales = dist_scales[inliners_e]
-
+        obs_map = obs_map[inliners_e]
 
     poses = [exp_so3t(so3t) for so3t in poses]
-    return camera_params, poses, points
+    observations = list(zip(poses_i.tolist(), points_i.tolist(), points2d))
+    return camera_params, poses, points, observations
 
 
 
@@ -966,7 +1111,7 @@ def plot_camera(ax, R, t, sc=1.0):
     points_3d = R.T @ (np.linalg.inv(K) @ points - t.reshape((3, 1)))
     idx = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]
     vertices = points_3d[:,idx]
-    ax.plot(vertices[0], vertices[2], vertices[1], '-')
+    ax.plot(vertices[0], vertices[2], vertices[1], '-', zorder=np.inf)
 
 def plot_cameras(ax, rotations, translations, sc=1.0):
     sc *= np.linalg.det(np.cov(np.array(translations).reshape(-1, 3).T))**(1/6)
