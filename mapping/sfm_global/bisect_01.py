@@ -7,11 +7,12 @@ from scipy.spatial.transform import Rotation
 from scipy.spatial import KDTree
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelextrema
+import bisect
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-from typing import Union, Optional, Dict, Tuple, List
+from typing import Union, Optional, Dict, Tuple, List, Callable
 
 import os
 import sys
@@ -319,6 +320,14 @@ class FramePair:
 
 # Structure from motion
 
+def inverse_index_map(mp, n, assert_unique=False):
+    if assert_unique:
+        assert len(set(mp)) == len(mp)
+    imp = -np.ones(n, dtype=np.int32)
+    imp[mp] = np.arange(len(mp))
+    return imp
+
+
 class DisjointSet:
 
     def __init__(self, n):
@@ -382,25 +391,51 @@ class DisjointSet:
         self._union_queue.clear()
 
 
+def scaled_procrustes(pnts1, pnts2):
+    pnts1, pnts2 = np.array(pnts1), np.array(pnts2)
+    mean1 = np.mean(pnts1, axis=0)
+    mean2 = np.mean(pnts2, axis=0)
+
+    centered1 = pnts1 - mean1
+    centered2 = pnts2 - mean2
+
+    H = centered2.T @ centered1
+    U, S, Vh = np.linalg.svd(H)
+
+    S = np.eye(3)
+    S[2, 2] = np.linalg.det(U @ Vh)
+    R = U @ S @ Vh
+
+    s = np.sqrt((centered2**2).sum() / (centered1**2).sum())
+
+    t = mean2 - s * R @ mean1
+
+    mat = np.eye(4)
+    mat[:3, :3] = R
+    mat[:3, 3] = t/s
+    mat[3, 3] = 1/s
+    return mat
+
+
 class PoseGraph:
     min_obs: int = 3
     """Minimum number of observations per point"""
 
     def __init__(self, frames, matches, frame_id, w2cs):
         assert len(frame_id) == len(w2cs)
-        self.frame_id = frame_id
-        self.w2c = w2cs
+        self.frame_id = frame_id  # type: List[int]
+        self.w2c = w2cs  # type: List[np.ndarray]
 
-        self.fmap = {}
+        self.fmap = {}  # type: Dict[int, int]
         for i, fi in enumerate(frame_id):
             self.fmap[fi] = i
 
         # merge and filter list of points
         num_points = np.cumsum([len(frames[fi].keypoints) for fi in frame_id])
         num_points, points_psa = num_points[-1], num_points-num_points[0]
+        self.points_psa = np.concatenate((points_psa, [num_points]))
         points_djs = DisjointSet(num_points)
         points_count = [0]*num_points
-        self.points_psa = np.concatenate((points_psa, [num_points]))
 
         edges = []
         for (i, j), m in matches.items():
@@ -418,56 +453,181 @@ class PoseGraph:
         points_djs.union_queue_clique3()
         for i in range(num_points):
             points_djs.find(i)
+        self.djs_map = np.array([points_djs.find(i) for i in range(num_points)])
 
-        is_remain = np.array([int(
-            points_djs.find(i) == i and points_count[i] >= self.min_obs)
+        # initial map
+        self.is_remain = np.array([
+            int(points_count[i] >= self.min_obs)
             for i in range(num_points)])
-        remain_idx, remain_map = self.update_remain_maps(is_remain)
+        self.create_remain_map_idx()
+
+        # filter points with too few observations
+        for idxs in self.remain_idx:
+            if len(idxs) < self.min_obs:
+                for i in idxs:
+                    self.is_remain[i] = False
+        self.create_remain_map_idx()
 
         # create list of observations
-        def get_observations():
-            observations = []
-            for i, fi in enumerate(frame_id):
-                for j, kp in enumerate(frames[fi].keypoints):
-                    pi = remain_map[points_djs.find(points_psa[i]+j)]
-                    if pi < 0:
-                        continue
-                    assert remain_idx[pi] == points_djs.find(points_psa[i]+j)
-                    assert points_djs.find(remain_idx[pi]) == remain_idx[pi]
-                    observations.append((fi, pi, kp[:2]))
-            return observations
-        observations = get_observations()
-
-        # filter observations
-        points_count = [0]*len(remain_idx)
-        for pi, i, uv in observations:
-            points_count[i] += 1
-        is_remain[remain_idx] &= (np.array(points_count) >= self.min_obs)
-        remain_idx, remain_map = self.update_remain_maps(is_remain)
-        observations = get_observations()
-
-        # sanity check
-        point_count = np.zeros(len(remain_idx), dtype=np.int32)
-        for pi, i, uv in observations:
-            point_count[i] += 1
-        assert (point_count >= self.min_obs).all()
-
-        # save
-        self.is_remain = is_remain
-        self.remain_idx = remain_idx  # original indices of remaining points
-        self.remain_map = remain_map  # map original indices to remaining indices
-        self.observations = observations
+        self.observations = []
+        for i, fi in enumerate(frame_id):
+            for j, kp in enumerate(frames[fi].keypoints):
+                pi = self.remain_map[points_psa[i]+j]
+                if pi < 0:
+                    continue
+                self.observations.append((fi, pi, kp[:2]))
 
         # initialize points
-        self.points = -1.0+2.0*np.random.random((len(remain_idx), 3))
+        self.points = -1.0+2.0*np.random.random((self.num_points_remain, 3))
         # TODO: triangulation
 
-    def update_remain_maps(self, is_remain):
-        num_points = self.points_psa[-1]
-        remain_idx = np.array(np.where(is_remain)).flatten()
+        self.sanity_check()
+
+    @property
+    def num_points_original(self):
+        return self.points_psa[-1]
+
+    @property
+    def num_points_remain(self):
+        return len(self.remain_idx)
+
+    def create_remain_map_idx(self):
+        num_points = self.num_points_original
+        remain_idx = []  # type: List[List[int]]
         remain_map = -np.ones(num_points, dtype=np.int32)
-        remain_map[remain_idx] = np.cumsum(is_remain)[remain_idx] - 1
-        return remain_idx, remain_map
+        for i in range(num_points):
+            ri = self.djs_map[i]
+            if ri == i and self.is_remain[ri]:
+                remain_map[i] = len(remain_idx)
+                remain_idx.append([])
+        for i in range(num_points):
+            ri = self.djs_map[i]
+            if remain_map[ri] != -1:
+                remain_map[i] = remain_map[ri]
+                remain_idx[remain_map[i]].append(i)
+        self.remain_map = remain_map  # map original indices to remaining indices
+        self.remain_idx = remain_idx  # list of list, original indices of remaining points
+
+    def update_remain_map_idx(self, pmap):
+        # pmap: old indices to new indices
+        # update remain map
+        pmap_inv = inverse_index_map(pmap, self.num_points_remain)
+        for i in range(len(self.remain_map)):
+            ri = self.remain_map[i]
+            if ri != -1:
+                self.remain_map[i] = pmap_inv[ri]
+        # update remain idx
+        self.remain_idx = [self.remain_idx[i] for i in pmap]
+
+    def sanity_check(self):
+        # remain_idx and remain_map
+        assert len(self.remain_map) == self.num_points_original
+        remain_idx = [[] for _ in self.remain_idx]
+        for i in range(self.num_points_original):
+            ri = self.remain_map[i]
+            if ri != -1:
+                remain_idx[ri].append(i)
+        for ri0, ri1 in zip(self.remain_idx, remain_idx):
+            assert set(ri0) == set(ri1)
+
+        # number of points
+        assert len(self.points) == self.num_points_remain
+        assert set(self.remain_map).difference([-1]) == set(range(len(self.remain_idx)))
+        point_count = np.zeros(self.num_points_remain, dtype=np.int32)
+        for pi, i, uv in self.observations:
+            point_count[i] += 1
+        diff = 0
+        for i in range(self.num_points_remain):
+            assert point_count[i] >= self.min_obs
+            assert point_count[i] <= len(self.remain_idx[i])
+            if point_count[i] != len(self.remain_idx[i]) and False:
+                if point_count[i] < len(self.remain_idx[i]):
+                    print(i, point_count[i], len(self.remain_idx[i]), 'point_count[i] too small')
+                if point_count[i] > len(self.remain_idx[i]):
+                    print(i, point_count[i], len(self.remain_idx[i]), 'len(remain_idx[i]) too small')
+                diff += point_count[i] - len(self.remain_idx[i])
+        # print("Total diff:", diff)
+
+    def merge(pg0: "PoseGraph", pg1: "PoseGraph", get_match: Callable, frames: List[Frame]):
+
+        # get relative transform from closest match pair
+        fi0, fi1 = len(pg0.frame_id)-1, 0
+        match = get_match(pg0.frame_id[fi0], pg1.frame_id[fi1]) # type: FramePair
+        assert match is not None
+        idx0 = pg0.points_psa[fi0] + match.idx0
+        idx1 = pg1.points_psa[fi1] + match.idx1
+        ridx0 = pg0.remain_map[idx0]
+        ridx1 = pg1.remain_map[idx1]
+        rmask = (ridx0 != -1) & (ridx1 != -1)
+        fidx0 = ridx0[np.where(rmask)]
+        fidx1 = ridx1[np.where(rmask)]
+        pnt0 = pg0.points[fidx0]
+        pnt1 = pg1.points[fidx1]
+        print(np.sum(rmask), 'points for procrustes')
+
+        relmat = scaled_procrustes(pnt1, pnt0)
+        PLOT = True
+        if PLOT:
+            pnt1v = (pnt1 @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3]
+            plt.figure()
+            ax = plt.subplot(projection="3d")
+            ax.scatter(pnt0.T[0], pnt0.T[2], pnt0.T[1])
+            ax.scatter(pnt1v.T[0], pnt1v.T[2], pnt1v.T[1])
+            pnt01 = np.stack((pnt0, pnt1v))
+            for i in range(len(pnt0)):
+                si = pnt01[:, i].T
+                ax.plot(si[0], si[2], si[1], 'k-')
+            # set_axes_equal(ax)
+            # plt.show()
+
+        # transform poses
+        pg0.frame_id.extend(pg1.frame_id)
+        for i, fi in enumerate(pg0.frame_id):
+            pg0.fmap[fi] = i
+        for mat in pg1.w2c:
+            mat = mat @ np.linalg.inv(relmat)
+            mat[:, 3] /= mat[3, 3]
+            pg0.w2c.append(mat)
+        if PLOT:
+            # plt.figure()
+            # ax = plt.subplot(projection="3d")
+            plot_cameras(ax, pg0.w2c)
+            set_axes_equal(ax)
+            plt.show()
+
+        # merge points
+        num_points_0 = pg0.num_points_remain
+        pnt1 = (pg1.points @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3]
+        pmap = np.ones(len(pnt1), dtype=np.int32)
+        pmap[fidx1] = 0
+        pg0.points = np.concatenate((pg0.points, pnt1[np.where(pmap)]))
+        pmap = np.cumsum(pmap)-1 + num_points_0
+        pmap[fidx1] = fidx0
+        # pmap = np.concatenate((np.arange(num_points_0), pmap))
+
+        # merge observations
+        for fi, pi, uv in pg1.observations:
+            pg0.observations.append((fi, pmap[pi], uv))
+
+        # update remain_map and remain_idx
+        num_points_0_orig = pg0.num_points_original
+        num_points = np.cumsum([len(frames[fi].keypoints) for fi in pg0.frame_id])
+        num_points, points_psa = num_points[-1], num_points-num_points[0]
+        pg0.points_psa = np.concatenate((points_psa, [num_points]))
+        pg0.djs_map = None
+        pg0.is_remain = np.concatenate((pg0.is_remain, pg1.is_remain))
+        extra_remain_map = pg1.remain_map.copy()
+        for i, ri in enumerate(extra_remain_map):
+            if ri != -1:
+                extra_remain_map[i] = pmap[ri]
+        pg0.remain_map = np.concatenate((pg0.remain_map, extra_remain_map))
+        for i, idxs in enumerate(pg1.remain_idx):
+            idxs = [ri+num_points_0_orig for ri in idxs]
+            if pmap[i] < num_points_0:
+                pg0.remain_idx[pmap[i]].extend(idxs)
+            else:
+                assert len(pg0.remain_idx) == pmap[i]
+                pg0.remain_idx.append(idxs)
 
 
 class BottomUpFrameSequence:
@@ -484,10 +644,18 @@ class BottomUpFrameSequence:
         self.matches = {}  # type: Dict[Tuple[int, int], FramePair]
         # self.w2c = [None for _ in range(self.n)]  # type: List[np.ndarray]
         self.intrins = self._intrins_init()
+        self.pose_graphs = []  # type: List[PoseGraph]
 
         self.initial_match()
         self.run_ba()
-        self.run_ba()
+
+        # get_match = lambda i, j: self.match_feature_pair(i, j)
+        # self.pose_graphs[0].merge(self.pose_graphs[1], get_match, self.frames)
+        # self.pose_graphs[0].sanity_check()
+
+        while len(self.pose_graphs) > 1:
+            self.binary_merge()
+            self.run_ba()
         return
 
     def _intrins_init(self):
@@ -499,7 +667,7 @@ class BottomUpFrameSequence:
     def match_feature_pair(self, i, j):
         match = FramePair(self.frames[i], self.frames[j], self.intrins)
         # print(i, j,  match.confidence)
-        if match.confidence > self.config.image_match_th or j <= i+2:
+        if match.confidence > self.image_match_th or j <= i+2:
             self.matches[(i, j)] = match
             return match
         return None
@@ -552,6 +720,25 @@ class BottomUpFrameSequence:
             print(f"{group} of {len(self.frames)} - {len(new_matches)} matches, {len(pg.points)} points, {len(pg.observations)} observations")
         print()
 
+    def binary_merge(self):
+        print("==== Pose Graph Merging ====")
+        pose_graphs = []  # type: List[PoseGraph]
+        get_match = lambda i, j: self.match_feature_pair(i, j)
+        for i in range(0, len(self.pose_graphs), 2):
+            if i+1 >= len(self.pose_graphs):
+                if len(pose_graphs) > 0:
+                    print(f"Merge pose graph {i-2}, {i-1}, and {i}")
+                    pg1 = self.pose_graphs[i]
+                    pose_graphs[-1].merge(pg1, get_match, self.frames)
+            else:
+                print(f"Merge pose graph {i} and {i+1}")
+                pg0, pg1 = self.pose_graphs[i], self.pose_graphs[i+1]
+                pg0.merge(pg1, get_match, self.frames)
+                pg0.sanity_check()
+                pose_graphs.append(pg0)
+            print()
+        self.pose_graphs = pose_graphs
+
     def run_ba(self):
 
         print("==== Bundle Adjustment ====")
@@ -582,31 +769,39 @@ class BottomUpFrameSequence:
             self.intrins, poses, points, observations,
             fixed_intrinsic=True, num_iter=2
         )
+        # points_map, obs_map: map new indices to old indices
+        if False:  # unused, reserve for later
+            points_map_inv = inverse_index_map(points_map, len(points_i), True)
+            obs_map_inv = inverse_index_map(obs_map, len(observations_i), True)
         print()
 
+        # update prefix sum arrays
+        pi_psa_1 = []
+        for i in pi_psa:
+            pi_psa_1.append(bisect.bisect_left(points_map, i))
+
         # update results
-        points_i = np.array(points_i)[points_map]
+        points_i0 = np.array(points_i)
+        points_i = points_i0[points_map]
         observations_i = np.array(observations_i)[obs_map]
         pi0 = 0
         for pgi, pg in enumerate(self.pose_graphs):
+            assert pi0 == pi_psa_1[pgi]
             np0, no0 = len(pg.points), len(pg.observations)
 
             pg.observations = [(fi, pi-pi0, uv) for i, (fi, pi, uv) in
                                zip(observations_i, observations) if i == pgi]
             pg.w2c = [poses[i] for i in pg.frame_id]
-            pg.points = points[np.where(points_i==pgi)]
-            pi0 += len(pg.points)
+            pg.points = points[pi_psa_1[pgi]:pi_psa_1[pgi+1]]
 
-            # update indices
-            pmap = points_map[np.where(points_i==pgi)]
-            pmap = pmap - np.amin(pmap)
-            outliers = sorted(set(range(len(pg.remain_idx))).difference(pmap))
-            pg.is_remain[pg.remain_idx[outliers]] = False
-            pg.remain_idx, pg.remain_map = pg.update_remain_maps(pg.is_remain)
-            assert len(pg.remain_idx) == len(pmap)
+            pmap = points_map[pi_psa_1[pgi]:pi_psa_1[pgi+1]] - pi_psa[pgi]
+            pg.update_remain_map_idx(pmap)
+            pg.sanity_check()
+            assert pg.num_points_remain == len(pmap)
 
             print(f"{pg.frame_id[0]}-{pg.frame_id[-1]} of {len(self.frames)} - "
                   f"{np0}->{len(pg.points)} points, {no0}->{len(pg.observations)} observations")
+            pi0 += len(pg.points)
 
         print()
 
@@ -704,7 +899,7 @@ class BottomUpFrameSequence:
 
 # Bundle adjustment
 
-BA_OUTLIER_Z = 3
+BA_OUTLIER_Z = 4
 
 def bundle_adjustment_ceres_3(
         camera_params, poses, points, observations,
@@ -796,7 +991,9 @@ def plot_camera(ax, R, t, sc=1.0):
     vertices = points_3d[:,idx]
     ax.plot(vertices[0], vertices[2], vertices[1], '-', zorder=np.inf)
 
-def plot_cameras(ax, rotations, translations, sc=1.0):
+def plot_cameras(ax, transforms, sc=1.0):
+    rotations = [t[:3, :3] for t in transforms]
+    translations = [t[:3, 3:] for t in transforms]
     sc *= np.linalg.det(np.cov(np.array(translations).reshape(-1, 3).T))**(1/6)
     sc /= len(translations)**0.5
     for R, t in zip(rotations, translations):
@@ -831,7 +1028,7 @@ if __name__ == "__main__":
 
     import sfm_calibrated.img.videos as videos
     video_filename = videos.videos[4]
-    frames = FrameSequence(video_filename, max_frames=18, skip=5)
+    frames = FrameSequence(video_filename, max_frames=80, skip=5)
 
     BottomUpFrameSequence(frames)
 
