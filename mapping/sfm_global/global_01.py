@@ -7,8 +7,8 @@ from scipy.spatial.transform import Rotation
 from scipy.spatial import KDTree
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelextrema
-
 import networkx as nx
+import concurrent.futures
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -364,7 +364,7 @@ class DisjointSet:
 
 class FilteredDisjointSet:
 
-    def __init__(self, n: int, edges: List[Tuple[int, int]]):
+    def __init__(self, n: int, edges: List[Tuple[int, int]], max_nodes: int):
 
         # perform usual union find
         djs = DisjointSet(n)
@@ -389,7 +389,7 @@ class FilteredDisjointSet:
         # clean up each disjoint set
         self.edges = []
         for group in groups:
-            group = self.filter_djs_group(group)
+            group = self.filter_djs_group(group, max_nodes)
             self.edges.extend(group)
 
         # create final disjoint set
@@ -400,142 +400,59 @@ class FilteredDisjointSet:
         self.djs = djs
 
     @staticmethod
-    def filter_djs_group(edges: List[Tuple[int, int]]):
-        if len(edges) <= 5:
+    def filter_djs_group(edges: List[Tuple[int, int]], max_nodes: int):
+        if len(edges) <= max_nodes:
             return edges
-        print(len(edges))
-        # if len(edges) > 100:
-        #     return edges
-        # print(edges)
 
         G = nx.Graph()
         G.add_edges_from(edges)
-        G = FilteredDisjointSet.hcs(G)
-        # G, _ = FilteredDisjointSet.remove_branch_edges(G)
+        G = FilteredDisjointSet.partition_graph(G, max_nodes)
         # nx.draw_networkx(G)
         # plt.show()
 
         return G.edges
 
     @staticmethod
-    def hcs(graph: nx.Graph) -> nx.Graph:
-        """https://en.wikipedia.org/wiki/HCS_clustering_algorithm"""
+    def partition_graph(graph: nx.Graph, max_nodes: int) -> nx.Graph:
 
-        if len(graph.nodes) <= 5:
+        if len(graph.nodes) <= max_nodes:
             return graph
 
-        graph, branches = FilteredDisjointSet.remove_branch_edges(graph)
+        # fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True)
+        fvec = nx.linalg.fiedler_vector(graph, weight=1, normalized=True, method="lobpcg", tol=1e-4)
 
-        if len(graph.nodes) <= 5:
-            graph.add_edges_from(branches)
-            return graph
+        fidx = np.argsort(fvec)
+        fidx_inv = np.empty_like(fidx)
+        fidx_inv[fidx] = np.arange(len(fidx))
+        fvec = fvec[fidx]
 
-        # assert nx.is_connected(graph)
+        def split_fvec(fvec):
+            if len(fvec) <= max_nodes:
+                return [fvec]
+            si = np.argmax(fvec[1:]-fvec[:-1])
+            return split_fvec(fvec[:si+1]) + split_fvec(fvec[si+1:])
 
-        if False:
-            edges = nx.algorithms.connectivity.cuts.minimum_edge_cut(graph)
-        else:
-            # fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True)
-            fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True, method="lobpcg", tol=1e-4)
+        fvec_split = split_fvec(fvec)
+        vmap = []
+        for i, fv in enumerate(fvec_split):
+            vmap.append([len(vmap)]*len(fv))
+        vmap = np.concatenate(vmap)
 
-            # sorted_nodes = sorted(graph.nodes, key=lambda node: fiedler_vector[node])
-            sorted_nodes = np.array(graph.nodes)[np.argsort(fiedler_vector)].tolist()
+        # plt.plot(fvec, 'k.')
+        # plt.plot(fvec[1:]-fvec[:-1], 'k.')
+        # plt.show()
 
-            if False:
-                best_cut = None
-                best_cut_weight = float('inf')
-                for i in range(1, len(sorted_nodes)):
-                    S = set(sorted_nodes[:i])
-                    T = set(sorted_nodes[i:])
-                    cut_weight = sum(1 for u, v in nx.edge_boundary(graph, S, T))
-                    if cut_weight < best_cut_weight:
-                        best_cut_weight = cut_weight
-                        best_cut = nx.edge_boundary(graph, S, T)
-
-            else:
-                boundary_edges = set()
-                best_cut_weight = float('inf')
-                best_cut = None
-                S = set()
-                T = set(graph.nodes)
-                for u in sorted_nodes:
-                    T.remove(u)
-                    S.add(u)
-                    for v in graph.neighbors(u):
-                        edge = (u, v) if u < v else (v, u)
-                        if v in T:
-                            boundary_edges.add(edge)
-                        else:
-                            boundary_edges.discard(edge)
-                    # assert set(map(frozenset, boundary_edges)) == set(map(frozenset, nx.edge_boundary(graph, S, T)))
-                    cut_weight = len(boundary_edges)
-                    if 0 < cut_weight < best_cut_weight:
-                        best_cut_weight = cut_weight
-                        best_cut = boundary_edges.copy()
-
-            edges = set(best_cut)
-
-        is_highly_connected = len(edges) > len(graph.nodes) / 2
-
-        if not is_highly_connected:
-            for e in edges:
-                graph.remove_edge(*e)
-
-            subgraphs = [graph.subgraph(sg).copy() for sg in nx.connected_components(graph)]
-            # print([len(g.nodes) for g in subgraphs])
-
-            if len(subgraphs) == 2:
-                g0, g1 = subgraphs
-                if len(g0.nodes) > 1:
-                    g0 = FilteredDisjointSet.hcs(g0)
-                if len(g1.nodes) > 1:
-                    g1 = FilteredDisjointSet.hcs(g1)
-                graph = nx.compose(g0, g1)
-
-                if len(g0.nodes) == 1 or len(g1.nodes) == 1:
-                    nodes0 = set(g0.nodes)
-                    nodes1 = set(g1.nodes)
-                    for i, j in edges:
-                        if i in nodes0 and j in nodes1:
-                            graph.add_edge(i, j)
-                        if i in nodes1 and j in nodes0:
-                            graph.add_edge(i, j)
-
-        graph.add_edges_from(branches)
+        nmap = { node: vmap[fidx_inv[i]] for i, node in enumerate(graph.nodes()) }
+        discarded_edges = []
+        for u, v in graph.edges():
+            if nmap[u] != nmap[v]:
+                discarded_edges.append((u, v))
+        graph.remove_edges_from(discarded_edges)
         return graph
-
-    @staticmethod
-    def remove_branch_edges(graph: nx.Graph):
-        pruned_graph = graph.copy()
-        removed_edges = []
-
-        while True:
-            branch_edges = []
-
-            # Identify branch edges
-            for edge in pruned_graph.edges():
-                u, v = edge
-
-                # Check if either node is a leaf or part of a branch structure
-                if pruned_graph.degree[u] == 1 or pruned_graph.degree[v] == 1:
-                    branch_edges.append(edge)
-
-            # If no branch edges are found, break the loop
-            if not branch_edges:
-                break
-
-            # Remove branch edges from the graph
-            pruned_graph.remove_edges_from(branch_edges)
-            removed_edges.extend(branch_edges)
-
-        # Remove isolated nodes
-        isolated_nodes = list(nx.isolates(pruned_graph))
-        pruned_graph.remove_nodes_from(isolated_nodes)
-
-        return pruned_graph, removed_edges
 
 
 class MatchedFrameSequence:
+    min_obs: int = 3
     match_cache_path = "cache/matches.npy"
     ba_initial_cache_path = "cache/ba_initial.npy"
 
@@ -547,7 +464,7 @@ class MatchedFrameSequence:
         self.match_features(max_sw)
 
         self.run_initial_ba()
-        self.plot()
+        # self.plot()
 
         self.close_loop()
         self.plot()
@@ -773,10 +690,10 @@ class MatchedFrameSequence:
 
         num_points = np.cumsum([len(frame.keypoints) for frame in self.frames])
         num_points, points_psa = num_points[-1], num_points-num_points[0]
+        self.points_psa = np.concatenate((points_psa, [num_points]))
         points_djs = DisjointSet(num_points)
         points_count = [0]*num_points
-        # print(num_points, points_psa)
-        
+
         edges = []
         for (i, j), m in self.matches.items():
             idx0 = points_psa[i] + m.idx0s
@@ -786,39 +703,68 @@ class MatchedFrameSequence:
                 edges.append((i0, i1))
                 points_count[i0] += 1
                 points_count[i1] += 1
-        if True:
+        if False:
             # points_djs.union_queue()
             points_djs.union_queue_clique3()
         else:
-            points_djs = FilteredDisjointSet(num_points, edges).djs
+            points_djs = FilteredDisjointSet(num_points, edges, len(self.frames)).djs
         for i in range(num_points):
             points_djs.find(i)
-        # print([_ for _  in points_djs.size if _ > 1])
-        # print(sorted(points_djs.size, reverse=True))
-        # assert False
+        self.djs_map = np.array([points_djs.find(i) for i in range(num_points)])
 
-        is_remain = np.array([int(
-            points_djs.find(i) == i and points_count[i] >= 3)
-              for i in range(num_points)])
-        remain_idx = np.arange(num_points)[np.where(is_remain)]
-        remain_map = -np.ones(num_points, dtype=np.int32)
-        remain_map[remain_idx] = np.cumsum(is_remain)[remain_idx]-1
-        print(len(remain_idx), 'points')
+        # initial map
+        self.is_remain = np.array([
+            int(points_count[i] >= self.min_obs)
+            for i in range(num_points)])
+        self.create_remain_map_idx()
 
-        observations = []
+        # filter points with too few observations
+        for idxs in self.remain_idx:
+            if len(idxs) < self.min_obs:
+                for i in idxs:
+                    self.is_remain[i] = False
+        self.create_remain_map_idx()
+
+        # create list of observations
+        self.observations = []
         for i, frame in enumerate(self.frames):
             for j, kp in enumerate(frame.keypoints):
-                pi = remain_map[points_djs.find(points_psa[i]+j)]
+                pi = self.remain_map[points_psa[i]+j]
                 if pi < 0:
                     continue
-                observations.append((i, pi, kp[:2]))
-        print(len(observations), 'observations')
+                self.observations.append((i, pi, kp[:2]))
 
-        self.points = -1.0+2.0*np.random.random((len(remain_idx), 3))
-        self.observations = observations
-        # self.poses_t = -1.0+2.0*np.random.random(self.poses_t.shape)
+        self.points = -1.0+2.0*np.random.random((self.num_points_remain, 3))
+        self.poses_t = -1.0+2.0*np.random.random(self.poses_t.shape)
 
+        print(self.num_points_remain, 'points')
+        print(len(self.observations), 'observations')
         print()
+
+    @property
+    def num_points_original(self):
+        return self.points_psa[-1]
+
+    @property
+    def num_points_remain(self):
+        return len(self.remain_idx)
+
+    def create_remain_map_idx(self):
+        num_points = self.num_points_original
+        remain_idx = []  # type: List[List[int]]
+        remain_map = -np.ones(num_points, dtype=np.int32)
+        for i in range(num_points):
+            ri = self.djs_map[i]
+            if ri == i and self.is_remain[ri]:
+                remain_map[i] = len(remain_idx)
+                remain_idx.append([])
+        for i in range(num_points):
+            ri = self.djs_map[i]
+            if remain_map[ri] != -1:
+                remain_map[i] = remain_map[ri]
+                remain_idx[remain_map[i]].append(i)
+        self.remain_map = remain_map  # map original indices to remaining indices
+        self.remain_idx = remain_idx  # list of list, original indices of remaining points
 
     def run_initial_ba(self):
         try:
@@ -863,7 +809,7 @@ class MatchedFrameSequence:
             dists = (dists**2).sum(axis=(-1, -2))
             dists -= 1.0
         elif dist_mode == "ray_dir":
-            dir1 = self.poses_R[:, 2].reshape((-1, 1, 3))
+            dir1 = self.poses_R[:, :, 2].reshape((-1, 1, 3))
             dir2 = dir1.reshape((1, -1, 3))
             dists = ((dir2-dir1)**2).sum(axis=(-1))
             dists -= 1.0/3.0
@@ -880,7 +826,7 @@ class MatchedFrameSequence:
             p2 = pos2 + dir2 * np.fmax(t2, 0.0)[..., None]
             dists = np.linalg.norm(p2-p1, axis=-1)
         # dists = gaussian_filter(dists, sigma=10)
-        # plt.imshow(dists); plt.show()
+        plt.imshow(dists); plt.show()
 
         # find potential matches
         lc_list = []
@@ -897,14 +843,30 @@ class MatchedFrameSequence:
 
         # match images
         lc_list = []
-        for i, j in self.lc_list:
-            match = FramePair(self.frames[i], self.frames[j], self.intrins)
-            status = ''
-            if match.confidence > 0.2:
-                self.matches[(i, j)] = match
-                lc_list.append((i, j))
-                status = '- accept'
-            print(i, j, match.confidence, status)
+        if False:
+            # do so in a loop
+            for i, j in self.lc_list:
+                match = FramePair(self.frames[i], self.frames[j], self.intrins)
+                status = ''
+                if match.confidence > 0.2:
+                    self.matches[(i, j)] = match
+                    lc_list.append((i, j))
+                    status = '- accept'
+                print(i, j, match.confidence, status)
+        else:
+            # multithreading
+            def process_pair(args):
+                self, i, j = args
+                match = FramePair(self.frames[i], self.frames[j], self.intrins)
+                if match.confidence > 0.2:
+                    self.matches[(i, j)] = match
+                    print(i, j, match.confidence, '- accept')
+                    return (i, j)
+                return None
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = [executor.submit(process_pair, (self, i, j)) for i, j in self.lc_list]
+                lc_list = [future.result() for future in concurrent.futures.as_completed(futures)
+                           if future.result() is not None]
         print(f"{len(lc_list)}/{len(self.lc_list)} image matches")
         self.lc_list = lc_list
         # self.plot()
@@ -1148,7 +1110,7 @@ if __name__ == "__main__":
 
     import sfm_calibrated.img.videos as videos
     video_filename = videos.videos[4]
-    frames = FrameSequence(video_filename, max_frames=200, skip=5)
+    frames = FrameSequence(video_filename, max_frames=400, skip=5)
 
     MatchedFrameSequence(frames)
 

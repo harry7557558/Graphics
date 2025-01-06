@@ -8,6 +8,7 @@ from scipy.spatial import KDTree
 from scipy.ndimage import gaussian_filter
 from scipy.signal import argrelextrema
 import bisect
+import networkx as nx
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -391,22 +392,114 @@ class DisjointSet:
         self._union_queue.clear()
 
 
-def scaled_procrustes(pnts1, pnts2):
+class FilteredDisjointSet:
+
+    def __init__(self, n: int, edges: List[Tuple[int, int]], max_nodes: int):
+
+        # perform usual union find
+        djs = DisjointSet(n)
+        for i, j in edges:
+            djs.queue_union(i, j)
+        # djs.union_queue()
+        djs.union_queue_clique3()
+
+        # find disjoint sets
+        groups = {}
+        for i, j in edges:
+            repi = djs.find(i)
+            repj = djs.find(j)
+            if repi != repj:
+                continue
+            if repi not in groups:
+                groups[repi] = []
+            groups[repi].append((i, j))
+        groups = groups.values()
+        groups = sorted(groups, key=lambda s: -len(s))
+
+        # clean up each disjoint set
+        self.edges = []
+        for group in groups:
+            group = self.filter_djs_group(group, max_nodes)
+            self.edges.extend(group)
+
+        # create final disjoint set
+        djs = DisjointSet(n)
+        for i, j in self.edges:
+            djs.queue_union(i, j)
+        djs.union_queue()
+        self.djs = djs
+
+    @staticmethod
+    def filter_djs_group(edges: List[Tuple[int, int]], max_nodes: int):
+        if len(edges) <= max_nodes:
+            return edges
+
+        G = nx.Graph()
+        G.add_edges_from(edges)
+        G = FilteredDisjointSet.partition_graph(G, max_nodes)
+        # nx.draw_networkx(G)
+        # plt.show()
+
+        return G.edges
+
+    @staticmethod
+    def partition_graph(graph: nx.Graph, max_nodes: int) -> nx.Graph:
+
+        if len(graph.nodes) <= max_nodes:
+            return graph
+
+        # fiedler_vector = nx.linalg.fiedler_vector(graph, weight=1, normalized=True)
+        fvec = nx.linalg.fiedler_vector(graph, weight=1, normalized=True, method="lobpcg", tol=1e-4)
+
+        fidx = np.argsort(fvec)
+        fidx_inv = np.empty_like(fidx)
+        fidx_inv[fidx] = np.arange(len(fidx))
+        fvec = fvec[fidx]
+
+        def split_fvec(fvec):
+            if len(fvec) <= max_nodes:
+                return [fvec]
+            si = np.argmax(fvec[1:]-fvec[:-1])
+            return split_fvec(fvec[:si+1]) + split_fvec(fvec[si+1:])
+
+        fvec_split = split_fvec(fvec)
+        vmap = []
+        for i, fv in enumerate(fvec_split):
+            vmap.append([len(vmap)]*len(fv))
+        vmap = np.concatenate(vmap)
+
+        # plt.plot(fvec, 'k.')
+        # plt.plot(fvec[1:]-fvec[:-1], 'k.')
+        # plt.show()
+
+        nmap = { node: vmap[fidx_inv[i]] for i, node in enumerate(graph.nodes()) }
+        discarded_edges = []
+        for u, v in graph.edges():
+            if nmap[u] != nmap[v]:
+                discarded_edges.append((u, v))
+        graph.remove_edges_from(discarded_edges)
+        return graph
+
+
+def scaled_procrustes(pnts1, pnts2, weights):
     pnts1, pnts2 = np.array(pnts1), np.array(pnts2)
-    mean1 = np.mean(pnts1, axis=0)
-    mean2 = np.mean(pnts2, axis=0)
+    weights = np.array(weights).reshape((-1, 1))
+    weights /= weights.sum()
+    mean1 = (pnts1 * weights).sum(axis=0)
+    mean2 = (pnts2 * weights).sum(axis=0)
 
     centered1 = pnts1 - mean1
     centered2 = pnts2 - mean2
 
-    H = centered2.T @ centered1
+    H = (centered2 * weights).T @ centered1
     U, S, Vh = np.linalg.svd(H)
 
     S = np.eye(3)
     S[2, 2] = np.linalg.det(U @ Vh)
     R = U @ S @ Vh
 
-    s = np.sqrt((centered2**2).sum() / (centered1**2).sum())
+    # TODO: is this correct?
+    s = np.sqrt((centered2**2 * weights).sum() / (centered1**2 * weights).sum())
 
     t = mean2 - s * R @ mean1
 
@@ -420,6 +513,8 @@ def scaled_procrustes(pnts1, pnts2):
 class PoseGraph:
     min_obs: int = 3
     """Minimum number of observations per point"""
+    min_obs_ba: int = 3
+    """Minimum number of observations per point, for filtering after BA"""
 
     def __init__(self, frames, matches, frame_id, w2cs):
         assert len(frame_id) == len(w2cs)
@@ -449,8 +544,12 @@ class PoseGraph:
                 edges.append((i0, i1))
                 points_count[i0] += 1
                 points_count[i1] += 1
-        # points_djs.union_queue()
-        points_djs.union_queue_clique3()
+        if False:
+            # points_djs.union_queue()
+            points_djs.union_queue_clique3()
+        else:
+            max_nodes = int(1.5 * BottomUpFrameSequence.n_bottom + 1)
+            points_djs = FilteredDisjointSet(num_points, edges, max_nodes).djs
         for i in range(num_points):
             points_djs.find(i)
         self.djs_map = np.array([points_djs.find(i) for i in range(num_points)])
@@ -538,7 +637,7 @@ class PoseGraph:
             point_count[i] += 1
         diff = 0
         for i in range(self.num_points_remain):
-            assert point_count[i] >= self.min_obs
+            assert point_count[i] >= self.min_obs_ba
             assert point_count[i] <= len(self.remain_idx[i])
             if point_count[i] != len(self.remain_idx[i]) and False:
                 if point_count[i] < len(self.remain_idx[i]):
@@ -550,49 +649,91 @@ class PoseGraph:
 
     def merge(pg0: "PoseGraph", pg1: "PoseGraph", get_match: Callable, frames: List[Frame]):
 
-        # get relative transform from closest match pair
-        fi0, fi1 = len(pg0.frame_id)-1, 0
-        match = get_match(pg0.frame_id[fi0], pg1.frame_id[fi1]) # type: FramePair
-        assert match is not None
-        idx0 = pg0.points_psa[fi0] + match.idx0
-        idx1 = pg1.points_psa[fi1] + match.idx1
-        ridx0 = pg0.remain_map[idx0]
-        ridx1 = pg1.remain_map[idx1]
-        rmask = (ridx0 != -1) & (ridx1 != -1)
-        fidx0 = ridx0[np.where(rmask)]
-        fidx1 = ridx1[np.where(rmask)]
-        pnt0 = pg0.points[fidx0]
-        pnt1 = pg1.points[fidx1]
-        print(np.sum(rmask), 'points for procrustes')
+        # TODO: add new points
 
-        relmat = scaled_procrustes(pnt1, pnt0)
-        PLOT = True
-        if PLOT:
-            pnt1v = (pnt1 @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3]
-            plt.figure()
-            ax = plt.subplot(projection="3d")
-            ax.scatter(pnt0.T[0], pnt0.T[2], pnt0.T[1])
-            ax.scatter(pnt1v.T[0], pnt1v.T[2], pnt1v.T[1])
-            pnt01 = np.stack((pnt0, pnt1v))
-            for i in range(len(pnt0)):
-                si = pnt01[:, i].T
-                ax.plot(si[0], si[2], si[1], 'k-')
-            # set_axes_equal(ax)
-            # plt.show()
+        # get relative transform from closest match pair
+        cidx0, cidx1 = [], []
+        fidx0, fidx1 = [], []
+        fidx0s, fidx1s = set(), set()
+        num_new_point = 0
+        for stride in range(1, BottomUpFrameSequence.max_sw+1):
+            if num_new_point == 0 and stride % BottomUpFrameSequence.n_bottom != 1:
+                continue
+            num_new_point, num_new_match = 0, 0
+            for fi0 in range(len(pg0.frame_id)-stride, len(pg0.frame_id)):
+                fi1 = fi0+stride-len(pg0.frame_id)
+                if not (fi0 >= 0 and fi1 < len(pg1.frame_id)):
+                    continue
+                match = get_match(pg0.frame_id[fi0], pg1.frame_id[fi1]) # type: FramePair
+                if match is None:
+                    continue
+                num_new_match += 1
+                idx0 = pg0.points_psa[fi0] + match.idx0
+                idx1 = pg1.points_psa[fi1] + match.idx1
+                ridx0 = pg0.remain_map[idx0]
+                ridx1 = pg1.remain_map[idx1]
+                rmask = (ridx0 != -1) & (ridx1 != -1)
+                for i0, i1 in zip(ridx0[np.where(rmask)], ridx1[np.where(rmask)]):
+                    if i0 in fidx0s or i1 in fidx1s:
+                        continue
+                    fidx0s.add(i0)
+                    fidx1s.add(i1)
+                    fidx0.append(i0)
+                    fidx1.append(i1)
+                    cidx0.append(fi0)
+                    cidx1.append(fi1)
+                    num_new_point += 1
+            if num_new_point == 0 and False:
+                break
+            print(f'stride {stride}: {num_new_match} new matches, {num_new_point} new points')
+        fidx0, fidx1 = np.array(fidx0), np.array(fidx1)
+        cidx0, cidx1 = np.array(cidx0), np.array(cidx1)
+        cpos0 = np.array([np.linalg.inv(cam)[:3, 3] for cam in pg0.w2c])
+        cpos1 = np.array([np.linalg.inv(cam)[:3, 3] for cam in pg1.w2c])
+        num_points_0 = len(fidx0)
+
+        # TODO: RANSAC
+        pnt0, pnt1 = pg0.points[fidx0], pg1.points[fidx1]
+        weights = (np.linalg.norm(pnt0-cpos0[cidx0], axis=1) * np.linalg.norm(pnt1-cpos1[cidx1], axis=1))**-0.5
+        relmat = scaled_procrustes(pnt1, pnt0, weights)
+        error = (pnt1 @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3] - pnt0
+        error = np.linalg.norm(error, axis=1) * weights
+        mask = np.where(error < 2.5*np.mean(error))
+        fidx0, fidx1 = fidx0[mask], fidx1[mask]
+        cidx0, cidx1 = cidx0[mask], cidx1[mask]
+        pnt0, pnt1 = pg0.points[fidx0], pg1.points[fidx1]
+        weights = (np.linalg.norm(pnt0-cpos0[cidx0], axis=1) * np.linalg.norm(pnt1-cpos1[cidx1], axis=1))**-0.5
+        print(f'{len(fidx0)}/{num_points_0} points for procrustes')
+        relmat = scaled_procrustes(pnt1, pnt0, weights)
 
         # transform poses
         pg0.frame_id.extend(pg1.frame_id)
         for i, fi in enumerate(pg0.frame_id):
             pg0.fmap[fi] = i
         for mat in pg1.w2c:
-            mat = mat @ np.linalg.inv(relmat)
+            mat = np.linalg.inv(mat)  # c2w
+            mat = relmat @ mat
             mat[:, 3] /= mat[3, 3]
+            mat = np.linalg.inv(mat)  # w2c
             pg0.w2c.append(mat)
-        if PLOT:
-            # plt.figure()
-            # ax = plt.subplot(projection="3d")
+
+        # plotting
+        if len(pg0.frame_id) > 20:
+            plt.figure()
+            ax = plt.subplot(projection="3d")
             plot_cameras(ax, pg0.w2c)
             set_axes_equal(ax)
+            apnt0 = pg0.points
+            ax.scatter(apnt0.T[0], apnt0.T[2], apnt0.T[1], c='C0', s=1)
+            apnt1 = (pg1.points @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3]
+            ax.scatter(apnt1.T[0], apnt1.T[2], apnt1.T[1], c='C1', s=1)
+            pnt1v = (pnt1 @ relmat[:3, :3].T + relmat[:3, 3:].T) / relmat[3, 3]
+            ax.scatter(pnt0.T[0], pnt0.T[2], pnt0.T[1])
+            ax.scatter(pnt1v.T[0], pnt1v.T[2], pnt1v.T[1])
+            pnt01 = np.stack((pnt0, pnt1v))
+            for i in range(len(pnt0)):
+                si = pnt01[:, i].T
+                ax.plot(si[0], si[2], si[1], 'k-')
             plt.show()
 
         # merge points
@@ -629,9 +770,32 @@ class PoseGraph:
                 assert len(pg0.remain_idx) == pmap[i]
                 pg0.remain_idx.append(idxs)
 
+    def plot(self, frames):
+        plt.figure()
+        ax = plt.subplot(projection="3d")
+        plot_cameras(ax, self.w2c)
+        set_axes_equal(ax)
+        c, s = self.get_point_appearance(frames)
+        ax.scatter(self.points[:,0], self.points[:,2], self.points[:,1],
+                alpha=0.5, s=s, c=c, zorder=0)
+        plt.show()
+
+    def get_point_appearance(self, frames):
+        colors = np.zeros((len(self.points), 3), dtype=np.float32)
+        counts = np.zeros(len(self.points))
+        for fi, pi, uv in self.observations:
+            i, j = np.round(uv).astype(np.int32)
+            color = frames[fi].img[j, i]
+            colors[pi] += color
+            counts[pi] += 1
+        assert (counts > 0).all()
+        colors = colors / counts[:, None]
+        colors = np.flip(colors, -1)
+        return colors / 255.0, np.cbrt(counts/3)
+
 
 class BottomUpFrameSequence:
-    n_bottom: int = 4
+    n_bottom: int = 5
     """Target frame group size at initialization"""
     image_match_th: float = 0.2
     """Confidence threshold for image matching, 0 to 1"""
@@ -656,6 +820,7 @@ class BottomUpFrameSequence:
         while len(self.pose_graphs) > 1:
             self.binary_merge()
             self.run_ba()
+        self.pose_graphs[0].plot(frames)
         return
 
     def _intrins_init(self):
@@ -867,39 +1032,11 @@ class BottomUpFrameSequence:
 
         print()
 
-    def plot(self):
-        ax = plt.subplot(projection="3d")
-        if hasattr(self, 'lc_list'):
-            for i, j in self.lc_list:
-                ti = -self.poses[i][0].T @ self.poses[i][1]
-                tj = -self.poses[j][0].T @ self.poses[j][1]
-                ti, tj = ti[[0, 2, 1]], tj[[0, 2, 1]]
-                plt.plot(*zip(ti, tj), 'k-', zorder=5)
-        plot_cameras(ax, [_[0] for _ in self.poses], [_[1] for _ in self.poses])
-        set_axes_equal(ax)
-        c, s = self.get_point_appearance()
-        ax.scatter(self.points[:,0], self.points[:,2], self.points[:,1],
-                alpha=0.5, s=s, c=c, zorder=0)
-        plt.show()
-
-    def get_point_appearance(self):
-        colors = np.zeros((len(self.points), 3), dtype=np.float32)
-        counts = np.zeros(len(self.points))
-        for fi, pi, uv in self.observations:
-            i, j = np.round(uv).astype(np.int32)
-            color = self.frames[fi].img[j, i]
-            colors[pi] += color
-            counts[pi] += 1
-        assert (counts > 0).all()
-        colors = colors / counts[:, None]
-        colors = np.flip(colors, -1)
-        return colors / 255.0, np.cbrt(counts/3)
-
 
 
 # Bundle adjustment
 
-BA_OUTLIER_Z = 4
+BA_OUTLIER_Z = 8
 
 def bundle_adjustment_ceres_3(
         camera_params, poses, points, observations,
@@ -949,7 +1086,7 @@ def bundle_adjustment_ceres_3(
         point_idx = np.zeros(n_point, dtype=np.int32)
         for i in points_i:
             point_idx[i] += 1
-        mask_p = point_idx >= PoseGraph.min_obs
+        mask_p = point_idx >= PoseGraph.min_obs_ba
         inliners_p = np.array(np.where(mask_p)).flatten()
         points = points[inliners_p]
         points_map = points_map[inliners_p]
@@ -1028,7 +1165,7 @@ if __name__ == "__main__":
 
     import sfm_calibrated.img.videos as videos
     video_filename = videos.videos[4]
-    frames = FrameSequence(video_filename, max_frames=80, skip=5)
+    frames = FrameSequence(video_filename, max_frames=200, skip=5)
 
     BottomUpFrameSequence(frames)
 
