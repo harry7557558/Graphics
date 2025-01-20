@@ -84,17 +84,19 @@ def filter_features(kps, descs=None, keeps=None, r=10, k_max=20):
         return kp_filtered, descs_filtered, index_map
     return kp_filtered, descs_filtered
 
-def extract_features(img, num_features=8192, filter=False, detector=[]):
-    if len(detector) == 0:
-        detector.append(cv.ORB_create(num_features))
-        # detector.append(cv.SIFT_create(num_features))
+def extract_features(img, num_features=8192, filter=False, detectors=[]):
+    if len(detectors) == 0:
+        detectors.append(cv.SIFT_create(num_features))
+        detectors.append(cv.ORB_create(num_features))
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    keypoints, descriptors = detector[0].detectAndCompute(gray, None)
+    keypoints, descriptors = detectors[0].detectAndCompute(gray, None)
     if filter:
         r = 0.01 * np.linalg.norm(img.shape[:2])
         keypoints, descriptors = filter_features(keypoints, descriptors, r=r)
     keypoints = [(*p.pt, p.size, p.angle, p.response) for p in keypoints]
-    return (img, np.array(keypoints), descriptors)
+    keypoints_orb, descriptors_orb = detectors[1].detectAndCompute(gray, None)
+    keypoints_orb = [(*p.pt, p.size, p.angle, p.response) for p in keypoints_orb]
+    return (img, np.array(keypoints), descriptors, np.array(keypoints_orb), descriptors_orb)
 
 
 # Video loading
@@ -102,9 +104,8 @@ def extract_features(img, num_features=8192, filter=False, detector=[]):
 class Frame:
     def __init__(self, image):
         self.img = image
-        _, self.keypoints, self.descriptors = extract_features(image, 1536, False)
-        # _, self.keypoints, self.descriptors = extract_features(image, 2048, True)
-        # print(self.keypoints.shape, self.keypoints.dtype, self.descriptors.shape, self.descriptors.dtype)
+        _, self.keypoints, self.descriptors, self.keypoints_orb, self.descriptors_orb \
+            = extract_features(image, 1536, False)
 
     @property
     def shape(self):
@@ -115,7 +116,7 @@ class Frame:
         img[:, :self.img.shape[1], :] = self.img
         keypoints = [cv.KeyPoint(*p) for p in self.keypoints]
         cv.drawKeypoints(img, keypoints, img, (0, 255, 0))
-        cv.imshow("Matches", img)
+        cv.imshow("Features", img)
 
 class FrameSequence(list):
     cache_path = "cache/frames.npy"
@@ -271,17 +272,54 @@ def draw_matches_flow(frame1: Frame, frame2: Frame, matches, inliner_mask=None):
     cv.destroyAllWindows()
 
 class FramePair:
-    matcher = cv.BFMatcher(cv.NORM_HAMMING)
-    # matcher = cv.BFMatcher()
+    matcher_orb = cv.BFMatcher(cv.NORM_HAMMING)
+    matcher_sift = cv.BFMatcher()
 
     def __init__(self, frame0: Frame, frame1: Frame, intrins: List[float]):
+        self.confidence = 0.0
+        res_orb = self.match_frames(
+            FramePair.matcher_orb,
+            frame0.keypoints_orb, frame0.descriptors_orb,
+            frame1.keypoints_orb, frame1.descriptors_orb,
+            frame0.shape, intrins
+        )
+        if res_orb is None:
+            return
+        res = self.match_frames(
+            FramePair.matcher_sift,
+            frame0.keypoints, frame0.descriptors,
+            frame1.keypoints, frame1.descriptors,
+            frame0.shape, intrins
+        )
+        if res is None:
+            return
+        T0, T1 = res[-1], res_orb[-1]
+        if res[0] > 0.2 and res_orb[0] > 0.2 and False:
+            s0, s1 = log_so3t(T0), log_so3t(T1)
+            s = s0 * s1
+            if s.sum() < 0.0:
+                print("Ignore: opposite direction")
+                return
+            if s[:3].sum() < 0.0 and s[3:].sum() < 0.0:
+                print("Ignore: opposite direction")
+                return
+        self.confidence, self.idx0s, self.idx1s, self.T = res
+
+    @staticmethod
+    def match_frames(
+            matcher,
+            keypoints0, descriptors0,
+            keypoints1, descriptors1,
+            frame_shape: List[int],
+            intrins: List[float]
+        ):
 
         # feature matching
-        matches = self.matcher.match(frame0.descriptors, frame1.descriptors)
+        matches = matcher.match(descriptors0, descriptors1)
 
         # filter good matches
         if True:
-            dist_th = np.hypot(*frame0.shape[:2]) / 20
+            dist_th = np.hypot(*frame_shape[:2]) / 20
             good_matches = []
             min_dist = min([match.distance for match in matches])
             for match in matches:
@@ -294,8 +332,8 @@ class FramePair:
         # plt.show()
 
         # get matched points
-        points0 = frame0.keypoints[:, :2]
-        points1 = frame1.keypoints[:, :2]
+        points0 = keypoints0[:, :2]
+        points1 = keypoints1[:, :2]
         if intrins is not None and len(intrins) > 4:
             dist_coeffs = intrins[4:]
             points0 = cv.undistortImagePoints(points0, K, dist_coeffs)[:,0,:]
@@ -322,33 +360,30 @@ class FramePair:
             inliner_mask_f |= True
         inliners = np.where(inliner_mask_f.flatten())
         fpoints0, fpoints1 = mpoints0[inliners], mpoints1[inliners]
-        self.mat_f = mat_f
-        self.idx0 = np.array(idx0)[inliners]
-        self.idx1 = np.array(idx1)[inliners]
+        idx0 = np.array(idx0)[inliners]
+        idx1 = np.array(idx1)[inliners]
         if len(fpoints0) < 5:
-            self.confidence = 0.0
-            return
+            return None
 
         # essential matrix
         f, cx, cy = intrins[:4]
         K = np.array([[f, 0.0, cx], [0.0, f, cy], [0.0, 0.0, 1.0]])
         mat_e, inliner_mask_e = cv.findEssentialMat(fpoints0, fpoints1, cameraMatrix=K, method=0)
         if inliner_mask_e is None or mat_e is None or mat_e.shape != (3, 3):
-            self.confidence = 0.0
-            return
+            return None
         # print(inliner_mask_e.sum(), '/', len(inliner_mask_e))
         n, R, t, _ = cv.recoverPose(mat_e, fpoints0, fpoints1, cameraMatrix=K)
         # print(R); print(t)
-        self.mat_e = mat_e
-        self.R, self.t = R, t
-        self.T = pack_pose(self.R, self.t)
+        T = pack_pose(R, t)
 
         # update
-        self.confidence = inliner_mask_e.sum() / len(matches)
+        confidence = inliner_mask_e.sum() / len(matches)
         # print(inliner_mask_e.sum(), '/', len(inliner_mask_e))
         inliners = np.where(inliner_mask_e.flatten())
-        self.idx0s = self.idx0[inliners]
-        self.idx1s = self.idx1[inliners]
+        idx0s = idx0[inliners]
+        idx1s = idx1[inliners]
+
+        return confidence, idx0s, idx1s, T
 
 
 
@@ -559,7 +594,8 @@ class MatchedFrameSequence:
     def _intrins_init(self):
         frame = self.frames[0]
         h, w = frame.shape[:2]
-        f = 0.4 * np.hypot(h, w)
+        # f = 0.4 * np.hypot(h, w)
+        f = 0.6085 * np.hypot(h, w)
         return np.array([f, w/2, h/2])
 
     def match_features(self, max_sw: int):
@@ -584,9 +620,12 @@ class MatchedFrameSequence:
                 # else:
                 #     break
             print(f"{i+1}/{len(frames)} - {num_matches} image matches")
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(process_one, (self, i)) for i in range(len(self.frames))]
-            results = concurrent.futures.as_completed(futures)
+        if True:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = [executor.submit(process_one, (self, i)) for i in range(len(self.frames))]
+                results = concurrent.futures.as_completed(futures)
+        else:
+            results = [process_one((self, i)) for i in range(len(self.frames))]
         np.save(self.match_cache_path, self.matches)
 
         print()
@@ -604,7 +643,7 @@ class MatchedFrameSequence:
                     continue
                 R0, t0 = rotations[i], translations[i]
                 match = self.matches[(i, j)]
-                R, t = match.R, match.t
+                R, t = unpack_pose(match.T)
                 R1, t1 = R0@R, R0@t+t0
                 R1s.append(R1)
                 t1s.append(t1)
@@ -623,7 +662,7 @@ class MatchedFrameSequence:
             # draw_matches_flow(self.frames[i], self.frames[j], matches)
 
         # Optimize poses to refine initial estimate
-        terms = [(*key, match.R, match.confidence) for (key, match) in self.matches.items()]
+        terms = [(*key, match.T[:3, :3], match.confidence) for (key, match) in self.matches.items()]
 
         def objective(x):
             """Objective function to minimize"""
@@ -675,7 +714,7 @@ class MatchedFrameSequence:
 
         self.poses = pack_pose(rotations, translations)
 
-        if False:
+        if True:
             ax = plt.subplot(projection="3d")
             plot_cameras(ax, self.poses)
             set_axes_equal(ax)
@@ -1275,8 +1314,9 @@ if __name__ == "__main__":
     os.makedirs('cache', exist_ok=True)
 
     import sfm_calibrated.img.videos as videos
-    video_filename = videos.videos[4]
-    frames = FrameSequence(video_filename, max_frames=400, skip=5)
+    # video_filename = videos.videos[4]
+    video_filename = "/media/harry7557558/New Volume/a2rl_gate/r4w1d1_2.mp4"
+    frames = FrameSequence(video_filename, max_frames=100, skip=10)
 
     MatchedFrameSequence(frames)
 
