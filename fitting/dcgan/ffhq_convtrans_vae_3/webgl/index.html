@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+
+	<title>VAE test (64x64)</title>
+	<meta name="description" content="Variational autoencoder at 64x64 trained on FFHQ." />
+
+	<style>
+		body {
+			margin: 10px;
+			background-color: #eee;
+		}
+
+		#canvas {
+			touch-action: none;
+			image-rendering: pixelated;
+			max-width: 100%;
+		}
+
+		#error-message {
+			width: 400px;
+			color: red;
+			display: none;
+		}
+
+		p {
+			width: 320px;
+			max-width: 100%;
+		}
+	</style>
+	<script src="script.js"></script>
+</head>
+
+<body>
+	<!-- <canvas id="canvas" width="512" height="512"></canvas> -->
+	<canvas id="canvas" width="320" height="320"></canvas>
+	<!-- <canvas id="canvas" width="64" height="64"></canvas> -->
+	<p id="error-message"></p>
+
+	<p>Try a plain VAE after <a href="../../ffhq_convtrans_vae_2/webgl/">my previous GAN attempts</a>.
+		Trained on <select id="model-select">
+			<option value="../raw-weights-ffhq-64x64" selected>FFHQ</option>
+			<!-- <option value="../raw-weights-anime-64x64" selected>Anime</option> -->
+		</select> with PyTorch and manually exported to WebGL 2.0.
+	</p>
+	<p>The models are trained with a weighted sum of L1 and SSIM losses.
+		The encoder outputs an embedding, and its mean and full covariance matrix are evaluated over a large batch size.
+		KL divergence compared to a unit Gaussian distribution is then evaluated for loss.
+	</p>
+	<pre>
+==== Decoder (304k params) ====
+Latent - 64
+Dense layer - 1024x64+1024
+ => 1024, SiLU
+ => 64x4x4
+Conv2d - 64x64x3x3
+ => 64x4x4, BatchNorm2d, SiLU
+ConvTranspose2d - 64x64x4x4
+ => 64x8x8, BatchNorm2d, SiLU
+ConvTranspose2d - 64x64x4x4
+ => 64x16x16, BatchNorm2d, SiLU
+ConvTranspose2d - 64x64x4x4
+ => 64x32x32, BatchNorm2d, SiLU
+ConvTranspose2d - 64x3x4x4
+ => 3x64x64, BatchNorm2d, Tanh*0.5+0.5
+</pre>
+
+</body>
+
+</html>
