@@ -15,8 +15,8 @@ from matplotlib.figure import Figure
 import argparse
 from pathlib import Path
 
-# Import from training script
-from train_01 import UNet
+# from train_01 import UNet
+from train_02 import UNet
 
 class ImageEnhancerGUI:
     def __init__(self, model_path, default_image_path=None):
@@ -129,16 +129,8 @@ class ImageEnhancerGUI:
             # Load the saved model
             checkpoint = torch.load(model_path, map_location=self.device)
             
-            # Get model configuration from checkpoint
-            if 'num_hiddens' in checkpoint:
-                num_hiddens = checkpoint['num_hiddens']
-            else:
-                # Default configuration if not found
-                num_hiddens = [16, 32, 48, 64]
-            print('num_hiddens:', num_hiddens)
-            
             # Create model
-            self.model = UNet(3, num_hiddens)
+            self.model = UNet()
             
             # Handle both DataParallel and regular model checkpoints
             if 'model_state_dict' in checkpoint:

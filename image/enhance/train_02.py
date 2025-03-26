@@ -34,12 +34,18 @@ def set_seed(seed=42):
 
 # U-Net model definition
 class UNet(nn.Module):
+    _conv311_args = {
+        'kernel_size': 3,
+        'padding': 1,
+        'padding_mode': "reflect"
+    }
+
     def __init__(self, channels: int=3, num_hiddens: list[int]=[16, 32, 48, 64]):
         super(UNet, self).__init__()
 
         nums = [channels] + num_hiddens
         self.nums = nums
-        
+
         # Encoder
         enc_convs = []
         for n1, n2 in zip(nums[:-1], nums[1:]):
@@ -47,28 +53,48 @@ class UNet(nn.Module):
         self.enc_convs = nn.ParameterList(enc_convs)
         
         # Decoder
-        dec_convs = [nn.Conv2d(nums[1], channels, kernel_size=1)]
+        dec_convs = [nn.Conv2d(nums[1], channels, kernel_size=1, bias=False)]
         # for n2, n1 in zip(reversed(nums)[:-1], reversed(nums)[1:]):
         for n1, n2 in zip(nums[1:-1], nums[2:]):
             dec_convs.append(self._make_conv_block(n2+n1, n1))
         self.dec_convs = nn.ParameterList(dec_convs)
         
-        # Pooling and upsampling
+        # Upsampling
         upsamples = []
-        # for n in zip(reversed(nums)[:-1]):
         for n in nums[2:]:
-            upsamples.append(nn.ConvTranspose2d(n, n, kernel_size=2, stride=2))
+            upsamples.append(nn.Sequential(
+                nn.Conv2d(n, 4*n, **self._conv311_args),
+                nn.PixelShuffle(2),
+                nn.SiLU(inplace=True),
+            ))
         self.upsamples = nn.ParameterList(upsamples)
 
     def _make_conv_block(self, in_channels, out_channels):
         return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels, out_channels, **self._conv311_args),
             nn.BatchNorm2d(out_channels),
             nn.SiLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(out_channels, out_channels, **self._conv311_args),
             nn.BatchNorm2d(out_channels),
             nn.SiLU(inplace=True)
         )
+
+    @staticmethod
+    def affine_transform(x0, y0):
+        shape = x0.shape
+        x = x0.reshape(*shape[:2], -1).transpose(-1, -2)
+        y = y0.reshape(*shape[:2], -1).transpose(-1, -2)
+        xTy = x.transpose(-1, -2) @ y
+        xTx = x.transpose(-1, -2) @ x
+        try:
+            eye = torch.linalg.matrix_norm(xTx, keepdim=True) * torch.eye(3).unsqueeze(0).to(xTx)
+            xTx = xTx + 1e-6 * eye
+            A = torch.linalg.inv(xTx) @ xTy
+        except torch._C._LinAlgError:
+            print("Warning: torch._C._LinAlgError")
+            return y0.detach()
+        else:
+            return (x @ A).transpose(-1, -2).reshape(shape)
 
     def forward(self, x_input):
         means = torch.mean(x_input, (1, 2, 3), keepdim=True)
@@ -88,7 +114,10 @@ class UNet(nn.Module):
             dec = self.dec_convs[i](concat)
         d = self.dec_convs[0](dec)
 
-        out = d + x0
+        # out = d + x0
+        out = d
+        # out = self.affine_transform(d, x0)
+        # out = 0.2 * d + 0.8 * self.affine_transform(d, x0)
         return out*stds+means
 
 # Image dataset class
@@ -104,11 +133,12 @@ class ImageEnhancementDataset(Dataset):
         self.to_tensor = transforms.ToTensor()
         
         self.augmentations = A.Compose([
-            A.MotionBlur(blur_limit=15, allow_shifted=False, p=config['p_motion_blur']),
-            A.ShotNoise(scale_range=(0.0, 0.04), p=config['p_shot_noise']),
-            A.RingingOvershoot(blur_limit=(7, 15), cutoff=(np.pi/3, np.pi), p=config['p_ringing_overshoot']),
-            A.ImageCompression(quality_range=(40, 95), compression_type='jpeg', p=config['p_jpeg_compression']),
-            A.ImageCompression(quality_range=(40, 95), compression_type='webp', p=config['p_webp_compression']),
+            A.MotionBlur(blur_limit=15, allow_shifted=False, p=0.5),
+            A.Defocus(radius=(1, 5), alias_blur=(0.1, 0.5), p=0.4),
+            A.ShotNoise(scale_range=(0.0, 0.04), p=0.6),
+            A.RingingOvershoot(blur_limit=(7, 15), cutoff=(0.25*np.pi, 1.0*np.pi), p=0.5),
+            A.ImageCompression(quality_range=(40, 95), compression_type='jpeg', p=0.5),
+            A.ImageCompression(quality_range=(40, 95), compression_type='webp', p=0.2),
         ], p=1.0)
         
         if not is_train and seed is not None:
@@ -407,7 +437,7 @@ def train(config):
     )
     
     # Create model
-    model = UNet(channels=3, num_hiddens=config['num_hiddens'])
+    model = UNet()
     
     # Multi-GPU training
     if len(config['gpu_indices']) > 1 and torch.cuda.is_available():
@@ -545,6 +575,13 @@ def train(config):
     return model
 
 if __name__ == "__main__":
+    if False:
+        model = UNet()
+        x = torch.randn((8, 3, 640, 480))
+        y = model(x)
+        print(y.shape)
+        exit(0)
+
     parser = argparse.ArgumentParser(description="Image Quality Enhancement Training")
     
     # Add arguments
@@ -556,24 +593,18 @@ if __name__ == "__main__":
     parser.add_argument('--train_tile_size', type=int, default=256, help='Size of training tiles')
     parser.add_argument('--val', type=float, default=0.05, help='Fraction of data for validation')
     parser.add_argument('--cache', action='store_true', help='Cache images in RAM')
-    parser.add_argument('--num_hiddens', type=int, nargs='+', default=[16, 32, 48, 64], help='Number of hidden layers in U-Net')
     parser.add_argument('--max_epochs', type=int, default=1000, help='Maximum number of epochs')
     parser.add_argument('--patience', type=int, default=50, help='Early stopping patience')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     parser.add_argument('--warmup', type=int, default=2, help='Warmup epochs')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate')
+    parser.add_argument('--lr', type=float, default=2e-5, help='Initial learning rate')
     parser.add_argument('--lrf', type=float, default=0.1, help='Final learning rate fraction')
     parser.add_argument('--ssim_weight', type=float, default=0.5, help='Weight of SSIM in loss function')
     parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
-    parser.add_argument('--p_motion_blur', type=float, default=0.8, help='Probability of motion blur')
-    parser.add_argument('--p_shot_noise', type=float, default=0.6, help='Probability of shot noise')
-    parser.add_argument('--p_ringing_overshoot', type=float, default=0.2, help='Probability of ringing overshoot')
-    parser.add_argument('--p_jpeg_compression', type=float, default=0.9, help='Probability of JPEG compression')
-    parser.add_argument('--p_webp_compression', type=float, default=0.4, help='Probability of WEBP compression')
     
     args = parser.parse_args()
     config = vars(args)
     
     train(config)
 
-# python3 train_01.py --image_directory ~/adr/coco/df2k
+# python3 train_02.py --image_directory ~/adr/coco/df2k
