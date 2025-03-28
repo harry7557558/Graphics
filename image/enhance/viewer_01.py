@@ -2,6 +2,7 @@ import os
 import sys
 import numpy as np
 import torch
+import torch.nn.functional as F
 import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -15,10 +16,15 @@ from matplotlib.figure import Figure
 import argparse
 from pathlib import Path
 
-# from train_01 import UNet
-from train_02 import UNet
+# from train_01 import UNet as Model
+# from train_02 import UNet as Model
+from train_03 import Restormer as Model
 
 class ImageEnhancerGUI:
+    # used in training
+    tile = 256
+    tile_pad = 16
+
     def __init__(self, model_path, default_image_path=None):
         self.setup_gui()
         self.load_model(model_path)
@@ -124,13 +130,14 @@ class ImageEnhancerGUI:
         try:
             # Check if CUDA is available
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.device = 'cpu'
             self.status_bar.config(text=f"Using device: {self.device}")
             
             # Load the saved model
             checkpoint = torch.load(model_path, map_location=self.device)
             
             # Create model
-            self.model = UNet()
+            self.model = Model()
             
             # Handle both DataParallel and regular model checkpoints
             if 'model_state_dict' in checkpoint:
@@ -209,6 +216,52 @@ class ImageEnhancerGUI:
             messagebox.showerror("Error", f"Failed to load image: {str(e)}")
             self.status_bar.config(text=f"Error loading image: {str(e)}")
     
+    def slice_indices(self, d):
+        if d <= self.tile:
+            return torch.arange(1)
+        n = (d + self.tile - 1) // self.tile
+        s = torch.arange(n) * ((d-self.tile)/(n-1))
+        return (s+0.5).long()
+
+    def slice_image(self, img: torch.Tensor):
+        c, h, w = img.shape[1:]
+
+        pad_h = max(0, self.tile - h)
+        pad_w = max(0, self.tile - w)
+        if pad_h > 0 or pad_w > 0:
+            img = F.pad(img, (0, pad_w, 0, pad_h), value=0.5)
+            h += pad_h
+            w += pad_w
+
+        si, sj = self.slice_indices(h), self.slice_indices(w)
+        slices = []
+
+        for i in si:
+            for j in sj:
+                slices.append(img[:, :, i:i + self.tile, j:j + self.tile])
+
+        return torch.cat(slices, dim=0)
+
+    def unslice_image(self, img: torch.Tensor, h, w):
+        c = img.shape[1]
+        output = torch.zeros((c, h, w), device=img.device)
+        count = torch.zeros((1, h, w), device=img.device)
+
+        # weight to discourage artifacts at tile border
+        i = torch.arange(self.tile)+0.5
+        weight = (torch.fmin(i, self.tile-i) / self.tile_pad).clip(max=1.0)**3
+        weight = torch.einsum('i,j->ij', weight, weight).unsqueeze(0)
+        
+        si, sj = self.slice_indices(h), self.slice_indices(w)
+        idx = 0
+        for i in si:
+            for j in sj:
+                output[:, i:i + self.tile, j:j + self.tile] += weight * img[idx]
+                count[:, i:i + self.tile, j:j + self.tile] += weight
+                idx += 1
+
+        return (output / count.clip(min=1e-8)).unsqueeze(0)
+
     def process_image(self):
         if self.degraded_img is None:
             return
@@ -217,10 +270,12 @@ class ImageEnhancerGUI:
             # Convert to tensor and normalize
             to_tensor = transforms.ToTensor()
             degraded_tensor = to_tensor(self.degraded_img).unsqueeze(0).to(self.device)
-            
-            with torch.no_grad():
+
+            with torch.inference_mode():
                 # Process image through model
-                enhanced_tensor = self.model(degraded_tensor)
+                sliced_tensor = self.slice_image(degraded_tensor)
+                output_tensor = self.model(sliced_tensor)
+                enhanced_tensor = self.unslice_image(output_tensor, *degraded_tensor.shape[2:])
                 
                 # Convert back to numpy array
                 enhanced_np = enhanced_tensor.squeeze(0).cpu().numpy()
@@ -234,9 +289,10 @@ class ImageEnhancerGUI:
                 
                 # Store enhanced image
                 self.enhanced_img = enhanced_np
-                
-                # Display images
-                self.display_images()
+            
+            # Display images
+            self.display_images()
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to process image: {str(e)}")
             self.status_bar.config(text=f"Error processing image: {str(e)}")
